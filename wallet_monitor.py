@@ -708,66 +708,21 @@ ALCHEMY_CHAINS = [
     {"name": "Superseed", "network": None, "rpc_url": f"https://superseed-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 5330, "native_token": "SEED", "public_rpc": "https://rpc.superseed.xyz", "backup_rpcs": ["https://rpc.superseed.xyz", "https://superseed.drpc.org", "https://1rpc.io/superseed"]},
     {"name": "Flow EVM", "network": None, "rpc_url": f"https://flow-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 747, "native_token": "FLOW", "public_rpc": "https://flow-rpc.galaxy.com", "backup_rpcs": ["https://flow-rpc.galaxy.com", "https://flow.drpc.org", "https://1rpc.io/flow"]},
     {"name": "Degen", "network": None, "rpc_url": f"https://degen-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 101, "native_token": "DEGEN", "public_rpc": "https://rpc.degen.tips", "backup_rpcs": ["https://rpc.degen.tips", "https://degen.drpc.org", "https://1rpc.io/degen"]},
-    {"name": "Polynomial", "network": None, "rpc_url": f"https://polynomial-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 8008, "native_token": "POLY", "public_rpc": "https://rpc.polynomial.network", "backup_rpcs": ["https://rpc.polynomial.network", "https://polynomial.drpc.org", "https://1rpc.io/polynomial"]},
+
     {"name": "ApeChain", "network": None, "rpc_url": f"https://apechain-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 33139, "native_token": "APE", "public_rpc": "https://rpc.apechain.com", "backup_rpcs": ["https://rpc.apechain.com", "https://apechain.drpc.org", "https://1rpc.io/apechain"]},
     {"name": "Metis", "network": None, "rpc_url": f"https://metis-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 1088, "native_token": "METIS", "public_rpc": "https://andromeda.metis.io", "backup_rpcs": ["https://andromeda.metis.io", "https://metis.drpc.org", "https://1rpc.io/metis"]},
     {"name": "Sonic", "network": None, "rpc_url": f"https://sonic-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 64165, "native_token": "SONIC", "public_rpc": "https://rpc.sonic.network", "backup_rpcs": ["https://rpc.sonic.network", "https://sonic.drpc.org", "https://1rpc.io/sonic"]},
     {"name": "Soneium", "network": None, "rpc_url": f"https://soneium-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 1946, "native_token": "SONE", "public_rpc": "https://rpc.soneium.com", "backup_rpcs": ["https://rpc.soneium.com", "https://soneium.drpc.org", "https://1rpc.io/soneium"]},
     {"name": "Abstract", "network": None, "rpc_url": f"https://abstract-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 11124, "native_token": "ABST", "public_rpc": "https://rpc.abstract.network", "backup_rpcs": ["https://rpc.abstract.network", "https://abstract.drpc.org", "https://1rpc.io/abstract"]},
-    {"name": "Caldera", "network": None, "rpc_url": f"https://caldera-mainnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 819, "native_token": "TRN", "public_rpc": "https://rpc.caldera.xyz", "backup_rpcs": ["https://rpc.caldera.xyz", "https://caldera.drpc.org", "https://1rpc.io/caldera"]},
+
     
-    # ===== 测试网 =====
-    # Ethereum测试网
+    # ===== 测试网（仅保留活跃的）=====
+    # 主要测试网
     {"name": "Ethereum Sepolia", "network": None, "rpc_url": f"https://eth-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 11155111, "native_token": "ETH", "public_rpc": "https://rpc.sepolia.org", "backup_rpcs": ["https://rpc.sepolia.org", "https://sepolia.drpc.org", "https://1rpc.io/sepolia"]},
-    {"name": "Ethereum Goerli", "network": Network.ETH_GOERLI, "rpc_url": f"https://eth-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 5, "native_token": "ETH", "public_rpc": "https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161", "backup_rpcs": ["https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161", "https://goerli.drpc.org", "https://1rpc.io/goerli"]},
-    
-    # Polygon测试网
-    {"name": "Polygon Mumbai", "network": Network.MATIC_MUMBAI, "rpc_url": f"https://polygon-mumbai.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 80001, "native_token": "MATIC", "public_rpc": "https://rpc-mumbai.maticvigil.com", "backup_rpcs": ["https://rpc-mumbai.maticvigil.com", "https://mumbai.drpc.org", "https://1rpc.io/mumbai"]},
-    
-    # Arbitrum测试网
     {"name": "Arbitrum Sepolia", "network": None, "rpc_url": f"https://arb-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 421614, "native_token": "ETH", "public_rpc": "https://sepolia-rollup.arbitrum.io/rpc", "backup_rpcs": ["https://sepolia-rollup.arbitrum.io/rpc", "https://arbitrum-sepolia.drpc.org", "https://1rpc.io/arbitrum-sepolia"]},
-    {"name": "Arbitrum Goerli", "network": Network.ARB_GOERLI, "rpc_url": f"https://arb-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 421613, "native_token": "ETH", "public_rpc": "https://goerli-rollup.arbitrum.io/rpc", "backup_rpcs": ["https://goerli-rollup.arbitrum.io/rpc", "https://arbitrum-goerli.drpc.org", "https://1rpc.io/arbitrum-goerli"]},
-    
-    # Optimism测试网
     {"name": "Optimism Sepolia", "network": None, "rpc_url": f"https://opt-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 11155420, "native_token": "ETH", "public_rpc": "https://sepolia.optimism.io", "backup_rpcs": ["https://sepolia.optimism.io", "https://optimism-sepolia.drpc.org", "https://1rpc.io/optimism-sepolia"]},
-    {"name": "Optimism Goerli", "network": Network.OPT_GOERLI, "rpc_url": f"https://opt-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 420, "native_token": "ETH", "public_rpc": "https://goerli.optimism.io", "backup_rpcs": ["https://goerli.optimism.io", "https://optimism-goerli.drpc.org", "https://1rpc.io/optimism-goerli"]},
-    
-    # Base测试网
     {"name": "Base Sepolia", "network": None, "rpc_url": f"https://base-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 84532, "native_token": "ETH", "public_rpc": "https://sepolia.base.org", "backup_rpcs": ["https://sepolia.base.org", "https://base-sepolia.drpc.org", "https://1rpc.io/base-sepolia"]},
-    {"name": "Base Goerli", "network": None, "rpc_url": f"https://base-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 84531, "native_token": "ETH", "public_rpc": "https://goerli.base.org", "backup_rpcs": ["https://goerli.base.org", "https://base-goerli.drpc.org", "https://1rpc.io/base-goerli"]},
-    
-    # Polygon zkEVM测试网
-    {"name": "Polygon zkEVM Testnet", "network": None, "rpc_url": f"https://polygonzkevm-testnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 1442, "native_token": "ETH", "public_rpc": "https://rpc.public.zkevm-test.net", "backup_rpcs": ["https://rpc.public.zkevm-test.net", "https://polygon-zkevm-testnet.drpc.org", "https://1rpc.io/polygon-zkevm-testnet"]},
-    
-    # zkSync测试网
-    {"name": "zkSync Goerli", "network": None, "rpc_url": f"https://zksync-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 280, "native_token": "ETH", "public_rpc": "https://testnet.era.zksync.io", "backup_rpcs": ["https://testnet.era.zksync.io", "https://zksync-goerli.drpc.org", "https://1rpc.io/zksync-goerli"]},
-    
-    # Scroll测试网
-    {"name": "Scroll Sepolia", "network": None, "rpc_url": f"https://scroll-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 534351, "native_token": "ETH", "public_rpc": "https://sepolia-rpc.scroll.io", "backup_rpcs": ["https://sepolia-rpc.scroll.io", "https://scroll-sepolia.drpc.org", "https://1rpc.io/scroll-sepolia"]},
-    
-    # Linea测试网
-    {"name": "Linea Goerli", "network": None, "rpc_url": f"https://linea-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 59140, "native_token": "ETH", "public_rpc": "https://rpc.goerli.linea.build", "backup_rpcs": ["https://rpc.goerli.linea.build", "https://linea-goerli.drpc.org", "https://1rpc.io/linea-goerli"]},
-    
-    # Mantle测试网
-    {"name": "Mantle Testnet", "network": None, "rpc_url": f"https://mantle-testnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 5001, "native_token": "MNT", "public_rpc": "https://rpc.testnet.mantle.xyz", "backup_rpcs": ["https://rpc.testnet.mantle.xyz", "https://mantle-testnet.drpc.org", "https://1rpc.io/mantle-testnet"]},
-    
-    # Berachain测试网
-    {"name": "Berachain Artio", "network": None, "rpc_url": f"https://berachain-artio.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 80085, "native_token": "BERA", "public_rpc": "https://artio.rpc.berachain.com", "backup_rpcs": ["https://artio.rpc.berachain.com", "https://berachain-artio.drpc.org", "https://1rpc.io/berachain-artio"]},
-    
-    # Zora测试网
-    {"name": "Zora Goerli", "network": None, "rpc_url": f"https://zora-goerli.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 999, "native_token": "ETH", "public_rpc": "https://testnet.rpc.zora.energy", "backup_rpcs": ["https://testnet.rpc.zora.energy", "https://zora-goerli.drpc.org", "https://1rpc.io/zora-goerli"]},
-    
-    # Blast测试网
-    {"name": "Blast Sepolia", "network": None, "rpc_url": f"https://blast-sepolia.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 168587773, "native_token": "ETH", "public_rpc": "https://sepolia.blast.io", "backup_rpcs": ["https://sepolia.blast.io", "https://blast-sepolia.drpc.org", "https://1rpc.io/blast-sepolia"]},
-    
-    # Frax测试网
-    {"name": "Frax Testnet", "network": None, "rpc_url": f"https://frax-testnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 252, "native_token": "FRAX", "public_rpc": "https://rpc.testnet.frax.com", "backup_rpcs": ["https://rpc.testnet.frax.com", "https://frax-testnet.drpc.org", "https://1rpc.io/frax-testnet"]},
-    
-    # Avalanche测试网
-    {"name": "Avalanche Fuji", "network": None, "rpc_url": f"https://avax-fuji.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 43113, "native_token": "tAVAX", "public_rpc": "https://api.avax-test.network/ext/bc/C/rpc", "backup_rpcs": ["https://api.avax-test.network/ext/bc/C/rpc", "https://avalanche-fuji.drpc.org", "https://1rpc.io/avax-fuji"]},
-    
-    # BNB Smart Chain测试网
-    {"name": "BNB Smart Chain Testnet", "network": None, "rpc_url": f"https://bnb-testnet.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 97, "native_token": "tBNB", "public_rpc": "https://data-seed-prebsc-1-s1.binance.org:8545", "backup_rpcs": ["https://data-seed-prebsc-1-s1.binance.org:8545", "https://bsc-testnet.drpc.org", "https://1rpc.io/bsc-testnet"]},
+    {"name": "Avalanche Fuji", "network": None, "rpc_url": f"https://avax-fuji.g.alchemy.com/v2/{config.ALCHEMY_API_KEY}", "chain_id": 43113, "native_token": "AVAX", "public_rpc": "https://api.avax-test.network/ext/bc/C/rpc", "backup_rpcs": ["https://api.avax-test.network/ext/bc/C/rpc", "https://avalanche-fuji.drpc.org", "https://1rpc.io/avax-fuji"]},
 ]
 
 # Solana链配置
@@ -4415,6 +4370,14 @@ class WalletMonitor:
         
         time.sleep(2)
 
+def safe_input(prompt, default=""):
+    """安全的输入函数，处理EOF错误"""
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n⚠️ 检测到非交互式环境或用户中断，使用默认值: {default}")
+        return default
+
 def ask_resume():
     """询问是否继续上次的运行"""
     print("\n" + "="*60)
@@ -4424,10 +4387,12 @@ def ask_resume():
     print("="*60)
     
     while True:
-        choice = input("请输入选择 (1/2): ").strip()
+        choice = safe_input("请输入选择 (1/2): ", "2")
         if choice == "1":
             return True
         elif choice == "2":
+            return False
+        elif choice == "":  # 默认值
             return False
         else:
             print("❌ 无效选择，请输入 1 或 2")
@@ -4525,7 +4490,7 @@ async def main():
         print(f"💡 建议: 使用控制菜单手动添加地址或检查网络连接")
         
         # 提供选择：进入控制菜单或退出
-        choice = input(f"\n{Fore.YELLOW}是否进入控制菜单手动管理？(y/N): {Style.RESET_ALL}").strip().lower()
+        choice = safe_input(f"\n{Fore.YELLOW}是否进入控制菜单手动管理？(y/N): {Style.RESET_ALL}", "n").lower()
         if choice == 'y':
             monitor.show_control_menu()
         return
@@ -4538,7 +4503,7 @@ async def main():
     print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 立即开始自动监控")
     print(f"  {Fore.BLUE}2.{Style.RESET_ALL} 🎛️ 进入控制菜单")
     
-    mode_choice = input(f"\n{Fore.YELLOW}请选择 (1/2): {Style.RESET_ALL}").strip()
+    mode_choice = safe_input(f"\n{Fore.YELLOW}请选择 (1/2): {Style.RESET_ALL}", "1")
     
     if mode_choice == "2":
         monitor.show_control_menu()
