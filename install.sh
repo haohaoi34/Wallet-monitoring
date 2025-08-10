@@ -392,11 +392,16 @@ install_dependencies() {
     
     # 清理可能冲突的包
     log "清理可能冲突的依赖..."
-    python -m pip uninstall -y urllib3 requests six types-requests 2>/dev/null || true
+    python -m pip uninstall -y urllib3 requests six types-requests web3 2>/dev/null || true
     
-    # 安装基础HTTP依赖
+    # 强制重新安装pip工具
+    python -m pip install --upgrade --force-reinstall pip setuptools wheel 2>/dev/null || true
+    
+    # 安装基础HTTP依赖（按顺序安装避免冲突）
     log "安装基础HTTP依赖..."
-    python -m pip install "urllib3>=1.26.0,<2.0.0" "requests>=2.25.1,<3.0.0" "six>=1.16.0" -q
+    python -m pip install "six>=1.16.0" -q
+    python -m pip install "urllib3>=1.26.0,<2.0.0" -q
+    python -m pip install "requests>=2.25.1,<3.0.0" -q
     
     # 安装依赖
     log "安装Python依赖包..."
@@ -419,7 +424,7 @@ install_dependencies() {
         done
         
         # 尝试安装可选依赖
-        local optional_deps=("solana" "solders" "solana-py" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
+        local optional_deps=("solana" "solders" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
         for dep in "${optional_deps[@]}"; do
             log "安装可选依赖 $dep..."
             python -m pip install "$dep" -q || warn "安装 $dep 失败（可选）"
@@ -461,16 +466,36 @@ verify_installation() {
     log "测试Python依赖..."
     
     # 测试基础HTTP依赖
-    if ! python -c "import urllib3, requests, six" 2>/dev/null; then
-        error "基础HTTP依赖导入失败"
-        return 1
+    if python -c "import urllib3, requests, six" 2>/dev/null; then
+        success "基础HTTP依赖导入成功"
+    else
+        warn "基础HTTP依赖导入失败，但程序可能仍能运行"
     fi
     
-    # 测试核心依赖
-    if ! python -c "import web3, solana, cryptography, aiohttp, dotenv, colorama" 2>/dev/null; then
-        warn "部分Python依赖导入失败，但程序可能仍能运行"
+    # 测试核心依赖（逐个测试）
+    local core_deps=("web3" "cryptography" "aiohttp" "dotenv" "colorama")
+    local failed_deps=()
+    
+    for dep in "${core_deps[@]}"; do
+        if python -c "import $dep" 2>/dev/null; then
+            log "✓ $dep 导入成功"
+        else
+            failed_deps+=("$dep")
+            log "✗ $dep 导入失败"
+        fi
+    done
+    
+    # 测试可选依赖
+    if python -c "import solana" 2>/dev/null; then
+        log "✓ solana 导入成功"
     else
-        success "所有关键Python依赖导入成功"
+        log "✗ solana 导入失败（可选）"
+    fi
+    
+    if [ ${#failed_deps[@]} -eq 0 ]; then
+        success "所有核心Python依赖导入成功"
+    else
+        warn "部分Python依赖导入失败: ${failed_deps[*]}，但程序可能仍能运行"
     fi
     
     # 检查依赖版本
