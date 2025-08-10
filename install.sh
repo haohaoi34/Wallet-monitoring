@@ -419,7 +419,7 @@ install_dependencies() {
         done
         
         # 尝试安装可选依赖
-        local optional_deps=("solana" "solders" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
+        local optional_deps=("solana" "solders" "solana-py" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
         for dep in "${optional_deps[@]}"; do
             log "安装可选依赖 $dep..."
             python -m pip install "$dep" -q || warn "安装 $dep 失败（可选）"
@@ -554,27 +554,25 @@ auto_launch_app() {
     echo -e "${GREEN}🎉 安装成功完成！${NC}"
     echo ""
     
-    # 直接显示启动说明，不再尝试交互式输入
+    # 直接启动程序，不需要用户手动输入命令
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${NC} ${YELLOW}🚀 启动钱包监控器${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}╠══════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${CYAN}║${NC} ${GREEN}请复制并执行以下命令:${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${WHITE}cd $(pwd)${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${WHITE}source venv/bin/activate${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${WHITE}python wallet_monitor.py --force-interactive${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${YELLOW}💡 或者直接运行一键启动命令:${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${GREEN}cd $(pwd) && source venv/bin/activate && python wallet_monitor.py --force-interactive${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}🚀 自动启动钱包监控器${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${GREEN}程序将在3秒后自动启动...${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}💡 如需手动启动，按 Ctrl+C 取消${NC} ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    # 提供复制友好的格式
-    echo -e "${YELLOW}📋 复制以下命令到终端执行:${NC}"
-    echo -e "${GREEN}cd $(pwd) && source venv/bin/activate && python wallet_monitor.py --force-interactive${NC}"
+    # 倒计时
+    for i in 3 2 1; do
+        echo -e "${YELLOW}⏰ ${i}秒后启动...${NC}"
+        sleep 1
+    done
+    
+    echo -e "${GREEN}🚀 启动钱包监控器...${NC}"
     echo ""
-    echo -e "${CYAN}📍 项目位置: $(pwd)${NC}"
-    echo -e "${CYAN}📖 首次使用请在程序中配置API密钥和添加钱包地址${NC}"
+    
+    # 直接启动程序
+    python wallet_monitor.py --force-interactive
 }
 
 # 主安装函数
@@ -599,7 +597,12 @@ main() {
     if [[ "${AUTO_LAUNCH:-true}" == "true" ]]; then
         auto_launch_app
     else
-        launch_app
+        # 显示手动启动说明
+        echo ""
+        echo -e "${YELLOW}📝 手动启动说明:${NC}"
+        echo -e "${GREEN}cd $(pwd) && source venv/bin/activate && python wallet_monitor.py --force-interactive${NC}"
+        echo ""
+        echo -e "${CYAN}📍 项目位置: $(pwd)${NC}"
     fi
 }
 
