@@ -445,9 +445,9 @@ show_next_steps() {
     echo "║                    🎉 安装完成！ 🎉                        ║"
     echo "║                                                              ║"
     echo "║  后续步骤:                                                   ║"
-    echo "║  1. 编辑配置: nano .env                                     ║"
-    echo "║  2. 添加您的API密钥和目标地址                               ║"
-    echo "║  3. 启动应用: python wallet_monitor.py                      ║"
+    echo "║  1. 程序将自动启动并进入主菜单                              ║"
+    echo "║  2. 在主菜单中配置API密钥和目标地址                          ║"
+    echo "║  3. 开始监控您的钱包                                        ║"
     echo "║                                                              ║"
     echo "║  项目位置: $PROJECT_DIR                                     ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
@@ -461,12 +461,26 @@ launch_app() {
     echo -e "${NC}"
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log "正在启动钱包监控器..."
-        python wallet_monitor.py
+        auto_launch_app
     else
         echo -e "${GREEN}您可以稍后使用以下命令启动应用:${NC}"
         echo -e "${CYAN}cd $PROJECT_DIR && source venv/bin/activate && python wallet_monitor.py${NC}"
     fi
+}
+
+# 自动启动应用
+auto_launch_app() {
+    log "正在启动钱包监控器..."
+    echo -e "${GREEN}🚀 自动启动钱包监控器...${NC}"
+    echo -e "${CYAN}程序将直接进入主菜单，您可以开始配置和监控钱包${NC}"
+    echo -e "${YELLOW}💡 提示: 在主菜单中您可以配置API密钥、添加钱包地址并开始监控${NC}"
+    echo ""
+    
+    # 等待2秒让用户看到提示信息
+    sleep 2
+    
+    # 启动程序
+    python wallet_monitor.py
 }
 
 # 主安装函数
@@ -486,7 +500,13 @@ main() {
     
     # 显示完成信息
     show_next_steps
-    launch_app
+    
+    # 根据设置决定是否自动启动
+    if [[ "${AUTO_LAUNCH:-true}" == "true" ]]; then
+        auto_launch_app
+    else
+        launch_app
+    fi
 }
 
 # 处理命令行参数
@@ -504,10 +524,16 @@ case "${1:-}" in
         echo ""
         echo "选项:"
         echo "  --help, -h     显示此帮助信息"
+        echo "  --no-auto      安装完成后不自动启动程序"
         echo ""
         exit 0
         ;;
+    --no-auto)
+        AUTO_LAUNCH=false
+        main "$@"
+        ;;
     *)
+        AUTO_LAUNCH=true
         main "$@"
         ;;
 esac 
