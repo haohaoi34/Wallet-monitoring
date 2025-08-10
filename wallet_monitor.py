@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -1327,6 +1326,10 @@ class WalletMonitor:
 
     def collect_private_keys(self):
         """收集私钥"""
+        if not is_interactive():
+            print("⚠️ 非交互式环境，跳过私钥收集")
+            return []
+            
         print("\n" + "="*60)
         print("🔑 请输入私钥（一行一个，支持EVM和Solana格式）")
         print("📝 程序会自动识别私钥类型（EVM或Solana）")
@@ -1336,10 +1339,12 @@ class WalletMonitor:
         private_keys = []
         while True:
             try:
-                key = input().strip()
+                key = safe_input("", "").strip()
                 if key == "":
-                    if len(private_keys) > 0 and input().strip() == "":
-                        break
+                    if len(private_keys) > 0:
+                        confirm = safe_input("", "")
+                        if confirm == "":
+                            break
                     continue
                 
                 # 识别私钥类型
@@ -2717,7 +2722,7 @@ class WalletMonitor:
             # 添加快捷键提示
             print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
             
-            choice = input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}").strip().lower()
+            choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "13").lower()
             
             if choice == 'q' or choice == '13':
                 print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
@@ -2867,7 +2872,7 @@ class WalletMonitor:
         print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
         # 等待用户输入
-        input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}")
+        safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
     
     def save_state_with_feedback(self):
         """带反馈的状态保存"""
@@ -4370,12 +4375,22 @@ class WalletMonitor:
         
         time.sleep(2)
 
+import sys
+
+def is_interactive():
+    """检测是否为交互式环境"""
+    return sys.stdin.isatty()
+
 def safe_input(prompt, default=""):
     """安全的输入函数，处理EOF错误"""
+    if not is_interactive():
+        print(f"⚠️ 非交互式环境，使用默认值: {default}")
+        return default
+    
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        print(f"\n⚠️ 检测到非交互式环境或用户中断，使用默认值: {default}")
+        print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
         return default
 
 def ask_resume():
@@ -4399,6 +4414,25 @@ def ask_resume():
 
 async def main():
     """主函数"""
+    # 检查是否为非交互式环境
+    if not is_interactive():
+        print("🤖 非交互式环境检测")
+        print("💡 程序将以只读模式运行，不会进行实际监控")
+        print("📝 如需完整功能，请在交互式终端中运行")
+        
+        # 创建监控器实例但不进行实际监控
+        try:
+            monitor = WalletMonitor()
+            print("✅ 系统初始化完成")
+            print("📊 支持的区块链网络:")
+            print(f"   - EVM链: {len(monitor.evm_clients)} 个")
+            print(f"   - Solana链: {len(monitor.solana_clients)} 个")
+            print("💡 要开始监控，请添加私钥并在交互式环境中运行")
+            return
+        except Exception as e:
+            print(f"❌ 初始化失败: {str(e)}")
+            return
+    
     # 清屏并显示启动信息
     print("\033[2J\033[H")
     
