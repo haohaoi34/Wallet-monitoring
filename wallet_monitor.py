@@ -124,13 +124,24 @@ import threading
 
 # Solana相关导入
 try:
-    from solana.rpc.async_api import AsyncClient
-    from solana.keypair import Keypair
-    from solana.publickey import PublicKey
-    from solana.rpc.commitment import Commitment
-    from solana.transaction import Transaction
-    from solana.system_program import TransferParams, transfer
-    from solana.rpc.types import TxOpts
+    # 尝试多种Solana库的导入方式
+    try:
+        from solana.rpc.async_api import AsyncClient
+        from solana.keypair import Keypair
+        from solana.publickey import PublicKey
+        from solana.rpc.commitment import Commitment
+        from solana.transaction import Transaction
+        from solana.system_program import TransferParams, transfer
+        from solana.rpc.types import TxOpts
+    except ImportError:
+        # 尝试solana-py库
+        from solana_py.rpc.async_api import AsyncClient
+        from solana_py.keypair import Keypair
+        from solana_py.publickey import PublicKey
+        from solana_py.rpc.commitment import Commitment
+        from solana_py.transaction import Transaction
+        from solana_py.system_program import TransferParams, transfer
+        from solana_py.rpc.types import TxOpts
     SOLANA_AVAILABLE = True
     print("✅ Solana基本功能已加载")
     
