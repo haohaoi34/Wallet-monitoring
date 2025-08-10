@@ -6,11 +6,8 @@ solders>=0.20.0
 base58>=2.1.0
 eth-account>=0.8.0
 
-# Alchemy SDK for EVM chains
-alchemy-sdk>=0.8.0
-
-# SPL Token support
-spl-token>=0.2.0
+# Alchemy SDK for EVM chains (使用可用版本)
+alchemy>=0.1.1
 
 # Cryptography and security
 cryptography>=3.4.8
@@ -33,3 +30,4 @@ asyncio-throttle>=1.0.2
 
 # Additional utilities
 typing-extensions>=4.0.0
+dataclass-wizard>=0.22.0
