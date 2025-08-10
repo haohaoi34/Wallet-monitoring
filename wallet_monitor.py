@@ -63,7 +63,16 @@ except ImportError:
             def __init__(self, *args, **kwargs):
                 pass
         class Network:
-            pass
+            # 定义常用的网络常量
+            ETH_MAINNET = "eth-mainnet"
+            ETH_GOERLI = "eth-goerli"
+            MATIC_MAINNET = "polygon-mainnet"
+            ARB_MAINNET = "arbitrum-one"
+            OPT_MAINNET = "optimism-mainnet"
+            BASE_MAINNET = "base-mainnet"
+            MATIC_MUMBAI = "polygon-mumbai"
+            ARB_GOERLI = "arb-goerli"
+            OPT_GOERLI = "opt-goerli"
 import aiohttp
 from telegram import Bot
 from logging.handlers import RotatingFileHandler
@@ -105,8 +114,29 @@ except ImportError as e:
     print("📦 请运行以下命令安装Solana支持:")
     print("   pip install solana")
     print("   pip install base58")
-    print("   pip install spl-token")
     print("   或者运行: pip install -r requirements.txt")
+    
+    # 定义空的类以避免导入错误
+    class AsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+    class Keypair:
+        def __init__(self, *args, **kwargs):
+            pass
+    class PublicKey:
+        def __init__(self, *args, **kwargs):
+            pass
+    class Commitment:
+        pass
+    class Transaction:
+        def __init__(self, *args, **kwargs):
+            pass
+    class TransferParams:
+        pass
+    def transfer(*args, **kwargs):
+        pass
+    class TxOpts:
+        pass
 
 # 检查colorama依赖（用于彩色输出）
 try:
