@@ -39,6 +39,7 @@ import base64
 import time
 import sys
 import subprocess
+import re
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 # Web3导入 - 添加错误处理
@@ -1110,8 +1111,6 @@ class SensitiveDataFilter:
     @staticmethod
     def filter_private_key(text: str) -> str:
         """过滤私钥信息"""
-        import re
-        
         # EVM私钥模式 (64位十六进制字符)
         evm_pattern = r'\b[0-9a-fA-F]{64}\b'
         text = re.sub(evm_pattern, '[PRIVATE_KEY_FILTERED]', text)
