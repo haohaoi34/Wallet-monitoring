@@ -37,9 +37,9 @@ print_banner() {
     clear
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                🚀 钱包监控器安装程序 🚀                    ║"
-    echo "║              企业级多链钱包监控系统                          ║"
-    echo "║                    版本 2.1                                 ║"
+    echo "║                🚀 钱包监控器安装程序 🚀                         ║"
+    echo "║              企业级多链钱包监控系统                              ║"
+    echo "║                    版本 2.1                                   ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -265,6 +265,29 @@ cleanup_incomplete_venv() {
     fi
 }
 
+# 清理依赖冲突
+cleanup_dependency_conflicts() {
+    log "清理依赖冲突..."
+    
+    # 检查并清理可能冲突的包
+    if python -m pip show urllib3 2>/dev/null | grep -q "Version: 2\."; then
+        warn "检测到urllib3 2.x版本，正在降级到1.x..."
+        python -m pip uninstall -y urllib3
+        python -m pip install "urllib3>=1.26.0,<2.0.0" -q
+    fi
+    
+    if python -m pip show requests 2>/dev/null | grep -q "Version: 2\."; then
+        warn "检测到requests版本过低，正在升级..."
+        python -m pip install --upgrade "requests>=2.25.1,<3.0.0" -q
+    fi
+    
+    # 确保six包存在
+    if ! python -c "import six" 2>/dev/null; then
+        log "安装six包..."
+        python -m pip install "six>=1.16.0" -q
+    fi
+}
+
 # 调试虚拟环境状态
 debug_venv_status() {
     log "调试虚拟环境状态..."
@@ -346,6 +369,9 @@ setup_venv() {
     esac
     
     success "虚拟环境已激活"
+    
+    # 清理依赖冲突
+    cleanup_dependency_conflicts
 }
 
 # 安装依赖
@@ -358,13 +384,21 @@ install_dependencies() {
         warn "pip升级失败，继续安装依赖..."
     fi
     
+    # 清理可能冲突的包
+    log "清理可能冲突的依赖..."
+    python -m pip uninstall -y urllib3 requests six types-requests 2>/dev/null || true
+    
+    # 安装基础HTTP依赖
+    log "安装基础HTTP依赖..."
+    python -m pip install "urllib3>=1.26.0,<2.0.0" "requests>=2.25.1,<3.0.0" "six>=1.16.0" -q
+    
     # 安装依赖
     log "安装Python依赖包..."
     if ! python -m pip install -r requirements.txt -q; then
         error "依赖安装失败，尝试逐个安装..."
         
-        # 逐个安装关键依赖
-        local critical_deps=("web3" "solana" "cryptography" "aiohttp" "python-dotenv" "colorama")
+        # 逐个安装关键依赖（按顺序避免冲突）
+        local critical_deps=("six" "urllib3" "requests" "web3" "solana" "cryptography" "aiohttp" "python-dotenv" "colorama")
         for dep in "${critical_deps[@]}"; do
             log "安装 $dep..."
             if ! python -m pip install "$dep" -q; then
@@ -413,11 +447,44 @@ verify_installation() {
     
     # 测试Python导入
     log "测试Python依赖..."
+    
+    # 测试基础HTTP依赖
+    if ! python -c "import urllib3, requests, six" 2>/dev/null; then
+        error "基础HTTP依赖导入失败"
+        return 1
+    fi
+    
+    # 测试核心依赖
     if ! python -c "import web3, solana, cryptography, aiohttp, dotenv, colorama" 2>/dev/null; then
         warn "部分Python依赖导入失败，但程序可能仍能运行"
     else
         success "所有关键Python依赖导入成功"
     fi
+    
+    # 检查依赖版本
+    log "检查依赖版本..."
+    python -c "
+import sys
+try:
+    import urllib3
+    print(f'urllib3版本: {urllib3.__version__}')
+    if urllib3.__version__.startswith('2.'):
+        print('⚠️  urllib3版本过高，可能导致兼容性问题')
+except:
+    pass
+
+try:
+    import requests
+    print(f'requests版本: {requests.__version__}')
+except:
+    pass
+
+try:
+    import web3
+    print(f'web3版本: {web3.__version__}')
+except:
+    pass
+"
     
     success "安装验证完成"
 }
@@ -446,10 +513,10 @@ show_next_steps() {
     echo "║                                                              ║"
     echo "║  后续步骤:                                                   ║"
     echo "║  1. 程序将自动启动并进入主菜单                              ║"
-    echo "║  2. 在主菜单中配置API密钥和目标地址                          ║"
-    echo "║  3. 开始监控您的钱包                                        ║"
+    echo "║  2. 在主菜单中配置API密钥和目标地址                                ║"
+    echo "║  3. 开始监控您的钱包                                         ║"
     echo "║                                                              ║"
-    echo "║  项目位置: $PROJECT_DIR                                     ║"
+    echo "║  项目位置: $PROJECT_DIR                                        ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
