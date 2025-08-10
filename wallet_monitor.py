@@ -4383,7 +4383,10 @@ def is_interactive():
 
 def safe_input(prompt, default=""):
     """安全的输入函数，处理EOF错误"""
-    if not is_interactive():
+    import sys
+    force_interactive = '--force-interactive' in sys.argv
+    
+    if not is_interactive() and not force_interactive:
         print(f"⚠️ 非交互式环境，使用默认值: {default}")
         return default
     
@@ -4414,11 +4417,17 @@ def ask_resume():
 
 async def main():
     """主函数"""
-    # 检查是否为非交互式环境
-    if not is_interactive():
+    import sys
+    
+    # 检查命令行参数
+    force_interactive = '--force-interactive' in sys.argv
+    
+    # 检查是否为非交互式环境（除非强制交互模式）
+    if not is_interactive() and not force_interactive:
         print("🤖 非交互式环境检测")
         print("💡 程序将以只读模式运行，不会进行实际监控")
         print("📝 如需完整功能，请在交互式终端中运行")
+        print("🔧 或者使用: python wallet_monitor.py --force-interactive")
         
         # 创建监控器实例但不进行实际监控
         try:
