@@ -1,5 +1,4 @@
 # Wallet Monitor Dependencies
-# Core blockchain libraries
 web3>=6.0.0,<7.0.0
 solana>=0.30.0
 solders>=0.20.0
