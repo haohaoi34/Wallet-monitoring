@@ -364,7 +364,7 @@ install_dependencies() {
         error "依赖安装失败，尝试逐个安装..."
         
         # 逐个安装关键依赖
-        local critical_deps=("web3" "solana" "cryptography" "aiohttp" "python-dotenv" "colorama")
+        local critical_deps=("web3" "solana" "cryptography" "aiohttp" "python-dotenv" "colorama" "dataclass-wizard")
         for dep in "${critical_deps[@]}"; do
             log "安装 $dep..."
             if ! python -m pip install "$dep" -q; then
@@ -373,7 +373,7 @@ install_dependencies() {
         done
         
         # 尝试安装可选依赖
-        local optional_deps=("solders" "spl-token" "alchemy-sdk" "python-telegram-bot" "asyncio-throttle")
+        local optional_deps=("solders" "alchemy" "python-telegram-bot" "asyncio-throttle" "base58" "eth-account" "typing-extensions")
         for dep in "${optional_deps[@]}"; do
             log "安装可选依赖 $dep..."
             python -m pip install "$dep" -q || warn "安装 $dep 失败（可选）"
@@ -413,7 +413,7 @@ verify_installation() {
     
     # 测试Python导入
     log "测试Python依赖..."
-    if ! python -c "import web3, solana, cryptography, aiohttp, dotenv, colorama" 2>/dev/null; then
+    if ! python -c "import web3, solana, cryptography, aiohttp, dotenv, colorama, dataclass_wizard" 2>/dev/null; then
         warn "部分Python依赖导入失败，但程序可能仍能运行"
     else
         success "所有关键Python依赖导入成功"
