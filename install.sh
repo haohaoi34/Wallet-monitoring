@@ -230,8 +230,14 @@ download_files() {
     # GitHub仓库URL
     REPO_URL="https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main"
     
-    # 下载主要文件
-    curl -fsSL "$REPO_URL/wallet_monitor.py" -o wallet_monitor.py
+    # 优先下载改进版脚本并命名为主程序
+    if curl -fsSL "$REPO_URL/wallet_monitor_simplified.py" -o wallet_monitor.py; then
+        success "已下载改进版程序 (wallet_monitor.py)"
+    else
+        warn "改进版脚本不可用，回落到原始版本"
+        curl -fsSL "$REPO_URL/wallet_monitor.py" -o wallet_monitor.py
+    fi
+    
     curl -fsSL "$REPO_URL/requirements.txt" -o requirements.txt
     curl -fsSL "$REPO_URL/config.env.template" -o config.env.template
     
@@ -394,6 +400,12 @@ install_dependencies() {
     
     # 安装依赖
     log "安装Python依赖包..."
+    # 先尝试加速源（非强制）
+    PIP_INDEX_URL=${PIP_INDEX_URL:-}
+    if [[ -n "$PIP_INDEX_URL" ]]; then
+        log "使用自定义PIP源: $PIP_INDEX_URL"
+        export PIP_INDEX_URL
+    fi
     if ! python -m pip install -r requirements.txt -q; then
         error "依赖安装失败，尝试逐个安装..."
         
