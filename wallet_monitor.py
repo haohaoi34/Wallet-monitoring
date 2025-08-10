@@ -1,35 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-钱包监控服务器 - 支持EVM和Solana全链代币查询
-
-功能特性:
-1. 全链代币自动发现 - 通过Alchemy SDK自动发现地址持有的所有ERC-20代币
-2. Solana全链代币查询 - 通过Solana RPC自动发现所有SPL代币
-3. 手动代币配置 - 支持手动配置常见代币作为备用查询方案
-4. 多链支持 - 支持Ethereum、Polygon、Arbitrum、Optimism、Base、Solana等主流链
-5. 智能私钥识别 - 自动识别私钥类型（EVM或Solana）
-6. 智能去重 - 自动去重避免重复查询同一代币
-7. 可配置查询限制 - 可设置每个链最多查询的代币数量
-
-配置说明:
-- ENABLE_FULL_CHAIN_TOKEN_DISCOVERY: 是否启用EVM全链代币自动发现（推荐开启）
-- ENABLE_SOLANA_TOKEN_DISCOVERY: 是否启用Solana全链代币自动发现（推荐开启）
-- ENABLE_MANUAL_TOKEN_CHECK: 是否启用手动配置代币检查（备用方案）
-- MAX_TOKENS_PER_CHAIN: 每个链最多查询的代币数量（防止API限制）
-
-使用方法:
-1. 设置Alchemy API Key和Solana RPC端点
-2. 配置Telegram Bot（可选）
-3. 运行程序，输入私钥（支持EVM和Solana格式）
-4. 程序会自动识别私钥类型并发现监控所有代币余额
-
-注意事项:
-- EVM全链查询需要Alchemy API支持
-- Solana全链查询需要稳定的RPC端点
-- 手动配置代币需要确保合约地址正确
-- 建议同时启用两种查询方式以获得最佳效果
-"""
 
 import asyncio
 import logging
@@ -55,6 +23,31 @@ except ImportError as e:
     class Web3:
         def __init__(self, *args, **kwargs):
             pass
+        
+        @staticmethod
+        def from_wei(value, unit='ether'):
+            """模拟from_wei方法"""
+            if unit == 'ether':
+                return float(value) / 1e18
+            return float(value)
+        
+        @staticmethod
+        def to_wei(value, unit='ether'):
+            """模拟to_wei方法"""
+            if unit == 'ether':
+                return int(float(value) * 1e18)
+            return int(value)
+        
+        @staticmethod
+        def is_address(address):
+            """模拟is_address方法"""
+            if not isinstance(address, str):
+                return False
+            # 简单的EVM地址格式检查
+            return (address.startswith('0x') and 
+                    len(address) == 42 and 
+                    all(c in '0123456789abcdefABCDEF' for c in address[2:]))
+    
     class HTTPProvider:
         def __init__(self, *args, **kwargs):
             pass
@@ -72,6 +65,14 @@ except ImportError as e:
     class Account:
         def __init__(self, *args, **kwargs):
             pass
+        
+        @staticmethod
+        def from_key(private_key):
+            """模拟from_key方法"""
+            class MockAccount:
+                def __init__(self):
+                    self.address = "0x0000000000000000000000000000000000000000"
+            return MockAccount()
 # Alchemy导入 - 使用正确的包
 try:
     from alchemy import Alchemy, Network
@@ -103,7 +104,19 @@ except ImportError:
             ARB_GOERLI = "arb-goerli"
             OPT_GOERLI = "opt-goerli"
 import aiohttp
-from telegram import Bot
+try:
+    from telegram import Bot
+    TELEGRAM_AVAILABLE = True
+    print("✅ Telegram库已加载")
+except ImportError:
+    TELEGRAM_AVAILABLE = False
+    print("⚠️  Telegram库不可用，通知功能将被禁用")
+    print("📦 请运行: pip install python-telegram-bot")
+    # 定义空的类以避免导入错误
+    class Bot:
+        def __init__(self, *args, **kwargs):
+            pass
+
 from logging.handlers import RotatingFileHandler
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -211,7 +224,10 @@ class Config:
         self.SOLANA_TESTNET_RPC = "https://api.devnet.solana.com"
         
         # 监控配置
-        self.MIN_BALANCE_WEI = Web3.to_wei(0.0001, 'ether')
+        try:
+            self.MIN_BALANCE_WEI = Web3.to_wei(0.0001, 'ether')
+        except:
+            self.MIN_BALANCE_WEI = int(0.0001 * 1e18)  # 备用计算
         self.MIN_TOKEN_BALANCE = 0.0001
         self.MIN_SOL_BALANCE = 0.001  # Solana最小余额（SOL）
         self.SLEEP_INTERVAL = 30
@@ -315,25 +331,49 @@ class SensitiveLogFilter(logging.Filter):
     
     def filter(self, record):
         """过滤日志中的敏感信息"""
-        if hasattr(record, 'msg') and isinstance(record.msg, str):
-            record.msg = SensitiveDataFilter.filter_sensitive_info(record.msg)
-        
-        # 过滤args中的敏感信息
-        if hasattr(record, 'args') and record.args:
-            filtered_args = []
-            for arg in record.args:
-                if isinstance(arg, str):
-                    filtered_args.append(SensitiveDataFilter.filter_sensitive_info(arg))
-                else:
-                    filtered_args.append(arg)
-            record.args = tuple(filtered_args)
+        try:
+            if hasattr(record, 'msg') and isinstance(record.msg, str):
+                record.msg = self._filter_sensitive_info(record.msg)
+            
+            # 过滤args中的敏感信息
+            if hasattr(record, 'args') and record.args:
+                filtered_args = []
+                for arg in record.args:
+                    if isinstance(arg, str):
+                        filtered_args.append(self._filter_sensitive_info(arg))
+                    else:
+                        filtered_args.append(arg)
+                record.args = tuple(filtered_args)
+        except Exception:
+            # 如果过滤失败，返回原始记录
+            pass
         
         return True
+    
+    def _filter_sensitive_info(self, text: str) -> str:
+        """过滤敏感信息的本地实现"""
+        if not isinstance(text, str):
+            return text
+            
+        # 过滤EVM私钥模式 (64位十六进制字符)
+        text = re.sub(r'\b[0-9a-fA-F]{64}\b', '[PRIVATE_KEY_FILTERED]', text)
+        
+        # 过滤Solana私钥模式 (Base58编码，通常44-88字符)
+        text = re.sub(r'\b[1-9A-HJ-NP-Za-km-z]{44,88}\b', '[SOLANA_KEY_FILTERED]', text)
+        
+        # 过滤助记词模式 (12-24个英文单词)
+        text = re.sub(r'\b(?:[a-z]+\s+){11,23}[a-z]+\b', '[MNEMONIC_FILTERED]', text, flags=re.IGNORECASE)
+        
+        # 过滤可能的API密钥
+        text = re.sub(r'\b[A-Za-z0-9]{32,}\b', lambda m: '[API_KEY_FILTERED]' if len(m.group()) > 40 else m.group(), text)
+        
+        return text
 
 # 日志配置
 def setup_logging():
     """设置增强的日志记录系统"""
-    init(autoreset=True)  # 初始化colorama
+    if COLORAMA_AVAILABLE:
+        init(autoreset=True)  # 初始化colorama
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     
@@ -469,8 +509,12 @@ def identify_private_key_type(private_key: str) -> str:
         if len(cleaned_key) == 64 and all(c in "0123456789abcdefABCDEF" for c in cleaned_key):
             # 优先尝试作为EVM私钥验证
             try:
-                from eth_account import Account
-                Account.from_key(cleaned_key)
+                if ETH_ACCOUNT_AVAILABLE:
+                    from eth_account import Account
+                    Account.from_key(cleaned_key)
+                else:
+                    # 使用已定义的Mock Account类
+                    Account.from_key(cleaned_key)
                 
                 # 如果EVM验证成功，再检查是否也是有效的Solana私钥
                 if SOLANA_AVAILABLE:
@@ -1250,17 +1294,17 @@ class WalletMonitor:
                 for rpc_url in rpc_urls:
                     try:
                         w3 = Web3(Web3.HTTPProvider(rpc_url))
-                        if w3.is_connected():
+                        if hasattr(w3, 'is_connected') and w3.is_connected():
                             used_rpc = rpc_url
                             break
                     except Exception as e:
                         logger.debug(f"尝试连接 {chain['name']} 的RPC {rpc_url} 失败: {str(e)}")
                         continue
                 
-                if w3 and w3.is_connected():
+                if w3 and (getattr(w3, 'is_connected', lambda: True)()):
                     # 初始化Alchemy客户端（如果可用且使用Alchemy RPC）
                     alchemy_client = None
-                    if not self.use_public_rpc and chain["network"]:
+                    if (not self.use_public_rpc) and chain.get("network") and ALCHEMY_AVAILABLE:
                         try:
                             alchemy_client = Alchemy(api_key=config.ALCHEMY_API_KEY, network=chain["network"])
                         except Exception as e:
@@ -2295,7 +2339,11 @@ class WalletMonitor:
             for key_info in self.private_keys:
                 try:
                     if key_info["type"] == "evm":
-                        address = Account.from_key(key_info["key"]).address
+                        if ETH_ACCOUNT_AVAILABLE:
+                            address = Account.from_key(key_info["key"]).address
+                        else:
+                            logger.warning("eth_account库不可用，无法处理EVM私钥")
+                            continue
                     else:
                         address = generate_solana_address_from_private_key(key_info["key"])
                         if not address:
@@ -2959,7 +3007,11 @@ class WalletMonitor:
             
             # 生成地址
             if key_type == "evm":
-                address = Account.from_key(private_key).address
+                if ETH_ACCOUNT_AVAILABLE:
+                    address = Account.from_key(private_key).address
+                else:
+                    print(f"{Fore.RED}❌ eth_account库不可用，无法处理EVM私钥{Style.RESET_ALL}")
+                    return
             else:
                 address = generate_solana_address_from_private_key(private_key)
                 if not address:
@@ -4387,7 +4439,7 @@ async def main():
     
     print(f"{Fore.CYAN}{Style.BRIGHT}")
     print("╔══════════════════════════════════════════════════════════════════════════════╗")
-    print("║  🚀 钱包监控系统 v2.0 正在启动...                                            ║")
+    print("║  🚀 钱包监控系统 v2.0 正在启动...                                               ║")
     print("╚══════════════════════════════════════════════════════════════════════════════╝")
     print(f"{Style.RESET_ALL}")
     
@@ -4443,7 +4495,11 @@ async def main():
             print(f"  生成地址 {i}/{len(monitor.private_keys)}...", end=' ')
             
             if key_info["type"] == "evm":
-                address = Account.from_key(key_info["key"]).address
+                if ETH_ACCOUNT_AVAILABLE:
+                    address = Account.from_key(key_info["key"]).address
+                else:
+                    print(f"{Fore.RED}❌ eth_account库不可用，无法处理EVM私钥{Style.RESET_ALL}")
+                    continue
             else:
                 address = generate_solana_address_from_private_key(key_info["key"])
                 if not address:
