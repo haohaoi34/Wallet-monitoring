@@ -1,6 +1,6 @@
 # Wallet Monitor Dependencies
 # Core blockchain libraries
-web3>=6.0.0
+web3>=6.0.0,<7.0.0
 solana>=0.30.0
 solders>=0.20.0
 base58>=2.1.0
@@ -9,9 +9,13 @@ eth-account>=0.8.0
 # Cryptography and security
 cryptography>=3.4.8
 
-# Async and HTTP libraries  
+# HTTP libraries (固定版本避免冲突)
+requests>=2.25.1,<3.0.0
+urllib3>=1.26.0,<2.0.0
+six>=1.16.0
+
+# Async libraries
 aiohttp>=3.8.0
-requests>=2.25.1
 
 # Telegram bot
 python-telegram-bot>=20.0
