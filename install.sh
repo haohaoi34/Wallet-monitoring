@@ -553,30 +553,49 @@ auto_launch_app() {
     echo -e "${GREEN}🚀 钱包监控器安装完成${NC}"
     echo ""
     
-    # 询问用户是否立即启动
-    echo -e "${YELLOW}是否立即启动钱包监控器？${NC}"
-    echo -e "  ${GREEN}1.${NC} 是 - 立即启动交互式监控"
-    echo -e "  ${RED}2.${NC} 否 - 稍后手动启动"
+    # 直接提供两种启动方式
+    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} ${YELLOW}🎯 启动方式选择${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}├─────────────────────────────────────────────────────────────┤${NC}"
+    echo -e "${CYAN}│${NC} ${GREEN}方式1: 立即启动（推荐）${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} 输入: ${GREEN}1${NC} 然后按回车 ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${YELLOW}方式2: 手动启动${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} 复制以下命令执行: ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${GREEN}cd $(pwd)${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${GREEN}source venv/bin/activate${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}│${NC} ${GREEN}python wallet_monitor.py --force-interactive${NC} ${CYAN}│${NC}"
+    echo -e "${CYAN}└─────────────────────────────────────────────────────────────┘${NC}"
     echo ""
     
-    read -p "请选择 (1/2): " choice
+    # 使用更兼容的输入方式，添加超时
+    echo -n "请选择启动方式 (1 立即启动 / 其他键显示手动启动说明): "
     
-    case $choice in
-        1)
-            echo -e "${GREEN}🚀 启动交互式钱包监控器...${NC}"
-            echo ""
-            # 直接启动交互式模式
-            python wallet_monitor.py --force-interactive
-            ;;
-        2|*)
-            echo -e "${CYAN}📝 手动启动说明:${NC}"
-            echo -e "${GREEN}cd $(pwd)${NC}"
-            echo -e "${GREEN}source venv/bin/activate${NC}"
-            echo -e "${GREEN}python wallet_monitor.py --force-interactive${NC}"
-            echo ""
-            echo -e "${YELLOW}📍 项目目录: $(pwd)${NC}"
-            ;;
-    esac
+    # 尝试读取用户输入，如果失败则使用默认值
+    if read -t 30 choice 2>/dev/null && [ "$choice" = "1" ]; then
+        echo ""
+        echo -e "${GREEN}🚀 启动交互式钱包监控器...${NC}"
+        echo -e "${CYAN}💡 如果程序无法正常运行，请按 Ctrl+C 退出后手动启动${NC}"
+        echo ""
+        sleep 2
+        # 直接启动交互式模式
+        python wallet_monitor.py --force-interactive
+    else
+        echo ""
+        echo -e "${YELLOW}📝 手动启动说明:${NC}"
+        echo ""
+        echo -e "${GREEN}1. 进入项目目录:${NC}"
+        echo -e "   cd $(pwd)"
+        echo ""
+        echo -e "${GREEN}2. 激活虚拟环境:${NC}"
+        echo -e "   source venv/bin/activate"
+        echo ""
+        echo -e "${GREEN}3. 启动程序:${NC}"
+        echo -e "   python wallet_monitor.py --force-interactive"
+        echo ""
+        echo -e "${CYAN}💡 复制上述命令逐行执行即可启动程序${NC}"
+        echo -e "${YELLOW}📍 项目位置: $(pwd)${NC}"
+    fi
 }
 
 # 主安装函数
