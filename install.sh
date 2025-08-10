@@ -84,6 +84,19 @@ check_python() {
     else
         success "找到Python $PYTHON_VERSION"
     fi
+    
+    # 在Ubuntu/Debian系统上检查并安装python3-venv
+    if [[ "$OS" == "linux" && "$DISTRO" == "debian" ]]; then
+        log "检查python3-venv包..."
+        if ! dpkg -l | grep -q python3-venv; then
+            warn "未找到python3-venv包，正在安装..."
+            sudo apt-get update
+            sudo apt-get install -y python3-venv
+            success "python3-venv包安装完成"
+        else
+            success "python3-venv包已安装"
+        fi
+    fi
 }
 
 # 根据操作系统安装Python
@@ -159,12 +172,43 @@ download_files() {
     success "项目文件下载完成"
 }
 
+# 检查并安装python3-venv包
+check_venv_package() {
+    if [[ "$OS" == "linux" && "$DISTRO" == "debian" ]]; then
+        log "检查python3-venv包..."
+        if ! dpkg -l | grep -q python3-venv; then
+            warn "未找到python3-venv包，正在安装..."
+            sudo apt-get update
+            sudo apt-get install -y python3-venv
+            success "python3-venv包安装完成"
+        else
+            success "python3-venv包已安装"
+        fi
+    fi
+}
+
 # 设置虚拟环境
 setup_venv() {
     log "正在设置Python虚拟环境..."
     
+    # 检查并安装必要的包
+    check_venv_package
+    
     if [[ ! -d "venv" ]]; then
-        $PYTHON_CMD -m venv venv
+        # 尝试创建虚拟环境
+        if ! $PYTHON_CMD -m venv venv; then
+            error "创建虚拟环境失败"
+            if [[ "$OS" == "linux" && "$DISTRO" == "debian" ]]; then
+                warn "尝试重新安装python3-venv包..."
+                sudo apt-get install --reinstall -y python3-venv
+                if ! $PYTHON_CMD -m venv venv; then
+                    error "虚拟环境创建仍然失败，请手动安装python3-venv包"
+                    exit 1
+                fi
+            else
+                exit 1
+            fi
+        fi
         success "虚拟环境已创建"
     else
         success "虚拟环境已存在"
