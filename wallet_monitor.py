@@ -43,7 +43,27 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from web3 import Web3, HTTPProvider
 from eth_account import Account
-from alchemy import Alchemy, Network
+# Alchemy导入 - 使用正确的包
+try:
+    from alchemy import Alchemy, Network
+    ALCHEMY_AVAILABLE = True
+    print("✅ Alchemy SDK已加载")
+except ImportError:
+    try:
+        # 尝试使用alchemy-sdk包
+        from alchemy_sdk import Alchemy, Network
+        ALCHEMY_AVAILABLE = True
+        print("✅ Alchemy SDK (alchemy-sdk)已加载")
+    except ImportError:
+        ALCHEMY_AVAILABLE = False
+        print("⚠️  Alchemy SDK不可用，EVM全链查询功能将受限")
+        print("📦 请运行: pip install alchemy")
+        # 定义空的类以避免导入错误
+        class Alchemy:
+            def __init__(self, *args, **kwargs):
+                pass
+        class Network:
+            pass
 import aiohttp
 from telegram import Bot
 from logging.handlers import RotatingFileHandler
