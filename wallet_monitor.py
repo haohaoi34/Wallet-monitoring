@@ -41,8 +41,36 @@ import sys
 import subprocess
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from web3 import Web3, HTTPProvider
-from eth_account import Account
+# Web3导入 - 添加错误处理
+try:
+    from web3 import Web3, HTTPProvider
+    WEB3_AVAILABLE = True
+    print("✅ Web3库已加载")
+except ImportError as e:
+    WEB3_AVAILABLE = False
+    print(f"⚠️  Web3库导入失败: {str(e)}")
+    print("📦 请运行: pip install web3")
+    # 定义空的类以避免导入错误
+    class Web3:
+        def __init__(self, *args, **kwargs):
+            pass
+    class HTTPProvider:
+        def __init__(self, *args, **kwargs):
+            pass
+
+# eth_account导入
+try:
+    from eth_account import Account
+    ETH_ACCOUNT_AVAILABLE = True
+    print("✅ eth_account库已加载")
+except ImportError as e:
+    ETH_ACCOUNT_AVAILABLE = False
+    print(f"⚠️  eth_account库导入失败: {str(e)}")
+    print("📦 请运行: pip install eth-account")
+    # 定义空的类以避免导入错误
+    class Account:
+        def __init__(self, *args, **kwargs):
+            pass
 # Alchemy导入 - 使用正确的包
 try:
     from alchemy import Alchemy, Network
