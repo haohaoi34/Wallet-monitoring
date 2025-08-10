@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# 🚀 Wallet Monitor - One-Click Installation Script
-# Download and execute: curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh | bash
+# 🚀 钱包监控器 - 一键安装脚本
+# 下载并执行: curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh | bash
 
 set -e
 
-# Colors for output
+# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,27 +14,27 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
 
-# Banner
+# 横幅
 print_banner() {
     clear
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                🚀 WALLET MONITOR INSTALLER 🚀               ║"
-    echo "║              Enterprise Multi-Chain Monitor                  ║"
-    echo "║                     Version 2.1                             ║"
+    echo "║                🚀 钱包监控器安装程序 🚀                    ║"
+    echo "║              企业级多链钱包监控系统                          ║"
+    echo "║                    版本 2.1                                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-# Logging functions
+# 日志函数
 log() { echo -e "${BLUE}🔄 $1${NC}"; }
 success() { echo -e "${GREEN}✅ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 error() { echo -e "${RED}❌ $1${NC}"; }
 
-# Detect OS
+# 检测操作系统
 detect_os() {
-    log "Detecting operating system..."
+    log "正在检测操作系统..."
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         OS="linux"
         if command -v apt-get &> /dev/null; then
@@ -56,12 +56,12 @@ detect_os() {
         OS="unknown"
         DISTRO="unknown"
     fi
-    success "Detected: $OS ($DISTRO)"
+    success "检测到: $OS ($DISTRO)"
 }
 
-# Check and install Python
+# 检查并安装Python
 check_python() {
-    log "Checking Python installation..."
+    log "正在检查Python安装..."
     PYTHON_CMD=""
     
     for cmd in python3.11 python3.10 python3.9 python3.8 python3 python; do
@@ -79,33 +79,33 @@ check_python() {
     done
     
     if [[ -z "$PYTHON_CMD" ]]; then
-        error "Python 3.8+ not found. Installing..."
+        error "未找到Python 3.8+，正在安装..."
         install_python
     else
-        success "Found Python $PYTHON_VERSION"
+        success "找到Python $PYTHON_VERSION"
     fi
 }
 
-# Install Python based on OS
+# 根据操作系统安装Python
 install_python() {
     case $OS in
         "linux")
             case $DISTRO in
                 "debian")
-                    log "Installing Python on Debian/Ubuntu..."
+                    log "正在Debian/Ubuntu上安装Python..."
                     sudo apt-get update
                     sudo apt-get install -y python3 python3-pip python3-venv curl wget git
                     ;;
                 "redhat")
-                    log "Installing Python on RedHat/CentOS..."
+                    log "正在RedHat/CentOS上安装Python..."
                     sudo yum install -y python3 python3-pip curl wget git
                     ;;
                 "arch")
-                    log "Installing Python on Arch Linux..."
+                    log "正在Arch Linux上安装Python..."
                     sudo pacman -S python python-pip curl wget git
                     ;;
                 *)
-                    error "Unsupported Linux distribution. Please install Python 3.8+ manually."
+                    error "不支持的Linux发行版。请手动安装Python 3.8+"
                     exit 1
                     ;;
             esac
@@ -113,64 +113,64 @@ install_python() {
             ;;
         "macos")
             if command -v brew &> /dev/null; then
-                log "Installing Python via Homebrew..."
+                log "正在通过Homebrew安装Python..."
                 brew install python@3.9 curl wget git
             else
-                error "Homebrew not found. Please install Python 3.8+ from python.org"
+                error "未找到Homebrew。请从python.org安装Python 3.8+"
                 exit 1
             fi
             PYTHON_CMD="python3"
             ;;
         "windows")
-            error "Please install Python 3.8+ from python.org and rerun this script"
+            error "请从python.org安装Python 3.8+并重新运行此脚本"
             exit 1
             ;;
         *)
-            error "Unsupported operating system. Please install Python 3.8+ manually."
+            error "不支持的操作系统。请手动安装Python 3.8+"
             exit 1
             ;;
     esac
 }
 
-# Create project directory
+# 创建项目目录
 setup_project() {
-    log "Setting up project directory..."
+    log "正在设置项目目录..."
     
-    # Create project directory
+    # 创建项目目录
     PROJECT_DIR="$HOME/wallet-monitor"
     mkdir -p "$PROJECT_DIR"
     cd "$PROJECT_DIR"
     
-    success "Project directory: $PROJECT_DIR"
+    success "项目目录: $PROJECT_DIR"
 }
 
-# Download project files
+# 下载项目文件
 download_files() {
-    log "Downloading project files..."
+    log "正在下载项目文件..."
     
-    # GitHub repository URL
+    # GitHub仓库URL
     REPO_URL="https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main"
     
-    # Download main files
+    # 下载主要文件
     curl -fsSL "$REPO_URL/wallet_monitor.py" -o wallet_monitor.py
     curl -fsSL "$REPO_URL/requirements.txt" -o requirements.txt
     curl -fsSL "$REPO_URL/config.env.template" -o config.env.template
     
-    success "Project files downloaded"
+    success "项目文件下载完成"
 }
 
-# Setup virtual environment
+# 设置虚拟环境
 setup_venv() {
-    log "Setting up Python virtual environment..."
+    log "正在设置Python虚拟环境..."
     
     if [[ ! -d "venv" ]]; then
         $PYTHON_CMD -m venv venv
-        success "Virtual environment created"
+        success "虚拟环境已创建"
     else
-        success "Virtual environment already exists"
+        success "虚拟环境已存在"
     fi
     
-    # Activate virtual environment
+    # 激活虚拟环境
     case $OS in
         "windows")
             source venv/Scripts/activate
@@ -180,74 +180,74 @@ setup_venv() {
             ;;
     esac
     
-    success "Virtual environment activated"
+    success "虚拟环境已激活"
 }
 
-# Install dependencies
+# 安装依赖
 install_dependencies() {
-    log "Installing Python dependencies..."
+    log "正在安装Python依赖..."
     
-    # Upgrade pip
+    # 升级pip
     python -m pip install --upgrade pip -q
     
-    # Install dependencies
+    # 安装依赖
     python -m pip install -r requirements.txt -q
     
-    success "Dependencies installed successfully"
+    success "依赖安装成功"
 }
 
-# Create configuration
+# 创建配置
 create_config() {
-    log "Creating configuration files..."
+    log "正在创建配置文件..."
     
-    # Create .env from template
+    # 从模板创建.env
     if [[ ! -f ".env" ]]; then
         cp config.env.template .env
-        success "Configuration template created (.env)"
-        warn "Please edit .env file with your API keys and settings"
+        success "配置模板已创建 (.env)"
+        warn "请编辑.env文件，添加您的API密钥和设置"
     fi
     
-    # Create logs directory
+    # 创建日志目录
     mkdir -p logs
-    success "Logs directory created"
+    success "日志目录已创建"
 }
 
-# Show next steps
+# 显示后续步骤
 show_next_steps() {
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║                    🎉 INSTALLATION COMPLETE! 🎉             ║"
+    echo "║                    🎉 安装完成！ 🎉                        ║"
     echo "║                                                              ║"
-    echo "║  Next steps:                                                 ║"
-    echo "║  1. Edit configuration: nano .env                           ║"
-    echo "║  2. Add your API keys and target addresses                 ║"
-    echo "║  3. Start the application: python wallet_monitor.py        ║"
+    echo "║  后续步骤:                                                   ║"
+    echo "║  1. 编辑配置: nano .env                                     ║"
+    echo "║  2. 添加您的API密钥和目标地址                               ║"
+    echo "║  3. 启动应用: python wallet_monitor.py                      ║"
     echo "║                                                              ║"
-    echo "║  Project location: $PROJECT_DIR                            ║"
+    echo "║  项目位置: $PROJECT_DIR                                     ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-# Launch application option
+# 启动应用选项
 launch_app() {
     echo -e "${YELLOW}"
-    read -p "Would you like to start the application now? (y/N): " -n 1 -r
+    read -p "是否现在启动应用程序？(y/N): " -n 1 -r
     echo -e "${NC}"
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log "Starting Wallet Monitor..."
+        log "正在启动钱包监控器..."
         python wallet_monitor.py
     else
-        echo -e "${GREEN}You can start the application later with:${NC}"
+        echo -e "${GREEN}您可以稍后使用以下命令启动应用:${NC}"
         echo -e "${CYAN}cd $PROJECT_DIR && source venv/bin/activate && python wallet_monitor.py${NC}"
     fi
 }
 
-# Main installation function
+# 主安装函数
 main() {
     print_banner
     
-    # Installation steps
+    # 安装步骤
     detect_os
     check_python
     setup_project
@@ -256,26 +256,26 @@ main() {
     install_dependencies
     create_config
     
-    # Show completion
+    # 显示完成信息
     show_next_steps
     launch_app
 }
 
-# Handle command line arguments
+# 处理命令行参数
 case "${1:-}" in
     --help|-h)
-        echo "Wallet Monitor One-Click Installer"
+        echo "钱包监控器一键安装程序"
         echo ""
-        echo "Usage:"
+        echo "使用方法:"
         echo "  curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh | bash"
         echo ""
-        echo "Or download and run:"
+        echo "或下载后运行:"
         echo "  curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh -o install.sh"
         echo "  chmod +x install.sh"
         echo "  ./install.sh"
         echo ""
-        echo "Options:"
-        echo "  --help, -h     Show this help message"
+        echo "选项:"
+        echo "  --help, -h     显示此帮助信息"
         echo ""
         exit 0
         ;;
