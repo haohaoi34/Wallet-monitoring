@@ -6,6 +6,12 @@ solders>=0.20.0
 base58>=2.1.0
 eth-account>=0.8.0
 
+# Alchemy SDK for EVM chains
+alchemy-sdk>=0.8.0
+
+# SPL Token support
+spl-token>=0.2.0
+
 # Cryptography and security
 cryptography>=3.4.8
 
@@ -24,3 +30,6 @@ colorama>=0.4.4
 
 # Optional performance enhancements
 asyncio-throttle>=1.0.2
+
+# Additional utilities
+typing-extensions>=4.0.0
