@@ -410,7 +410,7 @@ install_dependencies() {
         error "依赖安装失败，尝试逐个安装..."
         
         # 逐个安装关键依赖（按顺序避免冲突）
-        local critical_deps=("six" "urllib3" "requests" "web3" "solana" "cryptography" "aiohttp" "python-dotenv" "colorama")
+        local critical_deps=("six" "urllib3" "requests" "web3" "cryptography" "aiohttp" "python-dotenv" "colorama")
         for dep in "${critical_deps[@]}"; do
             log "安装 $dep..."
             if ! python -m pip install "$dep" -q; then
@@ -419,7 +419,7 @@ install_dependencies() {
         done
         
         # 尝试安装可选依赖
-        local optional_deps=("solders" "alchemy" "python-telegram-bot" "asyncio-throttle" "base58" "eth-account" "typing-extensions")
+        local optional_deps=("solana" "solders" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
         for dep in "${optional_deps[@]}"; do
             log "安装可选依赖 $dep..."
             python -m pip install "$dep" -q || warn "安装 $dep 失败（可选）"
