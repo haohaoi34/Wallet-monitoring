@@ -6,7 +6,7 @@ solders>=0.20.0
 base58>=2.1.0
 eth-account>=0.8.0
 
-# Alchemy SDK for EVM chains (使用可用版本)
+# Alchemy SDK for EVM chains
 alchemy>=0.1.1
 
 # Cryptography and security
