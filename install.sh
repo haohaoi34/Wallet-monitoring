@@ -524,8 +524,8 @@ show_next_steps() {
     echo "║                    🎉 安装完成！ 🎉                        ║"
     echo "║                                                              ║"
     echo "║  后续步骤:                                                   ║"
-    echo "║  1. 程序将自动启动并进入主菜单                              ║"
-    echo "║  2. 在主菜单中配置API密钥和目标地址                                ║"
+    echo "║  1. 选择是否立即启动程序                                     ║"
+    echo "║  2. 在主菜单中配置API密钥和钱包地址                         ║"
     echo "║  3. 开始监控您的钱包                                         ║"
     echo "║                                                              ║"
     echo "║  项目位置: $PROJECT_DIR                                        ║"
@@ -550,21 +550,33 @@ launch_app() {
 # 自动启动应用
 auto_launch_app() {
     log "正在启动钱包监控器..."
-    echo -e "${GREEN}🚀 自动启动钱包监控器...${NC}"
-    echo -e "${CYAN}程序将以演示模式启动，显示系统信息${NC}"
-    echo -e "${YELLOW}💡 提示: 要完整使用，请在交互式终端中手动运行程序${NC}"
+    echo -e "${GREEN}🚀 钱包监控器安装完成${NC}"
     echo ""
     
-    # 等待2秒让用户看到提示信息
-    sleep 2
+    # 询问用户是否立即启动
+    echo -e "${YELLOW}是否立即启动钱包监控器？${NC}"
+    echo -e "  ${GREEN}1.${NC} 是 - 立即启动交互式监控"
+    echo -e "  ${RED}2.${NC} 否 - 稍后手动启动"
+    echo ""
     
-    # 启动程序（非交互式模式，避免input死循环）
-    echo -e "${CYAN}⚠️ 非交互式环境检测，以只读模式启动...${NC}"
-    timeout 10 python wallet_monitor.py 2>/dev/null || {
-        echo -e "${GREEN}✅ 程序启动测试完成${NC}"
-        echo -e "${YELLOW}📝 要开始监控，请手动运行: python wallet_monitor.py${NC}"
-        echo -e "${YELLOW}📍 项目目录: $(pwd)${NC}"
-    }
+    read -p "请选择 (1/2): " choice
+    
+    case $choice in
+        1)
+            echo -e "${GREEN}🚀 启动交互式钱包监控器...${NC}"
+            echo ""
+            # 直接启动交互式模式
+            python wallet_monitor.py --force-interactive
+            ;;
+        2|*)
+            echo -e "${CYAN}📝 手动启动说明:${NC}"
+            echo -e "${GREEN}cd $(pwd)${NC}"
+            echo -e "${GREEN}source venv/bin/activate${NC}"
+            echo -e "${GREEN}python wallet_monitor.py --force-interactive${NC}"
+            echo ""
+            echo -e "${YELLOW}📍 项目目录: $(pwd)${NC}"
+            ;;
+    esac
 }
 
 # 主安装函数
