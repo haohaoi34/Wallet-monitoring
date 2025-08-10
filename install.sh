@@ -247,16 +247,6 @@ launch_app() {
 main() {
     print_banner
     
-    # Check if running as root
-    if [[ $EUID -eq 0 ]]; then
-        warn "Running as root is not recommended for security reasons"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    fi
-    
     # Installation steps
     detect_os
     check_python
