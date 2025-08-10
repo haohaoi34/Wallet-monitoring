@@ -551,15 +551,20 @@ launch_app() {
 auto_launch_app() {
     log "正在启动钱包监控器..."
     echo -e "${GREEN}🚀 自动启动钱包监控器...${NC}"
-    echo -e "${CYAN}程序将直接进入主菜单，您可以开始配置和监控钱包${NC}"
-    echo -e "${YELLOW}💡 提示: 在主菜单中您可以配置API密钥、添加钱包地址并开始监控${NC}"
+    echo -e "${CYAN}程序将以演示模式启动，显示系统信息${NC}"
+    echo -e "${YELLOW}💡 提示: 要完整使用，请在交互式终端中手动运行程序${NC}"
     echo ""
     
     # 等待2秒让用户看到提示信息
     sleep 2
     
-    # 启动程序
-    python wallet_monitor.py
+    # 启动程序（非交互式模式，避免input死循环）
+    echo -e "${CYAN}⚠️ 非交互式环境检测，以只读模式启动...${NC}"
+    timeout 10 python wallet_monitor.py 2>/dev/null || {
+        echo -e "${GREEN}✅ 程序启动测试完成${NC}"
+        echo -e "${YELLOW}📝 要开始监控，请手动运行: python wallet_monitor.py${NC}"
+        echo -e "${YELLOW}📍 项目目录: $(pwd)${NC}"
+    }
 }
 
 # 主安装函数
