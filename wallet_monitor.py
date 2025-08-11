@@ -2731,20 +2731,24 @@ class WalletMonitor:
             # 添加快捷键提示
             print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
             
-            # 在非交互式环境中，自动选择状态总览，然后进入持续运行模式
-            if not is_interactive() and '--force-interactive' not in sys.argv:
-                print(f"\n{Fore.CYAN}🤖 检测到非交互式环境，自动显示状态总览...{Style.RESET_ALL}")
+            # 获取用户选择
+            if is_force_interactive() or is_interactive():
+                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
+            else:
+                # 非交互式环境，显示状态后进入持续运行模式
+                print(f"\n{Fore.CYAN}🤖 非交互式环境，自动显示状态总览...{Style.RESET_ALL}")
                 time.sleep(2)
                 self.show_enhanced_monitoring_status()
+                
                 print(f"\n{Fore.YELLOW}🔄 程序将保持运行，您可以：{Style.RESET_ALL}")
                 print(f"   • 通过SSH连接进行交互操作")
                 print(f"   • 重新运行并添加 --force-interactive 参数")
                 print(f"   • 按 Ctrl+C 退出程序")
                 
-                # 进入持续运行模式
+                # 进入持续运行模式，每分钟显示一次状态
                 try:
                     while True:
-                        time.sleep(60)  # 每分钟显示一次状态
+                        time.sleep(60)
                         print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
                         if hasattr(self, 'addresses') and self.addresses:
                             print(f"   监控地址: {len(self.addresses)} 个")
@@ -2752,9 +2756,7 @@ class WalletMonitor:
                             print(f"   💡 尚未配置监控地址，请使用交互模式添加地址")
                 except KeyboardInterrupt:
                     print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
-                    break
-            else:
-                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
+                    choice = "13"  # 退出
             
             if choice == 'q' or choice == '13':
                 print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
@@ -2903,8 +2905,13 @@ class WalletMonitor:
         
         print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
-        # 等待用户输入
-        safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+        # 在交互式环境中等待用户输入
+        if is_interactive() or is_force_interactive():
+            safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+        else:
+            print(f"\n{Fore.YELLOW}💡 非交互式环境，3秒后自动返回主菜单...{Style.RESET_ALL}")
+            import time
+            time.sleep(3)
     
     def save_state_with_feedback(self):
         """带反馈的状态保存"""
@@ -4413,29 +4420,39 @@ def is_interactive():
     """检测是否为交互式环境"""
     return sys.stdin.isatty()
 
+def is_force_interactive():
+    """检测是否强制交互模式"""
+    import sys
+    return '--force-interactive' in sys.argv
+
 def safe_input(prompt, default="", allow_empty=False):
     """安全的输入函数，处理EOF错误"""
     import sys
     force_interactive = '--force-interactive' in sys.argv
     
-    if not is_interactive() and not force_interactive:
+    # 如果强制交互模式，总是尝试获取输入
+    if force_interactive:
+        try:
+            user_input = input(prompt).strip()
+            return user_input if user_input else default
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
+            return default
+    
+    # 非交互式环境的处理
+    if not is_interactive():
         if allow_empty or default:
             print(f"⚠️ 非交互式环境，使用默认值: {default}")
             return default
         else:
-            # 对于关键输入，在非交互式环境中等待
-            print(f"⚠️ 非交互式环境检测到，程序将保持运行...")
-            print(f"💡 您可以通过以下方式进行交互：")
-            print(f"   1. 重新运行并添加 --force-interactive 参数")
-            print(f"   2. 使用SSH连接到服务器进行交互")
-            print(f"   3. 程序将每30秒显示一次状态...")
-            import time
-            while True:
-                time.sleep(30)
-                print(f"🔄 程序正在运行中... (按Ctrl+C退出)")
+            # 对于关键输入，在非交互式环境中使用默认值
+            print(f"⚠️ 非交互式环境，使用默认值: {default}")
+            return default
     
+    # 正常交互式环境
     try:
-        return input(prompt).strip()
+        user_input = input(prompt).strip()
+        return user_input if user_input else default
     except (EOFError, KeyboardInterrupt):
         print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
         return default
@@ -4463,28 +4480,22 @@ async def main():
     """主函数"""
     import sys
     
-    # 检查命令行参数
+    # 环境检测和参数处理
     force_interactive = '--force-interactive' in sys.argv
     
-    # 检查是否为非交互式环境（除非强制交互模式）
-    if not is_interactive() and not force_interactive:
-        print("🤖 非交互式环境检测")
-        print("💡 程序将以只读模式运行，不会进行实际监控")
-        print("📝 如需完整功能，请在交互式终端中运行")
-        print("🔧 或者使用: python wallet_monitor.py --force-interactive")
-        
-        # 创建监控器实例但不进行实际监控
-        try:
-            monitor = WalletMonitor()
-            print("✅ 系统初始化完成")
-            print("📊 支持的区块链网络:")
-            print(f"   - EVM链: {len(monitor.evm_clients)} 个")
-            print(f"   - Solana链: {len(monitor.solana_clients)} 个")
-            print("💡 要开始监控，请添加私钥并在交互式环境中运行")
-            return
-        except Exception as e:
-            print(f"❌ 初始化失败: {str(e)}")
-            return
+    print(f"{Fore.CYAN}🔍 环境检测：{Style.RESET_ALL}")
+    print(f"   • 交互式终端: {'✅ 是' if is_interactive() else '❌ 否'}")
+    print(f"   • 强制交互模式: {'✅ 启用' if force_interactive else '❌ 未启用'}")
+    print()
+    
+    if force_interactive:
+        print(f"{Fore.GREEN}🔧 强制交互模式已启用{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 程序将正常运行交互功能{Style.RESET_ALL}")
+        print()
+    elif not is_interactive():
+        print(f"{Fore.YELLOW}🤖 非交互式环境检测{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}💡 建议使用: python wallet_monitor.py --force-interactive{Style.RESET_ALL}")
+        print()
     
     # 清屏并显示启动信息
     print("\033[2J\033[H")
