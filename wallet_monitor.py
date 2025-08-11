@@ -2705,9 +2705,21 @@ class WalletMonitor:
         """显示优化的控制菜单"""
         import time
         import sys
-        while True:
-            # 清屏并显示横幅
-            print("\033[2J\033[H")  # 清屏
+        
+        menu_loop_count = 0  # 添加循环计数器，防止无限循环
+        
+        try:
+            while True:
+                menu_loop_count += 1
+                if menu_loop_count > 100:  # 防止无限循环
+                    print(f"{Fore.RED}❌ 检测到菜单异常循环，自动退出{Style.RESET_ALL}")
+                    break
+            # 只在交互式环境中清屏
+            if is_interactive() or is_force_interactive():
+                print("\033[2J\033[H")  # 清屏
+            else:
+                print(f"\n{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
+            
             self.print_banner()
             
             print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  控制中心 - 选择您的操作 {Style.RESET_ALL}")
@@ -2731,69 +2743,128 @@ class WalletMonitor:
             # 添加快捷键提示
             print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
             
-            # 获取用户选择
-            if is_force_interactive() or is_interactive():
-                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
-            else:
-                # 非交互式环境，显示状态后进入持续运行模式
-                print(f"\n{Fore.CYAN}🤖 非交互式环境，自动显示状态总览...{Style.RESET_ALL}")
-                time.sleep(2)
-                self.show_enhanced_monitoring_status()
-                
-                print(f"\n{Fore.YELLOW}🔄 程序将保持运行，您可以：{Style.RESET_ALL}")
-                print(f"   • 通过SSH连接进行交互操作")
-                print(f"   • 重新运行并添加 --force-interactive 参数")
-                print(f"   • 按 Ctrl+C 退出程序")
-                
-                # 进入持续运行模式，每分钟显示一次状态
-                try:
+                # 非交互式环境处理
+                if not (is_force_interactive() or is_interactive()):
+                    print(f"\n{Fore.CYAN}🤖 非交互式环境检测，显示状态后进入守护模式...{Style.RESET_ALL}")
+                    time.sleep(2)
+                    self.show_enhanced_monitoring_status()
+                    
+                    print(f"\n{Fore.YELLOW}🔄 程序进入守护模式，每5分钟显示一次状态...{Style.RESET_ALL}")
+                    print(f"   💡 按 Ctrl+C 退出程序")
+                    
+                    # 守护模式循环
                     while True:
-                        time.sleep(60)
+                        time.sleep(300)  # 5分钟
                         print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
                         if hasattr(self, 'addresses') and self.addresses:
                             print(f"   监控地址: {len(self.addresses)} 个")
                         else:
-                            print(f"   💡 尚未配置监控地址，请使用交互模式添加地址")
-                except KeyboardInterrupt:
-                    print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
-                    choice = "13"  # 退出
-            
+                            print(f"   💡 尚未配置监控地址")
+                
+                # 获取用户选择
+                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "", allow_empty=True).lower()
+                
+                # 空输入处理
+                if not choice:
+                    print(f"{Fore.YELLOW}⚠️ 请输入有效的选项 (1-13){Style.RESET_ALL}")
+                    time.sleep(1)
+                    continue
+                
             if choice == 'q' or choice == '13':
                 print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
                 break
+            elif choice == "":
+                # 空输入，显示提示并等待
+                print(f"{Fore.YELLOW}⚠️ 请输入有效的选项 (1-13){Style.RESET_ALL}")
+                time.sleep(1)
             elif choice == "1":
-                self.show_enhanced_monitoring_status()
+                try:
+                    self.show_enhanced_monitoring_status()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 状态显示错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "2":
-                self.control_monitoring_enhanced()
+                try:
+                    self.control_monitoring()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 监控控制错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "3":
-                self.save_state_with_feedback()
+                try:
+                    self.save_state_with_feedback()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 状态保存错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "4":
-                self.manage_wallet_addresses_enhanced()
+                try:
+                    self.manage_wallet_addresses_enhanced()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 地址管理错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "5":
-                self.pre_check_selected_address()
+                try:
+                    self.pre_check_selected_address()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 地址预检查错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "6":
                 # 预留功能
                 print(f"{Fore.YELLOW}🚧 该功能正在开发中...{Style.RESET_ALL}")
                 time.sleep(2)
             elif choice == "7":
-                self.check_rpc_connections_enhanced()
+                try:
+                    self.check_rpc_connections()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ RPC连接检查错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "8":
-                self.immediate_balance_check_enhanced()
+                try:
+                    self.immediate_balance_check()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 余额检查错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "9":
-                self.reinitialize_rpc_connections_enhanced()
+                try:
+                    self.reinitialize_rpc_connections()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ RPC重初始化错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "10":
-                self.configure_telegram_enhanced()
+                try:
+                    self.configure_telegram()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ Telegram配置错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "11":
-                self.configure_monitoring_settings_enhanced()
+                try:
+                    self.configure_monitoring_settings()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 监控设置错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             elif choice == "12":
-                self.view_logs_enhanced()
+                try:
+                    self.view_logs()
+                except Exception as e:
+                    print(f"{Fore.RED}❌ 日志查看错误: {str(e)}{Style.RESET_ALL}")
+                    time.sleep(2)
             else:
                 print(f"{Fore.RED}❌ 无效选择！请输入 1-13 或 'q' 退出{Style.RESET_ALL}")
                 time.sleep(1.5)
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 菜单系统错误: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 程序将自动退出，请重新启动{Style.RESET_ALL}")
+            import traceback
+            traceback.print_exc()
     
     def show_enhanced_monitoring_status(self):
         """显示增强的监控状态"""
-        print("\033[2J\033[H")  # 清屏
+        # 只在交互式环境中清屏
+        if is_interactive() or is_force_interactive():
+            print("\033[2J\033[H")  # 清屏
+        else:
+            print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
         print(f"\n{Fore.WHITE}{Back.BLUE} 📊 监控状态详细报告 {Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
