@@ -124,6 +124,7 @@ import threading
 
 # Solana相关导入
 try:
+    # 尝试导入Solana核心模块
     from solana.rpc.async_api import AsyncClient
     from solana.keypair import Keypair
     from solana.publickey import PublicKey
@@ -134,19 +135,25 @@ try:
     SOLANA_AVAILABLE = True
     print("✅ Solana基本功能已加载")
     
-    # 尝试导入SPL Token相关功能（可选）
-    SPL_TOKEN_AVAILABLE = False
+    # 尝试导入SPL Token功能
     try:
-        # 导入SPL Token相关模块
-        from solders.pubkey import Pubkey as SoldersPubkey
-        from spl.token.instructions import transfer_checked, TransferCheckedParams
         from spl.token.client import Token
         from spl.token.constants import TOKEN_PROGRAM_ID
-        from solana.rpc.types import TokenAccountOpts
         SPL_TOKEN_AVAILABLE = True
         print("✅ SPL Token功能已加载")
     except ImportError:
-        print("💡 SPL Token高级功能不可用，但基本功能正常")
+        SPL_TOKEN_AVAILABLE = False
+        print("⚠️ SPL Token功能未加载")
+    
+    # 尝试导入SPL Token高级功能
+    if SPL_TOKEN_AVAILABLE:
+        try:
+            from solders.pubkey import Pubkey as SoldersPubkey
+            from spl.token.instructions import transfer_checked, TransferCheckedParams
+            from solana.rpc.types import TokenAccountOpts
+            print("✅ SPL Token高级功能已加载")
+        except ImportError:
+            print("💡 SPL Token高级功能不可用，但基本功能正常")
         
 except ImportError as e:
     SOLANA_AVAILABLE = False
@@ -4472,88 +4479,24 @@ async def main():
         print(f"{Fore.YELLOW}⚠️ 部分成功，将只监控EVM链{Style.RESET_ALL}")
     
     print(f"\n{Fore.GREEN}🎉 系统初始化完成！{Style.RESET_ALL}")
-    time.sleep(1)
     
-    # 询问是否继续上次运行
-    resume = ask_resume()
-    
-    if resume:
-        print(f"\n{Fore.CYAN}📂 正在加载上次的状态...{Style.RESET_ALL}")
-        if monitor.load_state():
+    # 检查是否有保存的状态
+    if monitor.load_state():
+        print(f"{Fore.CYAN}💡 检测到上次保存的状态{Style.RESET_ALL}")
+        resume = ask_resume()
+        if resume:
             print(f"{Fore.GREEN}✅ 已加载 {len(monitor.addresses)} 个地址的状态{Style.RESET_ALL}")
         else:
-            print(f"{Fore.RED}❌ 无法加载状态，将重新开始{Style.RESET_ALL}")
-            resume = False
-    
-    if not resume:
-        print(f"\n{Fore.YELLOW}🔑 请输入私钥信息...{Style.RESET_ALL}")
-        # 收集私钥
-        monitor.private_keys = monitor.collect_private_keys()
-        if not monitor.private_keys:
-            print(f"{Fore.RED}❌ 没有有效的私钥，退出程序{Style.RESET_ALL}")
-            return
-        
-        print(f"\n{Fore.CYAN}🏗️ 正在生成地址和识别类型...{Style.RESET_ALL}")
-        # 生成地址并识别类型
-        monitor.addresses = []
-        monitor.addr_to_key = {}
-        monitor.addr_type = {}
-        
-        for i, key_info in enumerate(monitor.private_keys, 1):
-            print(f"  生成地址 {i}/{len(monitor.private_keys)}...", end=' ')
-            
-            if key_info["type"] == "evm":
-                if ETH_ACCOUNT_AVAILABLE:
-                    address = Account.from_key(key_info["key"]).address
-                else:
-                    print(f"{Fore.RED}❌ eth_account库不可用，无法处理EVM私钥{Style.RESET_ALL}")
-                    continue
-            else:
-                address = generate_solana_address_from_private_key(key_info["key"])
-                if not address:
-                    print(f"{Fore.RED}❌ 无法生成Solana地址{Style.RESET_ALL}")
-                    continue
-            
-            monitor.addresses.append(address)
-            monitor.addr_to_key[address] = key_info
-            monitor.addr_type[address] = key_info["type"]
-            print(f"{Fore.GREEN}✅ {address[:10]}...{address[-8:]} ({key_info['type'].upper()}){Style.RESET_ALL}")
-        
-        if not monitor.addresses:
-            print(f"{Fore.RED}❌ 没有有效的地址，退出程序{Style.RESET_ALL}")
-            return
-        
-        print(f"\n{Fore.MAGENTA}🔍 正在预检查地址的交易记录...{Style.RESET_ALL}")
-        # 过滤有交易记录的地址
-        await monitor.filter_addresses_with_history()
-    
-    # 检查是否有活跃地址
-    if not hasattr(monitor, 'active_addr_to_chains') or not monitor.active_addr_to_chains:
-        print(f"\n{Fore.RED}❌ 没有地址在任何链上有交易记录{Style.RESET_ALL}")
-        print(f"💡 建议: 使用控制菜单手动添加地址或检查网络连接")
-        
-        # 提供选择：进入控制菜单或退出
-        choice = safe_input(f"\n{Fore.YELLOW}是否进入控制菜单手动管理？(y/N): {Style.RESET_ALL}", "n").lower()
-        if choice == 'y':
-            monitor.show_control_menu()
-        return
-    
-    print(f"\n{Fore.GREEN}🎯 准备监控 {len(monitor.active_addr_to_chains)} 个有交易记录的地址{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
-    
-    # 提供选择：直接监控或进入控制菜单
-    print(f"\n{Fore.YELLOW}选择运行模式:{Style.RESET_ALL}")
-    print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 立即开始自动监控")
-    print(f"  {Fore.BLUE}2.{Style.RESET_ALL} 🎛️ 进入控制菜单")
-    
-    mode_choice = safe_input(f"\n{Fore.YELLOW}请选择 (1/2): {Style.RESET_ALL}", "1")
-    
-    if mode_choice == "2":
-        monitor.show_control_menu()
+            print(f"{Fore.YELLOW}⚠️ 选择重新开始{Style.RESET_ALL}")
     else:
-        # 开始自动监控
-        print(f"\n{Fore.GREEN}🚀 开始自动监控...{Style.RESET_ALL}")
-        await monitor.start_monitoring()
+        print(f"{Fore.CYAN}💡 未找到保存的状态，这是首次运行{Style.RESET_ALL}")
+    
+    print(f"{Fore.CYAN}💡 进入控制菜单，您可以在这里配置API密钥、添加钱包地址并开始监控{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}📝 首次使用建议：先配置API密钥，然后添加钱包地址{Style.RESET_ALL}")
+    
+    # 直接显示控制菜单
+    monitor.show_control_menu()
+    return
 
 if __name__ == "__main__":
     try:
