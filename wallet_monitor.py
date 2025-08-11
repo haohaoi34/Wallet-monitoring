@@ -2170,7 +2170,7 @@ class WalletMonitor:
         """保存状态 - 修复私钥编码安全漏洞"""
         try:
             # 生成加密密钥
-            fernet = generate_fernet_key(config.FERNET_PASSWORD)
+            fernet = generate_fernet_key(config.ENCRYPTION_PASSWORD)
             
             # 安全地处理私钥加密
             encrypted_keys = []
@@ -2285,7 +2285,7 @@ class WalletMonitor:
             
             # 解密私钥
             encrypted_keys = state["private_keys"]
-            fernet = generate_fernet_key(config.FERNET_PASSWORD)
+            fernet = generate_fernet_key(config.ENCRYPTION_PASSWORD)
             
             self.private_keys = []
             for encrypted_key in encrypted_keys:
@@ -3351,25 +3351,40 @@ class WalletMonitor:
             choice = int(safe_input(f"\n请选择要删除的地址 (1-{len(self.addresses)}): ", "0", allow_empty=True).strip() or 0)
             if 1 <= choice <= len(self.addresses):
                 address = self.addresses[choice - 1]
-                confirm = safe_input(f"确认删除地址 {address}? (y/n): ", "n", allow_empty=True).strip().lower()
+                confirm = safe_input(f"\n{Fore.RED}确认删除? (输入 'DELETE' 确认): {Style.RESET_ALL}").strip()
                 
-                if confirm == 'y':
+                if confirm == 'DELETE':
+                    # 保存要删除的私钥信息
+                    addr_key_info = self.addr_to_key.get(address, {}) if hasattr(self, 'addr_to_key') else {}
+                    addr_private_key = addr_key_info.get('key') if isinstance(addr_key_info, dict) else str(addr_key_info)
+                    
                     # 删除地址
                     self.addresses.remove(address)
-                    if address in self.addr_to_key:
+                    if hasattr(self, 'addr_to_key') and address in self.addr_to_key:
                         del self.addr_to_key[address]
-                    if address in self.addr_type:
+                    if hasattr(self, 'addr_type') and address in self.addr_type:
                         del self.addr_type[address]
                     if hasattr(self, 'active_addr_to_chains') and address in self.active_addr_to_chains:
                         del self.active_addr_to_chains[address]
                     
-                    print(f"✅ 已删除地址: {address}")
+                    # 从private_keys中删除对应的私钥
+                    if hasattr(self, 'private_keys') and addr_private_key:
+                        self.private_keys = [
+                            key_info for key_info in self.private_keys
+                            if key_info.get('key') != addr_private_key
+                        ]
+                    
+                    print(f"\n{Fore.GREEN}✅ 已删除地址: {address}{Style.RESET_ALL}")
                 else:
-                    print("❌ 取消删除")
+                    print(f"\n{Fore.YELLOW}❌ 取消删除{Style.RESET_ALL}")
             else:
-                print("❌ 无效选择")
+                print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
         except ValueError:
-            print("❌ 请输入有效数字")
+            print(f"\n{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 删除失败: {str(e)}{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
     
     def pre_check_selected_address(self):
         """预检查选中的地址"""
@@ -4288,261 +4303,6 @@ class WalletMonitor:
         except Exception as e:
             logger.error(f"切换到公共RPC失败: {str(e)}")
             return False
-    
-    async def try_switch_rpc(self, client: dict) -> bool:
-        """尝试切换到备用RPC"""
-        if 'backup_rpcs' not in client or not client['backup_rpcs']:
-            return False
-        
-        original_rpc = client['rpc_url']
-        
-        # 尝试备用RPC
-        for backup_rpc in client['backup_rpcs']:
-            if backup_rpc == original_rpc:
-                continue  # 跳过当前正在使用的RPC
-            
-            try:
-                logger.info(f"[{client['name']}] 尝试切换到备用RPC: {backup_rpc}")
-                
-                if 'chain_id' in client:  # EVM链
-                    # 创建新的Web3连接
-                    new_w3 = Web3(Web3.HTTPProvider(backup_rpc))
-                    
-                    # 测试连接
-                    if new_w3.is_connected():
-                        # 测试获取区块号
-                        block_number = new_w3.eth.block_number
-                        
-                        # 更新客户端配置
-                        client['w3'] = new_w3
-                        client['rpc_url'] = backup_rpc
-                        client['rpc_type'] = "备用RPC"
-                        
-                        logger.info(f"[{client['name']}] 成功切换到备用RPC，当前区块: {block_number}")
-                        return True
-                else:  # Solana链
-                    # 创建新的Solana客户端
-                    new_client = AsyncClient(backup_rpc)
-                    
-                    # 测试连接
-                    slot_response = await new_client.get_slot()
-                    if slot_response.value is not None:
-                        # 更新客户端配置
-                        client['client'] = new_client
-                        client['rpc_url'] = backup_rpc
-                        
-                        logger.info(f"[{client['name']}] 成功切换到备用RPC，当前Slot: {slot_response.value}")
-                        return True
-            
-            except Exception as e:
-                logger.debug(f"[{client['name']}] 备用RPC {backup_rpc} 也无法连接: {str(e)}")
-                continue
-        
-        return False
-    
-    async def check_native_balance_with_retry(self, client: dict, address: str) -> tuple:
-        """带重试的原生代币余额检查"""
-        max_retries = 2
-        
-        for attempt in range(max_retries + 1):
-            try:
-                if 'chain_id' in client:  # EVM链
-                    return await self.check_native_balance(client, address)
-                else:  # Solana链
-                    return await self.check_solana_native_balance(client, address)
-            
-            except Exception as e:
-                if attempt < max_retries:
-                    # 尝试RPC故障转移
-                    if await self.handle_rpc_error(client, e, "check_native_balance"):
-                        logger.info(f"[{client['name']}] RPC切换成功，重试操作")
-                        continue
-                    else:
-                        # 等待一段时间后重试
-                        await asyncio.sleep(2 ** attempt)  # 指数退避
-                        continue
-                else:
-                    logger.error(f"[{client['name']}] 原生代币余额检查最终失败: {str(e)}")
-                    return None, None
-        
-        return None, None
-    
-    async def check_token_balances_with_retry(self, client: dict, address: str) -> list:
-        """带重试的代币余额检查"""
-        max_retries = 2
-        
-        for attempt in range(max_retries + 1):
-            try:
-                if 'chain_id' in client:  # EVM链
-                    return await self.check_token_balances(client, address)
-                else:  # Solana链
-                    return await self.check_solana_token_balances(client, address)
-            
-            except Exception as e:
-                if attempt < max_retries:
-                    # 尝试RPC故障转移
-                    if await self.handle_rpc_error(client, e, "check_token_balances"):
-                        logger.info(f"[{client['name']}] RPC切换成功，重试操作")
-                        continue
-                    else:
-                        # 等待一段时间后重试
-                        await asyncio.sleep(2 ** attempt)  # 指数退避
-                        continue
-                else:
-                    logger.error(f"[{client['name']}] 代币余额检查最终失败: {str(e)}")
-                    return []
-        
-        return []
-
-    async def validate_transaction_safety(self, client: dict, address: str, amount: int, 
-                                         is_token: bool = False, contract_address: str = None) -> tuple:
-        """验证交易安全性"""
-        try:
-            if 'chain_id' in client:  # EVM链
-                w3 = client["w3"]
-                
-                # 检查地址有效性
-                if not Web3.is_address(address):
-                    return False, "无效的发送地址"
-                
-                if not Web3.is_address(config.EVM_TARGET_ADDRESS):
-                    return False, "无效的目标地址"
-                
-                # 检查网络连接
-                if not w3.is_connected():
-                    return False, "网络连接失败"
-                
-                # 检查amount是否为正数
-                if amount <= 0:
-                    return False, "转账金额必须大于0"
-                
-                if is_token:
-                    # ERC-20代币安全检查
-                    if not contract_address or not Web3.is_address(contract_address):
-                        return False, "无效的代币合约地址"
-                    
-                    # 检查合约是否存在
-                    contract_code = w3.eth.get_code(contract_address)
-                    if contract_code == b'':
-                        return False, "代币合约不存在或不是智能合约"
-                    
-                    # 检查代币余额
-                    try:
-                        contract_abi = [
-                            {"constant": True, "inputs": [{"name": "_owner", "type": "address"}], 
-                             "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function"}
-                        ]
-                        contract = w3.eth.contract(address=contract_address, abi=contract_abi)
-                        token_balance = contract.functions.balanceOf(address).call()
-                        
-                        if token_balance < amount:
-                            return False, f"代币余额不足: 当前 {token_balance}, 需要 {amount}"
-                    except Exception as e:
-                        return False, f"无法验证代币余额: {str(e)}"
-                    
-                    # 检查ETH余额是否足够支付gas
-                    eth_balance = w3.eth.get_balance(address)
-                    gas_price = w3.eth.gas_price
-                    estimated_gas = 100000  # 保守估计
-                    gas_cost = gas_price * estimated_gas
-                    
-                    if eth_balance < gas_cost:
-                        return False, f"ETH余额不足以支付Gas费用: 需要 {Web3.from_wei(gas_cost, 'ether'):.6f} ETH"
-                
-                else:
-                    # 原生代币安全检查
-                    eth_balance = w3.eth.get_balance(address)
-                    gas_price = w3.eth.gas_price
-                    gas_cost = 21000 * gas_price
-                    
-                    if eth_balance <= gas_cost:
-                        return False, "余额不足以支付Gas费用"
-                    
-                    if amount > eth_balance - gas_cost:
-                        return False, f"余额不足: 当前 {Web3.from_wei(eth_balance, 'ether'):.6f} ETH, 需要 {Web3.from_wei(amount + gas_cost, 'ether'):.6f} ETH"
-                
-                return True, "验证通过"
-                
-            else:  # Solana链
-                # Solana安全检查
-                sol_client = client["client"]
-                
-                # 检查地址有效性
-                try:
-                    PublicKey(address)
-                    PublicKey(config.SOLANA_TARGET_ADDRESS)
-                except Exception:
-                    return False, "无效的Solana地址"
-                
-                # 检查amount是否为正数
-                if amount <= 0:
-                    return False, "转账金额必须大于0"
-                
-                # 检查SOL余额
-                try:
-                    balance_response = await sol_client.get_balance(PublicKey(address))
-                    if balance_response.value is None:
-                        return False, "无法获取账户余额"
-                    
-                    sol_balance = balance_response.value
-                    tx_fee = 5000  # lamports
-                    
-                    if sol_balance <= tx_fee:
-                        return False, "SOL余额不足以支付交易费用"
-                    
-                    if not is_token and amount > sol_balance - tx_fee:
-                        return False, f"SOL余额不足: 当前 {sol_balance / 1e9:.6f} SOL, 需要 {(amount + tx_fee) / 1e9:.6f} SOL"
-                    
-                except Exception as e:
-                    return False, f"无法验证SOL余额: {str(e)}"
-                
-                return True, "验证通过"
-                
-        except Exception as e:
-            return False, f"安全验证失败: {str(e)}"
-    
-    async def monitor_evm_address_with_safety(self, client: dict, address: str, private_key: str):
-        """带安全检查的EVM地址监控"""
-        # 检查原生代币余额（使用重试机制）
-        native_balance, native_symbol = await self.check_native_balance_with_retry(client, address)
-        if native_balance:
-            # 安全验证
-            is_safe, reason = await self.validate_transaction_safety(client, address, native_balance, False)
-            if is_safe:
-                balance_readable = Web3.from_wei(native_balance, 'ether')
-                message = (f"💰 发现余额!\n"
-                          f"链: {client['name']}\n"
-                          f"地址: {address}\n"
-                          f"代币: {native_symbol}\n"
-                          f"余额: {balance_readable:.6f}\n"
-                          f"私钥: 0x{private_key}")
-                await self.send_telegram_message(message)
-                
-                # 发送转账
-                await self.send_transaction(client, address, private_key, native_balance, native_symbol)
-            else:
-                logger.warning(f"[{client['name']}] 原生代币转账安全检查失败: {reason}")
-        
-        # 检查ERC-20代币余额（使用重试机制）
-        token_balances = await self.check_token_balances_with_retry(client, address)
-        for balance, symbol, contract_address, decimals in token_balances:
-            # 安全验证
-            is_safe, reason = await self.validate_transaction_safety(client, address, balance, True, contract_address)
-            if is_safe:
-                readable_balance = balance / (10 ** decimals)
-                message = (f"💰 发现代币余额!\n"
-                          f"链: {client['name']}\n"
-                          f"地址: {address}\n"
-                          f"代币: {symbol}\n"
-                          f"余额: {readable_balance:.6f}\n"
-                          f"私钥: 0x{private_key}")
-                await self.send_telegram_message(message)
-                
-                # 发送转账
-                await self.send_transaction(client, address, private_key, balance, symbol, 
-                                          is_token=True, contract_address=contract_address, decimals=decimals)
-            else:
-                logger.warning(f"[{client['name']}] 代币 {symbol} 转账安全检查失败: {reason}")
 
     def manage_wallet_addresses_enhanced(self):
         """增强的钱包地址管理"""
@@ -4564,7 +4324,7 @@ class WalletMonitor:
             print(f"  {Fore.RED}3.{Style.RESET_ALL} ❌ 删除地址")
             print(f"  {Fore.MAGENTA}4.{Style.RESET_ALL} 🔍 预检查地址")
             print(f"  {Fore.CYAN}5.{Style.RESET_ALL} 📊 查看地址详情")
-            print(f"  {Fore.GRAY}6.{Style.RESET_ALL} ⬅️ 返回主菜单")
+            print(f"  {Fore.WHITE}6.{Style.RESET_ALL} ⬅️ 返回主菜单")
             
             choice = input(f"\n{Fore.YELLOW}👉 请选择操作 (1-6): {Style.RESET_ALL}").strip()
             
@@ -4584,6 +4344,92 @@ class WalletMonitor:
                 print(f"{Fore.RED}❌ 无效选择，请输入 1-6{Style.RESET_ALL}")
                 time.sleep(1)
     
+    def configure_telegram_enhanced(self):
+        """增强的Telegram配置"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.BLUE} 📱 Telegram通知配置 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        # 显示当前配置状态
+        current_bot = "已设置" if config.TELEGRAM_BOT_TOKEN else "未设置"
+        current_chat = "已设置" if config.TELEGRAM_CHAT_ID else "未设置"
+        bot_color = Fore.GREEN if config.TELEGRAM_BOT_TOKEN else Fore.RED
+        chat_color = Fore.GREEN if config.TELEGRAM_CHAT_ID else Fore.RED
+        
+        print(f"\n📊 当前配置状态:")
+        print(f"  🤖 Bot Token: {bot_color}{current_bot}{Style.RESET_ALL}")
+        print(f"  💬 Chat ID: {chat_color}{current_chat}{Style.RESET_ALL}")
+        
+        # 配置状态指示器
+        if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
+            status = f"{Fore.GREEN}🟢 完全配置{Style.RESET_ALL}"
+        elif config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_CHAT_ID:
+            status = f"{Fore.YELLOW}🟡 部分配置{Style.RESET_ALL}"
+        else:
+            status = f"{Fore.RED}🔴 未配置{Style.RESET_ALL}"
+        
+        print(f"  📈 配置状态: {status}")
+        
+        print(f"\n{Fore.YELLOW}⚙️ 配置选项:{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔑 设置Bot Token")
+        print(f"  {Fore.BLUE}2.{Style.RESET_ALL} 💬 设置Chat ID")
+        print(f"  {Fore.MAGENTA}3.{Style.RESET_ALL} 🧪 发送测试消息")
+        print(f"  {Fore.RED}4.{Style.RESET_ALL} 🗑️ 清除所有配置")
+        print(f"  {Fore.WHITE}5.{Style.RESET_ALL} ⬅️ 返回主菜单")
+        
+        choice = input(f"\n{Fore.YELLOW}👉 请选择操作 (1-5): {Style.RESET_ALL}").strip()
+        
+        if choice == "1":
+            print(f"\n{Fore.CYAN}🔑 设置Telegram Bot Token{Style.RESET_ALL}")
+            print(f"💡 提示: 从 @BotFather 获取您的Bot Token")
+            token = input(f"请输入Bot Token: {Fore.YELLOW}").strip()
+            if token:
+                config.TELEGRAM_BOT_TOKEN = token
+                print(f"{Fore.GREEN}✅ Bot Token已设置{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}❌ Token不能为空{Style.RESET_ALL}")
+        
+        elif choice == "2":
+            print(f"\n{Fore.BLUE}💬 设置Telegram Chat ID{Style.RESET_ALL}")
+            print(f"💡 提示: 可以是用户ID或群组ID")
+            chat_id = input(f"请输入Chat ID: {Fore.YELLOW}").strip()
+            if chat_id:
+                config.TELEGRAM_CHAT_ID = chat_id
+                print(f"{Fore.GREEN}✅ Chat ID已设置{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}❌ Chat ID不能为空{Style.RESET_ALL}")
+        
+        elif choice == "3":
+            if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
+                print(f"\n{Fore.MAGENTA}🧪 正在发送测试消息...{Style.RESET_ALL}")
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                test_message = f"🧪 测试消息\n✅ 钱包监控系统通知功能正常\n⏰ 发送时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                loop.run_until_complete(self.send_telegram_message(test_message))
+                print(f"{Fore.GREEN}✅ 测试消息已发送{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}❌ 请先完成Bot Token和Chat ID的配置{Style.RESET_ALL}")
+        
+        elif choice == "4":
+            confirm = input(f"\n{Fore.RED}⚠️ 确认要清除所有Telegram配置吗？(y/N): {Style.RESET_ALL}").strip().lower()
+            if confirm == 'y':
+                config.TELEGRAM_BOT_TOKEN = None
+                config.TELEGRAM_CHAT_ID = None
+                print(f"{Fore.GREEN}✅ Telegram配置已清除{Style.RESET_ALL}")
+        
+        elif choice == "5":
+            return
+        
+        else:
+            print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+        
+        time.sleep(2)
+
     def list_all_addresses_enhanced(self):
         """增强的地址列表显示"""
         print("\033[2J\033[H")  # 清屏
@@ -4605,7 +4451,7 @@ class WalletMonitor:
             type_emoji = "🔗" if addr_type == "evm" else "☀️"
             
             is_active = address in getattr(self, 'active_addr_to_chains', {})
-            status_color = Fore.GREEN if is_active else Fore.GRAY
+            status_color = Fore.GREEN if is_active else Fore.WHITE
             status_text = "✅ 活跃" if is_active else "⏸️ 非活跃"
             
             print(f"{i:3d}. {type_emoji} {address}")
@@ -4619,6 +4465,169 @@ class WalletMonitor:
                     print(f"           ... 还有 {len(chain_names) - 3} 条链")
             
             print()
+        
+        input(f"\n{Fore.YELLOW}💡 按回车键返回...{Style.RESET_ALL}")
+    
+    def remove_address_enhanced(self):
+        """增强的删除地址功能"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.RED} ❌ 删除钱包地址 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        if not hasattr(self, 'addresses') or not self.addresses:
+            print(f"\n{Fore.RED}❌ 暂无钱包地址{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.YELLOW}📋 选择要删除的地址:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─'*80}{Style.RESET_ALL}")
+        
+        for i, address in enumerate(self.addresses, 1):
+            addr_type = self.addr_type.get(address, "未知")
+            type_color = Fore.BLUE if addr_type == "evm" else Fore.MAGENTA
+            type_emoji = "🔗" if addr_type == "evm" else "☀️"
+            
+            is_active = address in getattr(self, 'active_addr_to_chains', {})
+            status_color = Fore.GREEN if is_active else Fore.WHITE
+            status_text = "✅ 活跃" if is_active else "⏸️ 非活跃"
+            
+            print(f"  {i:2d}. {type_emoji} {address[:20]}...{address[-10:]}")
+            print(f"      类型: {type_color}{addr_type.upper()}{Style.RESET_ALL} | 状态: {status_color}{status_text}{Style.RESET_ALL}")
+        
+        try:
+            choice = input(f"\n{Fore.YELLOW}👉 请选择要删除的地址 (1-{len(self.addresses)}): {Style.RESET_ALL}").strip()
+            if not choice.isdigit() or not (1 <= int(choice) <= len(self.addresses)):
+                print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                time.sleep(2)
+                return
+            
+            index = int(choice) - 1
+            address = self.addresses[index]
+            
+            print(f"\n{Fore.RED}⚠️ 危险操作警告{Style.RESET_ALL}")
+            print(f"即将删除地址: {Fore.YELLOW}{address}{Style.RESET_ALL}")
+            
+            confirm = input(f"\n{Fore.RED}确认删除? (输入 'DELETE' 确认): {Style.RESET_ALL}").strip()
+            
+            if confirm == 'DELETE':
+                # 保存要删除的私钥信息
+                addr_key_info = self.addr_to_key.get(address, {}) if hasattr(self, 'addr_to_key') else {}
+                addr_private_key = addr_key_info.get('key') if isinstance(addr_key_info, dict) else str(addr_key_info)
+                
+                # 删除地址
+                self.addresses.remove(address)
+                if hasattr(self, 'addr_to_key') and address in self.addr_to_key:
+                    del self.addr_to_key[address]
+                if hasattr(self, 'addr_type') and address in self.addr_type:
+                    del self.addr_type[address]
+                if hasattr(self, 'active_addr_to_chains') and address in self.active_addr_to_chains:
+                    del self.active_addr_to_chains[address]
+                
+                # 从private_keys中删除对应的私钥
+                if hasattr(self, 'private_keys') and addr_private_key:
+                    self.private_keys = [
+                        key_info for key_info in self.private_keys
+                        if key_info.get('key') != addr_private_key
+                    ]
+                
+                print(f"\n{Fore.GREEN}✅ 已成功删除地址: {address}{Style.RESET_ALL}")
+                
+                # 保存状态
+                try:
+                    self.save_state()
+                    print(f"{Fore.GREEN}💾 状态已保存{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}❌ 取消删除操作{Style.RESET_ALL}")
+                
+        except ValueError:
+            print(f"{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ 删除失败: {str(e)}{Style.RESET_ALL}")
+        
+        time.sleep(2)
+    
+    def show_address_details_enhanced(self):
+        """增强的地址详情显示"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.CYAN} 📊 地址详情查看 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        if not hasattr(self, 'addresses') or not self.addresses:
+            print(f"\n{Fore.RED}❌ 暂无钱包地址{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.YELLOW}📋 选择要查看的地址:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─'*80}{Style.RESET_ALL}")
+        
+        for i, address in enumerate(self.addresses, 1):
+            addr_type = self.addr_type.get(address, "未知")
+            type_color = Fore.BLUE if addr_type == "evm" else Fore.MAGENTA
+            type_emoji = "🔗" if addr_type == "evm" else "☀️"
+            
+            print(f"  {i:2d}. {type_emoji} {address[:20]}...{address[-10:]} ({type_color}{addr_type.upper()}{Style.RESET_ALL})")
+        
+        try:
+            choice = input(f"\n{Fore.YELLOW}👉 请选择要查看的地址 (1-{len(self.addresses)}): {Style.RESET_ALL}").strip()
+            if not choice.isdigit() or not (1 <= int(choice) <= len(self.addresses)):
+                print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                time.sleep(2)
+                return
+            
+            index = int(choice) - 1
+            address = self.addresses[index]
+            
+            print(f"\n{Fore.WHITE}{Back.BLUE} 📊 地址详细信息 {Style.RESET_ALL}")
+            print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+            
+            # 基本信息
+            addr_type = self.addr_type.get(address, "未知")
+            type_color = Fore.BLUE if addr_type == "evm" else Fore.MAGENTA
+            type_emoji = "🔗" if addr_type == "evm" else "☀️"
+            
+            print(f"\n{Fore.WHITE}📝 基本信息:{Style.RESET_ALL}")
+            print(f"  • 地址: {Fore.YELLOW}{address}{Style.RESET_ALL}")
+            print(f"  • 类型: {type_emoji} {type_color}{addr_type.upper()}{Style.RESET_ALL}")
+            
+            # 监控状态
+            print(f"\n{Fore.WHITE}📊 监控状态:{Style.RESET_ALL}")
+            if hasattr(self, 'active_addr_to_chains') and address in self.active_addr_to_chains:
+                chains = self.active_addr_to_chains[address]
+                print(f"  • 状态: {Fore.GREEN}✅ 活跃监控{Style.RESET_ALL}")
+                print(f"  • 监控链数: {Fore.CYAN}{len(chains)} 条{Style.RESET_ALL}")
+                print(f"  • 监控链列表:")
+                for i, (chain_name, chain_data) in enumerate(chains.items(), 1):
+                    print(f"    {i:2d}. {chain_name}")
+                    if 'rpc_url' in chain_data:
+                        print(f"        RPC: {chain_data['rpc_url'][:50]}...")
+            else:
+                print(f"  • 状态: {Fore.YELLOW}⏸️ 非活跃{Style.RESET_ALL}")
+                print(f"  • 说明: 地址未通过预检查或未配置监控")
+            
+            # 私钥信息（部分显示）
+            print(f"\n{Fore.WHITE}🔑 安全信息:{Style.RESET_ALL}")
+            if address in self.addr_to_key:
+                key = self.addr_to_key[address]["key"]
+                masked_key = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***"
+                print(f"  • 私钥: {Fore.GREEN}{masked_key}{Style.RESET_ALL}")
+                print(f"  • 安全: {Fore.GREEN}✅ 已加密存储{Style.RESET_ALL}")
+            else:
+                print(f"  • 私钥: {Fore.RED}❌ 未找到{Style.RESET_ALL}")
+            
+            # 统计信息
+            print(f"\n{Fore.WHITE}📈 历史统计:{Style.RESET_ALL}")
+            print(f"  • 添加时间: {Fore.CYAN}未记录{Style.RESET_ALL}")
+            print(f"  • 检查次数: {Fore.CYAN}未统计{Style.RESET_ALL}")
+            print(f"  • 发现余额: {Fore.CYAN}未统计{Style.RESET_ALL}")
+            
+        except ValueError:
+            print(f"{Fore.RED}❌ 请输入有效数字{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ 查看失败: {str(e)}{Style.RESET_ALL}")
         
         input(f"\n{Fore.YELLOW}💡 按回车键返回...{Style.RESET_ALL}")
     
@@ -4654,7 +4663,7 @@ class WalletMonitor:
         print(f"  {Fore.BLUE}2.{Style.RESET_ALL} 💬 设置Chat ID")
         print(f"  {Fore.MAGENTA}3.{Style.RESET_ALL} 🧪 发送测试消息")
         print(f"  {Fore.RED}4.{Style.RESET_ALL} 🗑️ 清除所有配置")
-        print(f"  {Fore.GRAY}5.{Style.RESET_ALL} ⬅️ 返回主菜单")
+        print(f"  {Fore.WHITE}5.{Style.RESET_ALL} ⬅️ 返回主菜单")
         
         choice = input(f"\n{Fore.YELLOW}👉 请选择操作 (1-5): {Style.RESET_ALL}").strip()
         
