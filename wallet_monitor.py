@@ -2762,167 +2762,172 @@ class WalletMonitor:
         safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
 
     def show_control_menu(self):
-        """显示优化的控制菜单"""
+        """重写的简化菜单系统 - 更健壮的实现"""
         import time
-        import sys
+        
+        print(f"\n{Fore.GREEN}🎉 欢迎使用钱包监控系统控制中心！{Style.RESET_ALL}")
+        
+        # 检查非交互式环境
+        if not (is_force_interactive() or is_interactive()):
+            print(f"{Fore.YELLOW}🤖 检测到非交互式环境，进入守护模式{Style.RESET_ALL}")
+            self._run_daemon_mode()
+            return
+        
+        # 主菜单循环
+        while True:
+            try:
+                self._display_simple_menu()
+                choice = self._get_safe_choice()
+                
+                if not self._execute_menu_choice(choice):
+                    break  # 用户选择退出
+                    
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
+                break
+            except Exception as e:
+                print(f"\n{Fore.RED}❌ 菜单系统错误: {str(e)}{Style.RESET_ALL}")
+                time.sleep(2)
+    
+    def _run_daemon_mode(self):
+        """守护模式 - 简化版本"""
+        import time
+        try:
+            self.show_enhanced_monitoring_status()
+            print(f"\n{Fore.YELLOW}🔄 守护模式运行中，每5分钟显示状态...{Style.RESET_ALL}")
+            while True:
+                time.sleep(300)
+                print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中{Style.RESET_ALL}")
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}⏹️ 守护模式退出{Style.RESET_ALL}")
+    
+    def _display_simple_menu(self):
+        """显示简化菜单"""
+        print("\033[2J\033[H")  # 清屏
+        self.print_banner()
+        
+        print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  钱包监控控制中心 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+        
+        # 系统状态简要显示
+        evm_count = len(getattr(self, 'evm_clients', []))
+        solana_count = len(getattr(self, 'solana_clients', []))
+        addr_count = len(getattr(self, 'addresses', []))
+        
+        init_status = "已初始化" if (evm_count > 0) else "未初始化"
+        status_color = Fore.GREEN if (evm_count > 0) else Fore.RED
+        
+        print(f"\n{Fore.CYAN}📊 状态: {status_color}{init_status}{Style.RESET_ALL} | "
+              f"EVM:{Fore.BLUE}{evm_count}{Style.RESET_ALL} | "
+              f"Solana:{Fore.MAGENTA}{solana_count}{Style.RESET_ALL} | "
+              f"地址:{Fore.YELLOW}{addr_count}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📋 主要功能{Style.RESET_ALL}")
+        print(f"  {Fore.RED}1.{Style.RESET_ALL} 🚀 初始化系统     {Fore.GREEN}2.{Style.RESET_ALL} 📊 系统状态")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🎮 监控控制     {Fore.BLUE}4.{Style.RESET_ALL} 👛 地址管理")
+        print(f"  {Fore.MAGENTA}5.{Style.RESET_ALL} ⚙️ 系统设置     {Fore.RED}6.{Style.RESET_ALL} ❌ 退出程序")
+        
+        print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+    
+    def _get_safe_choice(self):
+        """安全获取用户选择"""
+        try:
+            choice = input(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}").strip()
+            return choice if choice else "2"  # 默认状态
+        except (EOFError, KeyboardInterrupt):
+            return "6"  # 退出
+        except:
+            return "2"  # 默认状态
+    
+    def _execute_menu_choice(self, choice):
+        """执行菜单选择 - 返回False表示退出"""
+        import time
+        
+        if choice in ['6', 'q', 'Q']:
+            print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+            return False
         
         try:
-            # 检查是否为非交互式环境
-            if not (is_force_interactive() or is_interactive()):
-                print(f"\n{Fore.CYAN}🤖 非交互式环境检测，显示状态后进入守护模式...{Style.RESET_ALL}")
+            if choice == "1":
+                self.manual_initialize_system()
+            elif choice == "2":
                 self.show_enhanced_monitoring_status()
+            elif choice == "3":
+                self._monitoring_submenu()
+            elif choice == "4":
+                self._address_submenu()
+            elif choice == "5":
+                self._settings_submenu()
+            else:
+                print(f"{Fore.RED}❌ 无效选择: {choice}，请输入1-6{Style.RESET_ALL}")
+                time.sleep(2)
                 
-                print(f"\n{Fore.YELLOW}🔄 程序进入守护模式，每5分钟显示一次状态...{Style.RESET_ALL}")
-                print(f"   💡 按 Ctrl+C 退出程序")
-                
-                # 守护模式循环
-                while True:
-                    time.sleep(300)  # 5分钟
-                    print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
-                    if hasattr(self, 'addresses') and self.addresses:
-                        print(f"   监控地址: {len(self.addresses)} 个")
-                    else:
-                        print(f"   💡 尚未配置监控地址")
-            
-            # 交互式菜单循环
-            menu_loop_count = 0
-            while True:
-                menu_loop_count += 1
-                if menu_loop_count > 1000:  # 增加循环限制，避免正常使用时误触
-                    print(f"{Fore.RED}❌ 检测到菜单异常循环，自动退出{Style.RESET_ALL}")
-                    break
-                
-                # 清屏并显示菜单
-                print("\033[2J\033[H")  # 清屏
-                self.print_banner()
-                
-                print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  控制中心 - 选择您的操作 {Style.RESET_ALL}")
-                print(f"{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
-                
-                # 系统初始化区
-                print(f"\n{Fore.RED}{Style.BRIGHT}🔧 系统初始化{Style.RESET_ALL}")
-                print(f"  {Fore.RED}1.{Style.RESET_ALL} 🚀 手动初始化系统     {Fore.RED}2.{Style.RESET_ALL} 📊 系统状态总览")
-                
-                # 监控管理区
-                print(f"\n{Fore.YELLOW}{Style.BRIGHT}📋 监控管理{Style.RESET_ALL}")
-                print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🎮 启动/停止监控      {Fore.GREEN}8.{Style.RESET_ALL} 🔧 RPC连接诊断")
-                print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 💾 保存监控状态      {Fore.GREEN}9.{Style.RESET_ALL} ⚡ 立即余额检查")
-                
-                print(f"\n{Fore.YELLOW}{Style.BRIGHT}🔑 地址管理{Style.RESET_ALL}")
-                print(f"  {Fore.BLUE}5.{Style.RESET_ALL} 👛 管理钱包地址      {Fore.BLUE}6.{Style.RESET_ALL} 🔍 地址预检查工具")
-                
-                print(f"\n{Fore.YELLOW}{Style.BRIGHT}⚙️ 系统设置{Style.RESET_ALL}")
-                print(f"  {Fore.MAGENTA}10.{Style.RESET_ALL} 📱 Telegram通知     {Fore.MAGENTA}11.{Style.RESET_ALL} ⚙️ 监控参数设置")
-                print(f"  {Fore.MAGENTA}12.{Style.RESET_ALL} 📝 日志管理中心     {Fore.RED}13.{Style.RESET_ALL} ❌ 退出系统")
-                
-                print(f"\n{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
-                print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
-                
-                # 获取用户选择，添加防闪烁保护
-                try:
-                    choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
-                    # 确保choice不为None或空
-                    if not choice or choice.isspace():
-                        choice = "1"
-                except Exception as e:
-                    print(f"{Fore.YELLOW}⚠️ 输入处理异常，自动选择状态总览: {str(e)}{Style.RESET_ALL}")
-                    choice = "1"
-                    time.sleep(1)
-                
-                # 处理用户选择
-                if choice == 'q' or choice == '13':
-                    print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
-                    break
-                elif choice == "" or not choice:
-                    # 空输入时显示状态概览，避免闪烁
-                    print(f"{Fore.CYAN}💡 未输入选项，显示状态总览...{Style.RESET_ALL}")
-                    time.sleep(1)
-                    choice = "1"  # 自动设置为状态总览
-                elif choice == "1":
-                    try:
-                        self.manual_initialize_system()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 系统初始化错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "2":
-                    try:
-                        self.show_enhanced_monitoring_status()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 状态显示错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "3":
-                    try:
-                        self.control_monitoring()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 监控控制错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "4":
-                    try:
-                        self.save_state_with_feedback()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 状态保存错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "5":
-                    try:
-                        self.manage_wallet_addresses_enhanced()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 地址管理错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "6":
-                    try:
-                        self.pre_check_selected_address()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 地址预检查错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "6":
-                    print(f"{Fore.YELLOW}🚧 该功能正在开发中...{Style.RESET_ALL}")
-                    time.sleep(2)
-                elif choice == "8":
-                    try:
-                        self.check_rpc_connections()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ RPC连接检查错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "9":
-                    try:
-                        self.immediate_balance_check()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 余额检查错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "10":
-                    try:
-                        self.configure_telegram()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ Telegram配置错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "11":
-                    try:
-                        self.configure_monitoring_settings()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 监控设置错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "12":
-                    try:
-                        self.view_logs()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 日志查看错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                else:
-                    print(f"{Fore.RED}❌ 无效选择！请输入 1-13 或 'q' 退出{Style.RESET_ALL}")
-                    time.sleep(2)
-                
-                # 在每次循环结束时添加短暂延迟，防止快速闪烁
-                if menu_loop_count > 1:  # 第一次不延迟
-                    time.sleep(0.1)
-                    
-        except KeyboardInterrupt:
-            print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
         except Exception as e:
-            print(f"\n{Fore.RED}❌ 菜单系统错误: {str(e)}{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}💡 程序将自动退出，请重新启动{Style.RESET_ALL}")
-            import traceback
-            traceback.print_exc()
+            print(f"{Fore.RED}❌ 操作执行失败: {str(e)}{Style.RESET_ALL}")
+            time.sleep(2)
+        
+        return True
     
+    def _monitoring_submenu(self):
+        """监控子菜单"""
+        print(f"\n{Fore.CYAN}📋 监控功能{Style.RESET_ALL}")
+        print("1. 启动/停止监控")
+        print("2. 保存状态") 
+        print("3. 余额检查")
+        print("4. 连接诊断")
+        print("5. 返回主菜单")
+        
+        try:
+            choice = input("请选择: ").strip()
+            if choice == "1":
+                self.control_monitoring()
+            elif choice == "2":
+                self.save_state_with_feedback()
+            elif choice == "3":
+                self.immediate_balance_check()
+            elif choice == "4":
+                self.check_rpc_connections()
+        except Exception as e:
+            print(f"操作失败: {e}")
+            input("按回车继续...")
+    
+    def _address_submenu(self):
+        """地址子菜单"""
+        print(f"\n{Fore.BLUE}👛 地址管理{Style.RESET_ALL}")
+        print("1. 管理钱包地址")
+        print("2. 地址预检查")
+        print("3. 返回主菜单")
+        
+        try:
+            choice = input("请选择: ").strip()
+            if choice == "1":
+                self.manage_wallet_addresses_enhanced()
+            elif choice == "2":
+                self.pre_check_selected_address()
+        except Exception as e:
+            print(f"操作失败: {e}")
+            input("按回车继续...")
+    
+    def _settings_submenu(self):
+        """设置子菜单"""
+        print(f"\n{Fore.MAGENTA}⚙️ 系统设置{Style.RESET_ALL}")
+        print("1. Telegram通知")
+        print("2. 监控参数")
+        print("3. 日志管理")
+        print("4. 返回主菜单")
+        
+        try:
+            choice = input("请选择: ").strip()
+            if choice == "1":
+                self.configure_telegram()
+            elif choice == "2":
+                self.configure_monitoring_settings()
+            elif choice == "3":
+                self.view_logs()
+        except Exception as e:
+            print(f"操作失败: {e}")
+            input("按回车继续...")
+
     def show_enhanced_monitoring_status(self):
         """显示增强的监控状态"""
         # 只在交互式环境中清屏
@@ -4644,6 +4649,7 @@ async def main():
     monitor = WalletMonitor()
     
     print(f"\n{Fore.GREEN}🎉 钱包监控系统已准备就绪！{Style.RESET_ALL}")
+    print(f"{Fore.MAGENTA}🔖 版本标识: FIXED-2025-MENU-v3.0{Style.RESET_ALL}")
     print(f"{Fore.CYAN}💡 进入控制菜单，您可以手动初始化系统并配置监控{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 配置API密钥 → 添加钱包地址 → 开始监控{Style.RESET_ALL}")
     
