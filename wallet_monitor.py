@@ -23,6 +23,9 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             pass
         
+        def is_connected(self):
+            return True
+        
         @staticmethod
         def from_wei(value, unit='ether'):
             """模拟from_wei方法"""
@@ -2787,6 +2790,132 @@ class WalletMonitor:
                 print(f"\n{Fore.RED}❌ 菜单系统错误: {str(e)}{Style.RESET_ALL}")
                 time.sleep(2)
     
+    def run_main_menu(self):
+        """模块化菜单系统（稳定、可拓展）"""
+        import time
+
+        # ---------- 菜单构件 ----------
+        class MenuItem:
+            def __init__(self, label: str, handler=None, submenu=None):
+                self.label = label
+                self.handler = handler
+                self.submenu = submenu
+
+        class Menu:
+            def __init__(self, title: str, items: list, show_banner: bool = True):
+                self.title = title
+                self.items = items
+                self.show_banner = show_banner
+
+            def render(self, outer_self: 'WalletMonitor'):
+                # 清屏仅在交互式
+                if is_interactive() or is_force_interactive():
+                    print("\033[2J\033[H")
+                if self.show_banner:
+                    outer_self.print_banner()
+                print(f"\n{Fore.WHITE}{Back.MAGENTA} {self.title} {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+                for idx, item in enumerate(self.items, start=1):
+                    print(f"  {Fore.YELLOW}{idx}.{Style.RESET_ALL} {item.label}")
+                print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}💡 输入数字选择，输入 'q' 返回/退出{Style.RESET_ALL}")
+
+            def prompt_choice(self) -> str:
+                try:
+                    return input(f"{Fore.YELLOW}👉 请选择: {Style.RESET_ALL}").strip().lower()
+                except Exception:
+                    return ""
+
+            def run(self, outer_self: 'WalletMonitor') -> bool:
+                while True:
+                    self.render(outer_self)
+                    choice = self.prompt_choice()
+                    if choice in ("q", "0"):
+                        return True  # 返回上级/退出
+                    try:
+                        index = int(choice) - 1
+                    except Exception:
+                        print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                        time.sleep(1)
+                        continue
+                    if index < 0 or index >= len(self.items):
+                        print(f"{Fore.RED}❌ 超出范围{Style.RESET_ALL}")
+                        time.sleep(1)
+                        continue
+                    item = self.items[index]
+                    # 子菜单优先
+                    if item.submenu is not None:
+                        if not item.submenu.run(outer_self):
+                            return False
+                        continue
+                    # 执行处理器
+                    if callable(item.handler):
+                        try:
+                            item.handler()
+                        except KeyboardInterrupt:
+                            print(f"\n{Fore.YELLOW}⏹️ 操作被用户中断{Style.RESET_ALL}")
+                        except Exception as e:
+                            print(f"{Fore.RED}❌ 执行失败: {str(e)}{Style.RESET_ALL}")
+                            time.sleep(1)
+                        # 大多数操作返回主菜单由各自函数控制；这里短暂等待避免快速刷新
+                        time.sleep(0.1)
+                        continue
+
+        # ---------- 构建子菜单 ----------
+        system_menu = Menu(
+            title="🔧 系统管理",
+            items=[
+                MenuItem("🚀 初始化系统", handler=self.manual_initialize_system),
+                MenuItem("📊 系统状态", handler=self.show_enhanced_monitoring_status),
+            ],
+        )
+
+        monitor_menu = Menu(
+            title="📋 监控操作",
+            items=[
+                MenuItem("🎮 启动/停止监控", handler=self.control_monitoring),
+                MenuItem("💾 保存状态", handler=self.save_state_with_feedback),
+                MenuItem("⚡ 立即余额检查", handler=self.immediate_balance_check),
+                MenuItem("🔧 RPC连接诊断", handler=self.check_rpc_connections),
+            ],
+        )
+
+        address_menu = Menu(
+            title="👛 地址管理",
+            items=[
+                MenuItem("👛 管理钱包地址", handler=self.manage_wallet_addresses_enhanced),
+                MenuItem("🔍 地址预检查", handler=self.pre_check_selected_address),
+            ],
+        )
+
+        settings_menu = Menu(
+            title="⚙️ 系统设置",
+            items=[
+                MenuItem("📱 Telegram设置", handler=self.configure_telegram),
+                MenuItem("⚙️ 监控参数设置", handler=self.configure_monitoring_settings),
+                MenuItem("📝 日志管理", handler=self.view_logs),
+            ],
+        )
+
+        # ---------- 主菜单 ----------
+        main_menu = Menu(
+            title="🎛️ 钱包监控控制中心",
+            items=[
+                MenuItem("🔧 系统管理", submenu=system_menu),
+                MenuItem("📋 监控操作", submenu=monitor_menu),
+                MenuItem("👛 地址管理", submenu=address_menu),
+                MenuItem("⚙️ 系统设置", submenu=settings_menu),
+                MenuItem("❌ 退出系统", handler=lambda: (_ for _ in ()).throw(KeyboardInterrupt())),
+            ],
+        )
+
+        try:
+            main_menu.run(self)
+        except KeyboardInterrupt:
+            print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+
+        return
+
     # 守护模式已移除（纯交互模式）
     
     def _display_simple_menu(self):
@@ -4690,7 +4819,7 @@ async def main():
     print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 配置API密钥 → 添加钱包地址 → 开始监控{Style.RESET_ALL}")
     
     # 直接显示控制菜单
-    monitor.show_control_menu()
+    monitor.run_main_menu()
     return
 
 if __name__ == "__main__":
