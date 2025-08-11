@@ -2701,6 +2701,66 @@ class WalletMonitor:
         print(f"├─ ⛓️  EVM链: {Fore.BLUE}{evm_chains}{Style.RESET_ALL} 条")
         print(f"└─ ☀️  Solana链: {Fore.MAGENTA}{solana_chains}{Style.RESET_ALL} 条")
     
+    def manual_initialize_system(self):
+        """手动初始化系统"""
+        print("\033[2J\033[H")  # 清屏
+        print(f"\n{Fore.WHITE}{Back.BLUE} 🚀 系统手动初始化 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        
+        # 检查是否已经初始化
+        if self.evm_clients or self.solana_clients:
+            print(f"\n{Fore.YELLOW}⚠️ 系统已部分初始化{Style.RESET_ALL}")
+            print(f"   EVM链客户端: {len(self.evm_clients)} 个")
+            print(f"   Solana客户端: {len(self.solana_clients)} 个")
+            
+            reinit = safe_input(f"\n{Fore.YELLOW}是否重新初始化? (y/N): {Style.RESET_ALL}", "n", allow_empty=True).lower()
+            if reinit != 'y':
+                safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+                return
+            
+            # 清空现有客户端
+            self.evm_clients = []
+            self.solana_clients = []
+        
+        print(f"\n{Fore.YELLOW}📋 开始系统初始化...{Style.RESET_ALL}")
+        
+        # 初始化EVM链客户端
+        print(f"\n{Fore.CYAN}🔗 正在初始化EVM链客户端...{Style.RESET_ALL}")
+        evm_success = self.initialize_evm_clients()
+        
+        if evm_success:
+            print(f"{Fore.GREEN}✅ EVM链初始化成功 - 连接了 {len(self.evm_clients)} 条链{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}❌ EVM链初始化失败{Style.RESET_ALL}")
+            safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+            return
+        
+        # 初始化Solana客户端
+        print(f"\n{Fore.CYAN}☀️ 正在初始化Solana客户端...{Style.RESET_ALL}")
+        solana_success = self.initialize_solana_clients()
+        
+        if solana_success:
+            print(f"{Fore.GREEN}✅ Solana初始化成功 - 连接了 {len(self.solana_clients)} 个节点{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}⚠️ Solana初始化部分成功或失败，将只支持EVM链{Style.RESET_ALL}")
+        
+        # 显示初始化结果
+        print(f"\n{Fore.GREEN}🎉 系统初始化完成！{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        print(f"\n{Fore.WHITE}{Style.BRIGHT}📊 初始化结果：{Style.RESET_ALL}")
+        print(f"   🔗 EVM链连接: {Fore.BLUE}{len(self.evm_clients)}{Style.RESET_ALL} 条")
+        print(f"   ☀️ Solana连接: {Fore.MAGENTA}{len(self.solana_clients)}{Style.RESET_ALL} 个")
+        print(f"   🌍 总连接数: {Fore.CYAN}{len(self.evm_clients) + len(self.solana_clients)}{Style.RESET_ALL}")
+        
+        # 检查是否有保存的状态
+        print(f"\n{Fore.YELLOW}📂 检查保存的配置...{Style.RESET_ALL}")
+        if self.load_state():
+            print(f"{Fore.GREEN}✅ 已加载保存的地址配置 - {len(self.addresses)} 个地址{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.CYAN}💡 未找到保存的配置，可以在地址管理中添加新地址{Style.RESET_ALL}")
+        
+        safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+
     def show_control_menu(self):
         """显示优化的控制菜单"""
         import time
@@ -2728,7 +2788,7 @@ class WalletMonitor:
             menu_loop_count = 0
             while True:
                 menu_loop_count += 1
-                if menu_loop_count > 100:  # 防止无限循环
+                if menu_loop_count > 1000:  # 增加循环限制，避免正常使用时误触
                     print(f"{Fore.RED}❌ 检测到菜单异常循环，自动退出{Style.RESET_ALL}")
                     break
                 
@@ -2739,14 +2799,17 @@ class WalletMonitor:
                 print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  控制中心 - 选择您的操作 {Style.RESET_ALL}")
                 print(f"{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
                 
-                # 主要功能区
+                # 系统初始化区
+                print(f"\n{Fore.RED}{Style.BRIGHT}🔧 系统初始化{Style.RESET_ALL}")
+                print(f"  {Fore.RED}1.{Style.RESET_ALL} 🚀 手动初始化系统     {Fore.RED}2.{Style.RESET_ALL} 📊 系统状态总览")
+                
+                # 监控管理区
                 print(f"\n{Fore.YELLOW}{Style.BRIGHT}📋 监控管理{Style.RESET_ALL}")
-                print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 📊 监控状态总览      {Fore.GREEN}7.{Style.RESET_ALL} 🔧 RPC连接诊断")
-                print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🚀 启动/停止监控      {Fore.GREEN}8.{Style.RESET_ALL} ⚡ 立即余额检查")
-                print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 💾 保存监控状态      {Fore.GREEN}9.{Style.RESET_ALL} 🔄 重新初始化RPC")
+                print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🎮 启动/停止监控      {Fore.GREEN}8.{Style.RESET_ALL} 🔧 RPC连接诊断")
+                print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 💾 保存监控状态      {Fore.GREEN}9.{Style.RESET_ALL} ⚡ 立即余额检查")
                 
                 print(f"\n{Fore.YELLOW}{Style.BRIGHT}🔑 地址管理{Style.RESET_ALL}")
-                print(f"  {Fore.BLUE}4.{Style.RESET_ALL} 👛 管理钱包地址      {Fore.BLUE}5.{Style.RESET_ALL} 🔍 地址预检查工具")
+                print(f"  {Fore.BLUE}5.{Style.RESET_ALL} 👛 管理钱包地址      {Fore.BLUE}6.{Style.RESET_ALL} 🔍 地址预检查工具")
                 
                 print(f"\n{Fore.YELLOW}{Style.BRIGHT}⚙️ 系统设置{Style.RESET_ALL}")
                 print(f"  {Fore.MAGENTA}10.{Style.RESET_ALL} 📱 Telegram通知     {Fore.MAGENTA}11.{Style.RESET_ALL} ⚙️ 监控参数设置")
@@ -2777,29 +2840,35 @@ class WalletMonitor:
                     choice = "1"  # 自动设置为状态总览
                 elif choice == "1":
                     try:
+                        self.manual_initialize_system()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 系统初始化错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "2":
+                    try:
                         self.show_enhanced_monitoring_status()
                     except Exception as e:
                         print(f"{Fore.RED}❌ 状态显示错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
-                elif choice == "2":
+                elif choice == "3":
                     try:
                         self.control_monitoring()
                     except Exception as e:
                         print(f"{Fore.RED}❌ 监控控制错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
-                elif choice == "3":
+                elif choice == "4":
                     try:
                         self.save_state_with_feedback()
                     except Exception as e:
                         print(f"{Fore.RED}❌ 状态保存错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
-                elif choice == "4":
+                elif choice == "5":
                     try:
                         self.manage_wallet_addresses_enhanced()
                     except Exception as e:
                         print(f"{Fore.RED}❌ 地址管理错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
-                elif choice == "5":
+                elif choice == "6":
                     try:
                         self.pre_check_selected_address()
                     except Exception as e:
@@ -2808,23 +2877,17 @@ class WalletMonitor:
                 elif choice == "6":
                     print(f"{Fore.YELLOW}🚧 该功能正在开发中...{Style.RESET_ALL}")
                     time.sleep(2)
-                elif choice == "7":
+                elif choice == "8":
                     try:
                         self.check_rpc_connections()
                     except Exception as e:
                         print(f"{Fore.RED}❌ RPC连接检查错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
-                elif choice == "8":
+                elif choice == "9":
                     try:
                         self.immediate_balance_check()
                     except Exception as e:
                         print(f"{Fore.RED}❌ 余额检查错误: {str(e)}{Style.RESET_ALL}")
-                        time.sleep(2)
-                elif choice == "9":
-                    try:
-                        self.reinitialize_rpc_connections()
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ RPC重初始化错误: {str(e)}{Style.RESET_ALL}")
                         time.sleep(2)
                 elif choice == "10":
                     try:
@@ -4577,41 +4640,12 @@ async def main():
     print("╚══════════════════════════════════════════════════════════════════════════════╝")
     print(f"{Style.RESET_ALL}")
     
+    # 创建监控器实例（不自动初始化）
     monitor = WalletMonitor()
     
-    # 初始化阶段进度显示
-    print(f"\n{Fore.YELLOW}📋 初始化进度:{Style.RESET_ALL}")
-    
-    # 初始化EVM链客户端
-    print(f"  🔗 初始化EVM链客户端...", end=' ')
-    if monitor.initialize_evm_clients():
-        print(f"{Fore.GREEN}✅ 成功{Style.RESET_ALL}")
-    else:
-        print(f"{Fore.RED}❌ 失败，退出程序{Style.RESET_ALL}")
-        return
-    
-    # 初始化Solana客户端
-    print(f"  ☀️ 初始化Solana客户端...", end=' ')
-    if monitor.initialize_solana_clients():
-        print(f"{Fore.GREEN}✅ 成功{Style.RESET_ALL}")
-    else:
-        print(f"{Fore.YELLOW}⚠️ 部分成功，将只监控EVM链{Style.RESET_ALL}")
-    
-    print(f"\n{Fore.GREEN}🎉 系统初始化完成！{Style.RESET_ALL}")
-    
-    # 检查是否有保存的状态
-    if monitor.load_state():
-        print(f"{Fore.CYAN}💡 检测到上次保存的状态{Style.RESET_ALL}")
-        resume = ask_resume()
-        if resume:
-            print(f"{Fore.GREEN}✅ 已加载 {len(monitor.addresses)} 个地址的状态{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.YELLOW}⚠️ 选择重新开始{Style.RESET_ALL}")
-    else:
-        print(f"{Fore.CYAN}💡 未找到保存的状态，这是首次运行{Style.RESET_ALL}")
-    
-    print(f"{Fore.CYAN}💡 进入控制菜单，您可以在这里配置API密钥、添加钱包地址并开始监控{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}📝 首次使用建议：先配置API密钥，然后添加钱包地址{Style.RESET_ALL}")
+    print(f"\n{Fore.GREEN}🎉 钱包监控系统已准备就绪！{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}💡 进入控制菜单，您可以手动初始化系统并配置监控{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 配置API密钥 → 添加钱包地址 → 开始监控{Style.RESET_ALL}")
     
     # 直接显示控制菜单
     monitor.show_control_menu()
