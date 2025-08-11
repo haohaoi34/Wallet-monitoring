@@ -120,9 +120,42 @@ except ImportError:
             pass
 
 from logging.handlers import RotatingFileHandler
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    # 创建模拟加密类
+    class Fernet:
+        def __init__(self, key):
+            self.key = key
+        
+        @staticmethod
+        def generate_key():
+            return b'dummy_key_for_testing_purposes_only'
+        
+        def encrypt(self, data):
+            return data  # 不加密，直接返回
+        
+        def decrypt(self, data):
+            return data  # 不解密，直接返回
+    
+    class hashes:
+        class SHA256:
+            pass
+    
+    class PBKDF2HMAC:
+        def __init__(self, *args, **kwargs):
+            pass
+        
+        def derive(self, password):
+            return password[:32] if len(password) >= 32 else password + b'0' * (32 - len(password))
+    
+    print("⚠️  cryptography库不可用，状态保存功能将被禁用")
+    print("📦 请运行: pip install cryptography")
+
 import threading
 
 # Solana相关导入
@@ -1310,14 +1343,19 @@ class WalletMonitor:
         """初始化Solana链客户端"""
         if not SOLANA_AVAILABLE:
             logger.warning("⚠️  Solana支持未安装，跳过Solana客户端初始化")
+            self.solana_clients = []  # 确保初始化为空列表
             return False
             
         logger.info("正在初始化Solana链客户端...")
         clients = []
         
-        for chain in SOLANA_CHAINS:
+        # 只初始化真正的Solana链（前3个）
+        solana_only_chains = SOLANA_CHAINS[:3]  # 只取真正的Solana链
+        
+        for chain in solana_only_chains:
             try:
                 # 创建Solana客户端
+                from solana.rpc.async_api import AsyncClient
                 client = AsyncClient(chain["rpc_url"])
                 clients.append({
                     "name": chain["name"],
@@ -4630,6 +4668,100 @@ class WalletMonitor:
             print(f"{Fore.RED}❌ 查看失败: {str(e)}{Style.RESET_ALL}")
         
         input(f"\n{Fore.YELLOW}💡 按回车键返回...{Style.RESET_ALL}")
+    
+    def add_new_address_enhanced(self):
+        """增强的添加新地址功能"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.GREEN} ➕ 添加新钱包地址 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📝 支持的私钥格式:{Style.RESET_ALL}")
+        print(f"  • {Fore.BLUE}EVM私钥{Style.RESET_ALL}: 64位十六进制 (可选0x前缀)")
+        print(f"  • {Fore.MAGENTA}Solana私钥{Style.RESET_ALL}: Base58编码或十六进制")
+        print(f"  • 系统将自动识别私钥类型")
+        
+        # 输入私钥
+        private_key = input(f"\n{Fore.YELLOW}请输入私钥: {Style.RESET_ALL}").strip()
+        if not private_key:
+            print(f"{Fore.RED}❌ 私钥不能为空{Style.RESET_ALL}")
+            time.sleep(2)
+            return
+        
+        try:
+            # 识别私钥类型
+            key_type = identify_private_key_type(private_key)
+            
+            # 生成地址
+            if key_type == "evm":
+                if ETH_ACCOUNT_AVAILABLE:
+                    from eth_account import Account
+                    address = Account.from_key(private_key).address
+                else:
+                    print(f"{Fore.RED}❌ eth_account库不可用，无法处理EVM私钥{Style.RESET_ALL}")
+                    time.sleep(2)
+                    return
+            else:
+                address = generate_solana_address_from_private_key(private_key)
+                if not address:
+                    print(f"{Fore.RED}❌ 无法生成Solana地址{Style.RESET_ALL}")
+                    time.sleep(2)
+                    return
+            
+            # 检查地址是否已存在
+            if hasattr(self, 'addresses') and address in self.addresses:
+                print(f"{Fore.RED}❌ 地址 {address} 已存在{Style.RESET_ALL}")
+                time.sleep(2)
+                return
+            
+            # 初始化地址列表和映射（如果不存在）
+            if not hasattr(self, 'addresses'):
+                self.addresses = []
+            if not hasattr(self, 'addr_to_key'):
+                self.addr_to_key = {}
+            if not hasattr(self, 'addr_type'):
+                self.addr_type = {}
+            
+            # 添加到列表
+            self.addresses.append(address)
+            self.addr_to_key[address] = {
+                "key": private_key,
+                "type": key_type
+            }
+            self.addr_type[address] = key_type
+            
+            print(f"\n{Fore.GREEN}✅ 成功添加地址{Style.RESET_ALL}")
+            print(f"   地址: {Fore.YELLOW}{address}{Style.RESET_ALL}")
+            print(f"   类型: {Fore.CYAN}{key_type.upper()}{Style.RESET_ALL}")
+            
+            # 保存状态
+            try:
+                self.save_state()
+                print(f"{Fore.GREEN}💾 状态已保存{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
+            
+            # 询问是否立即预检查
+            check = input(f"\n{Fore.YELLOW}是否立即预检查此地址? (y/N): {Style.RESET_ALL}").strip().lower()
+            if check == 'y':
+                print(f"\n{Fore.CYAN}🔍 开始预检查地址...{Style.RESET_ALL}")
+                # 确保系统已初始化
+                if not hasattr(self, 'evm_clients') or not self.evm_clients:
+                    print(f"{Fore.RED}❌ 系统未初始化，请先在系统管理中初始化系统{Style.RESET_ALL}")
+                else:
+                    try:
+                        import asyncio
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    loop.run_until_complete(self.pre_check_address(address))
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ 添加地址失败: {str(e)}{Style.RESET_ALL}")
+        
+        time.sleep(2)
     
     def configure_telegram_enhanced(self):
         """增强的Telegram配置"""
