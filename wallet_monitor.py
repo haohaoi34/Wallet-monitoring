@@ -2825,8 +2825,17 @@ class WalletMonitor:
         
         # 纯交互输入
         try:
-            print(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}", end="", flush=True)
-            choice = sys.stdin.readline().strip()
+            # 优先走标准输入
+            if sys.stdin and hasattr(sys.stdin, 'readline'):
+                print(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}", end="", flush=True)
+                line = sys.stdin.readline()
+                if not line:
+                    # 退回到内置input（已适配tty）
+                    line = input(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}")
+                choice = (line or '').strip()
+                return choice if choice else "2"
+            # 回退到input（已适配tty）
+            choice = input(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}").strip()
             return choice if choice else "2"
         except (EOFError, KeyboardInterrupt):
             return "2"
@@ -3063,8 +3072,11 @@ class WalletMonitor:
         
         print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
-        # 等待用户输入返回
-        input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}")
+        # 等待用户输入返回（容错）
+        try:
+            input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}")
+        except EOFError:
+            pass
     
     def save_state_with_feedback(self):
         """带反馈的状态保存"""
@@ -4584,30 +4596,38 @@ def safe_input(prompt, default="", allow_empty=False):
     import sys
     force_interactive = '--force-interactive' in sys.argv
     
-    # 如果强制交互模式，总是尝试获取输入
-    if force_interactive:
-        try:
-            user_input = input(prompt).strip()
-            return user_input if user_input else default
-        except (EOFError, KeyboardInterrupt):
-            if default:
-                print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
-            return default
-    
-    # 非交互式环境的处理
-    if not is_interactive():
-        if default:
-            print(f"⚠️ 非交互式环境，使用默认值: {default}")
-        return default
-    
-    # 正常交互式环境
     try:
         user_input = input(prompt).strip()
-        return user_input if user_input else default
+        return user_input if (allow_empty or user_input) else default
     except (EOFError, KeyboardInterrupt):
-        if default:
-            print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
         return default
+
+# 全局启用 /dev/tty 输入适配器，确保在stdin不可用时也能交互
+def enable_tty_input():
+    import builtins, sys
+    if getattr(builtins, '_wm_input_patched', False):
+        return
+    original_input = builtins.input
+    def tty_input(prompt=''):
+        try:
+            # 优先使用可交互的stdin
+            if sys.stdin and hasattr(sys.stdin, 'isatty') and sys.stdin.isatty():
+                return original_input(prompt)
+            # 尝试从 /dev/tty 读取
+            with open('/dev/tty', 'r') as tty_in, open('/dev/tty', 'w') as tty_out:
+                try:
+                    tty_out.write(prompt)
+                    tty_out.flush()
+                except Exception:
+                    pass
+                line = tty_in.readline()
+                if not line:
+                    raise EOFError('no input from /dev/tty')
+                return line.rstrip('\n')
+        except Exception as e:
+            raise EOFError(str(e))
+    builtins.input = tty_input
+    builtins._wm_input_patched = True
 
 def ask_resume():
     """询问是否继续上次的运行"""
@@ -4647,6 +4667,12 @@ async def main():
             # 纯交互模式，不再提示非交互环境
     
     # 清屏并显示启动信息
+    # 启用TTY输入适配，确保ssh/非tty也能交互
+    try:
+        enable_tty_input()
+    except Exception:
+        pass
+    
     print("\033[2J\033[H")
     
     print(f"{Fore.CYAN}{Style.BRIGHT}")
