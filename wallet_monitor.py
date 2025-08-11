@@ -2767,17 +2767,28 @@ class WalletMonitor:
         
         print(f"\n{Fore.GREEN}🎉 欢迎使用钱包监控系统控制中心！{Style.RESET_ALL}")
         
-        # 检查非交互式环境
+        # 检查非交互式环境 - 但给用户一个机会尝试交互
         if not (is_force_interactive() or is_interactive()):
-            print(f"{Fore.YELLOW}🤖 检测到非交互式环境，进入守护模式{Style.RESET_ALL}")
-            self._run_daemon_mode()
-            return
+            print(f"{Fore.YELLOW}🤖 检测到可能的非交互式环境{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 将尝试交互模式，如果无法输入将自动进入守护模式{Style.RESET_ALL}")
+            # 继续尝试交互，而不是直接进入守护模式
         
         # 主菜单循环
+        auto_loop_count = 0
+        max_auto_loops = 10  # 最多自动循环10次，防止无限循环
+        
         while True:
             try:
                 self._display_simple_menu()
                 choice = self._get_safe_choice()
+                
+                # 如果是非交互式环境且选择了状态显示，增加计数器
+                if not (is_force_interactive() or is_interactive()) and choice == "2":
+                    auto_loop_count += 1
+                    if auto_loop_count >= max_auto_loops:
+                        print(f"\n{Fore.YELLOW}🔄 检测到自动循环模式，转为守护模式{Style.RESET_ALL}")
+                        self._run_daemon_mode()
+                        break
                 
                 if not self._execute_menu_choice(choice):
                     break  # 用户选择退出
@@ -2831,33 +2842,71 @@ class WalletMonitor:
     
     def _get_safe_choice(self):
         """安全获取用户选择"""
-        try:
-            choice = input(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}").strip()
-            return choice if choice else "2"  # 默认状态
-        except (EOFError, KeyboardInterrupt):
-            return "6"  # 退出
-        except:
-            return "2"  # 默认状态
+        import sys
+        
+        # 检查是否为强制交互模式或真正的交互式环境
+        if is_force_interactive() or (is_interactive() and sys.stdin.isatty()):
+            try:
+                # 强制刷新输出，确保提示显示
+                print(f"{Fore.YELLOW}👉 请选择 (1-6): {Style.RESET_ALL}", end="", flush=True)
+                choice = sys.stdin.readline().strip()
+                return choice if choice else "2"  # 默认状态
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Fore.YELLOW}⚠️ 输入中断，默认显示系统状态{Style.RESET_ALL}")
+                return "2"  # 默认状态，不要退出
+            except Exception as e:
+                print(f"\n{Fore.YELLOW}⚠️ 输入错误: {str(e)}，默认显示系统状态{Style.RESET_ALL}")
+                return "2"  # 默认状态
+        else:
+            # 非交互式环境，自动循环显示状态
+            print(f"{Fore.YELLOW}⚠️ 检测到非交互式环境，每30秒自动显示系统状态{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 提示：如需交互，请使用 --force-interactive 参数{Style.RESET_ALL}")
+            import time
+            time.sleep(2)  # 给用户看到提示的时间
+            return "2"
     
     def _execute_menu_choice(self, choice):
         """执行菜单选择 - 返回False表示退出"""
         import time
         
-        if choice in ['6', 'q', 'Q']:
-            print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
-            return False
+        # 只有明确的退出指令才退出
+        if choice in ['6', 'q', 'Q'] and (is_force_interactive() or is_interactive()):
+            try:
+                confirm = input(f"{Fore.YELLOW}确认退出系统？(y/N): {Style.RESET_ALL}").strip().lower()
+                if confirm == 'y':
+                    print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+                    return False
+                else:
+                    print(f"{Fore.CYAN}💡 继续使用系统{Style.RESET_ALL}")
+                    return True
+            except:
+                print(f"{Fore.CYAN}💡 输入中断，继续使用系统{Style.RESET_ALL}")
+                return True
         
         try:
             if choice == "1":
                 self.manual_initialize_system()
             elif choice == "2":
                 self.show_enhanced_monitoring_status()
+                # 在非交互式环境下，显示状态后等待一段时间
+                if not (is_force_interactive() or is_interactive()):
+                    print(f"\n{Fore.CYAN}💡 30秒后将重新显示状态...{Style.RESET_ALL}")
+                    time.sleep(30)
             elif choice == "3":
                 self._monitoring_submenu()
             elif choice == "4":
                 self._address_submenu()
             elif choice == "5":
                 self._settings_submenu()
+            elif choice == "6":
+                # 非交互式环境下不要直接退出
+                if not (is_force_interactive() or is_interactive()):
+                    print(f"{Fore.YELLOW}⚠️ 非交互式环境，忽略退出指令，继续运行{Style.RESET_ALL}")
+                    time.sleep(2)
+                    return True
+                else:
+                    print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+                    return False
             else:
                 print(f"{Fore.RED}❌ 无效选择: {choice}，请输入1-6{Style.RESET_ALL}")
                 time.sleep(2)
@@ -4559,7 +4608,22 @@ import sys
 
 def is_interactive():
     """检测是否为交互式环境"""
-    return sys.stdin.isatty()
+    import sys
+    import os
+    
+    # 检查标准输入输出是否为终端
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        return True
+    
+    # 检查SSH环境变量
+    if os.getenv('SSH_CLIENT') or os.getenv('SSH_TTY') or os.getenv('SSH_CONNECTION'):
+        return True
+    
+    # 检查TERM环境变量
+    if os.getenv('TERM') and os.getenv('TERM') != 'dumb':
+        return True
+    
+    return False
 
 def is_force_interactive():
     """检测是否强制交互模式"""
@@ -4649,7 +4713,7 @@ async def main():
     monitor = WalletMonitor()
     
     print(f"\n{Fore.GREEN}🎉 钱包监控系统已准备就绪！{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}🔖 版本标识: FIXED-2025-MENU-v3.0{Style.RESET_ALL}")
+    print(f"{Fore.MAGENTA}🔖 版本标识: FIXED-2025-MENU-v3.1-STABLE{Style.RESET_ALL}")
     print(f"{Fore.CYAN}💡 进入控制菜单，您可以手动初始化系统并配置监控{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 配置API密钥 → 添加钱包地址 → 开始监控{Style.RESET_ALL}")
     
