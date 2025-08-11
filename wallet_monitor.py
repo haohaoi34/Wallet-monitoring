@@ -2662,14 +2662,14 @@ class WalletMonitor:
         banner = f"""
 {Fore.CYAN}{Style.BRIGHT}
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  🚀 钱包监控系统 v2.0 - 全链自动监控 & 智能转账                              ║
-║  💎 EVM + Solana 全生态支持 | 🛡️ 多重安全保护 | ⚡ 实时余额监控              ║
+║  🚀 钱包监控系统 v2.0 - 全链自动监控 & 智能转账                                   ║
+║  💎 EVM + Solana 全生态支持 | 🛡️ 多重安全保护 | ⚡ 实时余额监控                     ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  🌟 特色功能:                                                                 ║
-║  • 🔍 50+ EVM链自动发现    • ☀️ Solana SPL代币支持                          ║
-║  • 🛡️ 智能安全验证        • 🔄 自动RPC故障转移                              ║
-║  • 📱 Telegram实时通知     • 💾 加密状态存储                                 ║
-║  • 🎨 彩色终端界面         • 📊 详细监控统计                                 ║
+║  • 🔍 50+ EVM链自动发现    • ☀️ Solana SPL代币支持                              ║
+║  • 🛡️ 智能安全验证        • 🔄 自动RPC故障转移                                   ║
+║  • 📱 Telegram实时通知     • 💾 加密状态存储                                    ║
+║  • 🎨 彩色终端界面         • 📊 详细监控统计                                     ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 {Style.RESET_ALL}"""
         print(banner)
@@ -2703,6 +2703,8 @@ class WalletMonitor:
     
     def show_control_menu(self):
         """显示优化的控制菜单"""
+        import time
+        import sys
         while True:
             # 清屏并显示横幅
             print("\033[2J\033[H")  # 清屏
@@ -2729,7 +2731,30 @@ class WalletMonitor:
             # 添加快捷键提示
             print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
             
-            choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "13").lower()
+            # 在非交互式环境中，自动选择状态总览，然后进入持续运行模式
+            if not is_interactive() and '--force-interactive' not in sys.argv:
+                print(f"\n{Fore.CYAN}🤖 检测到非交互式环境，自动显示状态总览...{Style.RESET_ALL}")
+                time.sleep(2)
+                self.show_enhanced_monitoring_status()
+                print(f"\n{Fore.YELLOW}🔄 程序将保持运行，您可以：{Style.RESET_ALL}")
+                print(f"   • 通过SSH连接进行交互操作")
+                print(f"   • 重新运行并添加 --force-interactive 参数")
+                print(f"   • 按 Ctrl+C 退出程序")
+                
+                # 进入持续运行模式
+                try:
+                    while True:
+                        time.sleep(60)  # 每分钟显示一次状态
+                        print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
+                        if hasattr(self, 'addresses') and self.addresses:
+                            print(f"   监控地址: {len(self.addresses)} 个")
+                        else:
+                            print(f"   💡 尚未配置监控地址，请使用交互模式添加地址")
+                except KeyboardInterrupt:
+                    print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
+                    break
+            else:
+                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
             
             if choice == 'q' or choice == '13':
                 print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
@@ -4388,14 +4413,26 @@ def is_interactive():
     """检测是否为交互式环境"""
     return sys.stdin.isatty()
 
-def safe_input(prompt, default=""):
+def safe_input(prompt, default="", allow_empty=False):
     """安全的输入函数，处理EOF错误"""
     import sys
     force_interactive = '--force-interactive' in sys.argv
     
     if not is_interactive() and not force_interactive:
-        print(f"⚠️ 非交互式环境，使用默认值: {default}")
-        return default
+        if allow_empty or default:
+            print(f"⚠️ 非交互式环境，使用默认值: {default}")
+            return default
+        else:
+            # 对于关键输入，在非交互式环境中等待
+            print(f"⚠️ 非交互式环境检测到，程序将保持运行...")
+            print(f"💡 您可以通过以下方式进行交互：")
+            print(f"   1. 重新运行并添加 --force-interactive 参数")
+            print(f"   2. 使用SSH连接到服务器进行交互")
+            print(f"   3. 程序将每30秒显示一次状态...")
+            import time
+            while True:
+                time.sleep(30)
+                print(f"🔄 程序正在运行中... (按Ctrl+C退出)")
     
     try:
         return input(prompt).strip()
