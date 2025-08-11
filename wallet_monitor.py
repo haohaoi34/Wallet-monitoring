@@ -4670,98 +4670,185 @@ class WalletMonitor:
         input(f"\n{Fore.YELLOW}💡 按回车键返回...{Style.RESET_ALL}")
     
     def add_new_address_enhanced(self):
-        """增强的添加新地址功能"""
+        """增强的添加新地址功能 - 支持批量添加"""
         print("\033[2J\033[H")  # 清屏
         
-        print(f"\n{Fore.WHITE}{Back.GREEN} ➕ 添加新钱包地址 {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        print(f"\n{Fore.WHITE}{Back.GREEN} ➕ 批量添加钱包地址 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}📝 支持的私钥格式:{Style.RESET_ALL}")
         print(f"  • {Fore.BLUE}EVM私钥{Style.RESET_ALL}: 64位十六进制 (可选0x前缀)")
         print(f"  • {Fore.MAGENTA}Solana私钥{Style.RESET_ALL}: Base58编码或十六进制")
-        print(f"  • 系统将自动识别私钥类型")
+        print(f"  • {Fore.GREEN}批量添加{Style.RESET_ALL}: 一行一个私钥，支持混合格式")
         
-        # 输入私钥
-        private_key = input(f"\n{Fore.YELLOW}请输入私钥: {Style.RESET_ALL}").strip()
-        if not private_key:
-            print(f"{Fore.RED}❌ 私钥不能为空{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}💡 使用说明:{Style.RESET_ALL}")
+        print(f"  1. 可以输入单个私钥，也可以粘贴多个私钥（一行一个）")
+        print(f"  2. 输入完成后，{Fore.YELLOW}连续按两次回车{Style.RESET_ALL} 开始处理")
+        print(f"  3. 系统将自动识别每个私钥的类型并生成对应地址")
+        print(f"  4. 如果要取消，直接按回车退出")
+        
+        # 收集私钥输入
+        print(f"\n{Fore.YELLOW}请输入私钥（一行一个，完成后连续按两次回车）:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─'*90}{Style.RESET_ALL}")
+        
+        private_keys = []
+        empty_count = 0
+        line_number = 1
+        
+        while True:
+            try:
+                prompt = f"{Fore.GREEN}[{line_number:2d}]{Style.RESET_ALL} "
+                line = input(prompt).strip()
+                
+                if not line:
+                    empty_count += 1
+                    if empty_count >= 2:  # 连续两次回车退出
+                        break
+                    elif empty_count == 1:
+                        print(f"{Fore.YELLOW}💡 再按一次回车完成输入{Style.RESET_ALL}")
+                    continue
+                else:
+                    empty_count = 0  # 重置空行计数
+                    private_keys.append(line)
+                    line_number += 1
+                    
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Fore.YELLOW}⏹️ 输入被取消{Style.RESET_ALL}")
+                time.sleep(1)
+                return
+        
+        if not private_keys:
+            print(f"\n{Fore.RED}❌ 没有输入任何私钥{Style.RESET_ALL}")
             time.sleep(2)
             return
         
-        try:
-            # 识别私钥类型
-            key_type = identify_private_key_type(private_key)
+        print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}🚀 开始处理 {len(private_keys)} 个私钥...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        
+        # 批量处理私钥
+        successful_addresses = []
+        failed_keys = []
+        duplicate_addresses = []
+        
+        for i, private_key in enumerate(private_keys, 1):
+            print(f"\n{Fore.CYAN}[{i}/{len(private_keys)}]{Style.RESET_ALL} 处理私钥: {private_key[:10]}...{private_key[-4:]}")
             
-            # 生成地址
-            if key_type == "evm":
-                if ETH_ACCOUNT_AVAILABLE:
-                    from eth_account import Account
-                    address = Account.from_key(private_key).address
+            try:
+                # 识别私钥类型
+                key_type = identify_private_key_type(private_key)
+                print(f"   🔍 识别类型: {Fore.YELLOW}{key_type.upper()}{Style.RESET_ALL}")
+                
+                # 生成地址
+                if key_type == "evm":
+                    if ETH_ACCOUNT_AVAILABLE:
+                        from eth_account import Account
+                        address = Account.from_key(private_key).address
+                    else:
+                        print(f"   {Fore.RED}❌ eth_account库不可用，跳过EVM私钥{Style.RESET_ALL}")
+                        failed_keys.append({"key": private_key, "reason": "eth_account库不可用"})
+                        continue
                 else:
-                    print(f"{Fore.RED}❌ eth_account库不可用，无法处理EVM私钥{Style.RESET_ALL}")
-                    time.sleep(2)
-                    return
-            else:
-                address = generate_solana_address_from_private_key(private_key)
-                if not address:
-                    print(f"{Fore.RED}❌ 无法生成Solana地址{Style.RESET_ALL}")
-                    time.sleep(2)
-                    return
-            
-            # 检查地址是否已存在
-            if hasattr(self, 'addresses') and address in self.addresses:
-                print(f"{Fore.RED}❌ 地址 {address} 已存在{Style.RESET_ALL}")
-                time.sleep(2)
-                return
-            
-            # 初始化地址列表和映射（如果不存在）
-            if not hasattr(self, 'addresses'):
-                self.addresses = []
-            if not hasattr(self, 'addr_to_key'):
-                self.addr_to_key = {}
-            if not hasattr(self, 'addr_type'):
-                self.addr_type = {}
-            
-            # 添加到列表
-            self.addresses.append(address)
-            self.addr_to_key[address] = {
-                "key": private_key,
-                "type": key_type
-            }
-            self.addr_type[address] = key_type
-            
-            print(f"\n{Fore.GREEN}✅ 成功添加地址{Style.RESET_ALL}")
-            print(f"   地址: {Fore.YELLOW}{address}{Style.RESET_ALL}")
-            print(f"   类型: {Fore.CYAN}{key_type.upper()}{Style.RESET_ALL}")
-            
-            # 保存状态
+                    address = generate_solana_address_from_private_key(private_key)
+                    if not address:
+                        print(f"   {Fore.RED}❌ 无法生成Solana地址{Style.RESET_ALL}")
+                        failed_keys.append({"key": private_key, "reason": "无法生成Solana地址"})
+                        continue
+                
+                print(f"   📍 生成地址: {Fore.GREEN}{address}{Style.RESET_ALL}")
+                
+                # 检查地址是否已存在
+                if hasattr(self, 'addresses') and address in self.addresses:
+                    print(f"   {Fore.YELLOW}⚠️ 地址已存在，跳过{Style.RESET_ALL}")
+                    duplicate_addresses.append({"address": address, "key": private_key})
+                    continue
+                
+                # 初始化地址列表和映射（如果不存在）
+                if not hasattr(self, 'addresses'):
+                    self.addresses = []
+                if not hasattr(self, 'addr_to_key'):
+                    self.addr_to_key = {}
+                if not hasattr(self, 'addr_type'):
+                    self.addr_type = {}
+                
+                # 添加到列表
+                self.addresses.append(address)
+                self.addr_to_key[address] = {
+                    "key": private_key,
+                    "type": key_type
+                }
+                self.addr_type[address] = key_type
+                
+                successful_addresses.append({"address": address, "type": key_type})
+                print(f"   {Fore.GREEN}✅ 成功添加{Style.RESET_ALL}")
+                
+            except Exception as e:
+                print(f"   {Fore.RED}❌ 处理失败: {str(e)}{Style.RESET_ALL}")
+                failed_keys.append({"key": private_key, "reason": str(e)})
+        
+        # 显示处理结果汇总
+        print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}{Back.BLUE} 📊 批量添加结果汇总 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.GREEN}✅ 成功添加: {len(successful_addresses)} 个地址{Style.RESET_ALL}")
+        for addr_info in successful_addresses:
+            type_emoji = "🔗" if addr_info["type"] == "evm" else "☀️"
+            print(f"   {type_emoji} {addr_info['address']} ({addr_info['type'].upper()})")
+        
+        if duplicate_addresses:
+            print(f"\n{Fore.YELLOW}⚠️ 重复地址: {len(duplicate_addresses)} 个（已跳过）{Style.RESET_ALL}")
+            for dup in duplicate_addresses[:3]:  # 只显示前3个
+                print(f"   🔄 {dup['address']}")
+            if len(duplicate_addresses) > 3:
+                print(f"   ... 还有 {len(duplicate_addresses) - 3} 个重复地址")
+        
+        if failed_keys:
+            print(f"\n{Fore.RED}❌ 处理失败: {len(failed_keys)} 个私钥{Style.RESET_ALL}")
+            for fail in failed_keys[:3]:  # 只显示前3个
+                print(f"   💥 {fail['key'][:10]}...{fail['key'][-4:]} - {fail['reason']}")
+            if len(failed_keys) > 3:
+                print(f"   ... 还有 {len(failed_keys) - 3} 个失败的私钥")
+        
+        # 保存状态
+        if successful_addresses:
             try:
                 self.save_state()
-                print(f"{Fore.GREEN}💾 状态已保存{Style.RESET_ALL}")
+                print(f"\n{Fore.GREEN}💾 状态已保存{Style.RESET_ALL}")
             except Exception as e:
-                print(f"{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
+                print(f"\n{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
             
-            # 询问是否立即预检查
-            check = input(f"\n{Fore.YELLOW}是否立即预检查此地址? (y/N): {Style.RESET_ALL}").strip().lower()
-            if check == 'y':
-                print(f"\n{Fore.CYAN}🔍 开始预检查地址...{Style.RESET_ALL}")
-                # 确保系统已初始化
-                if not hasattr(self, 'evm_clients') or not self.evm_clients:
-                    print(f"{Fore.RED}❌ 系统未初始化，请先在系统管理中初始化系统{Style.RESET_ALL}")
-                else:
-                    try:
-                        import asyncio
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    
-                    loop.run_until_complete(self.pre_check_address(address))
-            
-        except Exception as e:
-            print(f"{Fore.RED}❌ 添加地址失败: {str(e)}{Style.RESET_ALL}")
+            # 询问是否批量预检查
+            if len(successful_addresses) > 0:
+                check = input(f"\n{Fore.YELLOW}是否对新添加的地址进行批量预检查? (y/N): {Style.RESET_ALL}").strip().lower()
+                if check == 'y':
+                    print(f"\n{Fore.CYAN}🔍 开始批量预检查...{Style.RESET_ALL}")
+                    # 确保系统已初始化
+                    if not hasattr(self, 'evm_clients') or not self.evm_clients:
+                        print(f"{Fore.RED}❌ 系统未初始化，请先在系统管理中初始化系统{Style.RESET_ALL}")
+                    else:
+                        self._batch_pre_check_addresses([addr['address'] for addr in successful_addresses])
         
-        time.sleep(2)
+            
+    def _batch_pre_check_addresses(self, addresses):
+        """批量预检查地址"""
+        print(f"\n{Fore.CYAN}🔍 开始批量预检查 {len(addresses)} 个地址...{Style.RESET_ALL}")
+        
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        for i, address in enumerate(addresses, 1):
+            print(f"\n{Fore.YELLOW}[{i}/{len(addresses)}]{Style.RESET_ALL} 预检查地址: {address}")
+            try:
+                loop.run_until_complete(self.pre_check_address(address))
+            except Exception as e:
+                print(f"{Fore.RED}❌ 预检查失败: {str(e)}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.GREEN}✅ 批量预检查完成！{Style.RESET_ALL}")
     
     def configure_telegram_enhanced(self):
         """增强的Telegram配置"""
