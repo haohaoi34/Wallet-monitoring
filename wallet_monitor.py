@@ -690,7 +690,6 @@ def generate_solana_address_from_private_key(private_key: str) -> str:
     except Exception as e:
         logger.error(f"生成Solana地址失败: {str(e)}")
         return None
-
 def is_solana_address(address: str) -> bool:
     """检查是否为Solana地址"""
     try:
@@ -5064,3 +5063,4 @@ if __name__ == "__main__":
             logger.error(f"程序异常退出: {str(e)}")
     finally:
         print(f"\n{Fore.CYAN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+
