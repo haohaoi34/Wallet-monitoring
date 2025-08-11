@@ -2706,150 +2706,139 @@ class WalletMonitor:
         import time
         import sys
         
-        menu_loop_count = 0  # 添加循环计数器，防止无限循环
-        
         try:
+            # 检查是否为非交互式环境
+            if not (is_force_interactive() or is_interactive()):
+                print(f"\n{Fore.CYAN}🤖 非交互式环境检测，显示状态后进入守护模式...{Style.RESET_ALL}")
+                self.show_enhanced_monitoring_status()
+                
+                print(f"\n{Fore.YELLOW}🔄 程序进入守护模式，每5分钟显示一次状态...{Style.RESET_ALL}")
+                print(f"   💡 按 Ctrl+C 退出程序")
+                
+                # 守护模式循环
+                while True:
+                    time.sleep(300)  # 5分钟
+                    print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
+                    if hasattr(self, 'addresses') and self.addresses:
+                        print(f"   监控地址: {len(self.addresses)} 个")
+                    else:
+                        print(f"   💡 尚未配置监控地址")
+            
+            # 交互式菜单循环
+            menu_loop_count = 0
             while True:
                 menu_loop_count += 1
                 if menu_loop_count > 100:  # 防止无限循环
                     print(f"{Fore.RED}❌ 检测到菜单异常循环，自动退出{Style.RESET_ALL}")
                     break
-            # 只在交互式环境中清屏
-            if is_interactive() or is_force_interactive():
+                
+                # 清屏并显示菜单
                 print("\033[2J\033[H")  # 清屏
-            else:
+                self.print_banner()
+                
+                print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  控制中心 - 选择您的操作 {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
+                
+                # 主要功能区
+                print(f"\n{Fore.YELLOW}{Style.BRIGHT}📋 监控管理{Style.RESET_ALL}")
+                print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 📊 监控状态总览      {Fore.GREEN}7.{Style.RESET_ALL} 🔧 RPC连接诊断")
+                print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🚀 启动/停止监控      {Fore.GREEN}8.{Style.RESET_ALL} ⚡ 立即余额检查")
+                print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 💾 保存监控状态      {Fore.GREEN}9.{Style.RESET_ALL} 🔄 重新初始化RPC")
+                
+                print(f"\n{Fore.YELLOW}{Style.BRIGHT}🔑 地址管理{Style.RESET_ALL}")
+                print(f"  {Fore.BLUE}4.{Style.RESET_ALL} 👛 管理钱包地址      {Fore.BLUE}5.{Style.RESET_ALL} 🔍 地址预检查工具")
+                
+                print(f"\n{Fore.YELLOW}{Style.BRIGHT}⚙️ 系统设置{Style.RESET_ALL}")
+                print(f"  {Fore.MAGENTA}10.{Style.RESET_ALL} 📱 Telegram通知     {Fore.MAGENTA}11.{Style.RESET_ALL} ⚙️ 监控参数设置")
+                print(f"  {Fore.MAGENTA}12.{Style.RESET_ALL} 📝 日志管理中心     {Fore.RED}13.{Style.RESET_ALL} ❌ 退出系统")
+                
                 print(f"\n{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
-            
-            self.print_banner()
-            
-            print(f"\n{Fore.WHITE}{Back.MAGENTA} 🎛️  控制中心 - 选择您的操作 {Style.RESET_ALL}")
-            print(f"{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
-            
-            # 主要功能区
-            print(f"\n{Fore.YELLOW}{Style.BRIGHT}📋 监控管理{Style.RESET_ALL}")
-            print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 📊 监控状态总览      {Fore.GREEN}7.{Style.RESET_ALL} 🔧 RPC连接诊断")
-            print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🚀 启动/停止监控      {Fore.GREEN}8.{Style.RESET_ALL} ⚡ 立即余额检查")
-            print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 💾 保存监控状态      {Fore.GREEN}9.{Style.RESET_ALL} 🔄 重新初始化RPC")
-            
-            print(f"\n{Fore.YELLOW}{Style.BRIGHT}🔑 地址管理{Style.RESET_ALL}")
-            print(f"  {Fore.BLUE}4.{Style.RESET_ALL} 👛 管理钱包地址      {Fore.BLUE}5.{Style.RESET_ALL} 🔍 地址预检查工具")
-            
-            print(f"\n{Fore.YELLOW}{Style.BRIGHT}⚙️ 系统设置{Style.RESET_ALL}")
-            print(f"  {Fore.MAGENTA}10.{Style.RESET_ALL} 📱 Telegram通知     {Fore.MAGENTA}11.{Style.RESET_ALL} ⚙️ 监控参数设置")
-            print(f"  {Fore.MAGENTA}12.{Style.RESET_ALL} 📝 日志管理中心     {Fore.RED}13.{Style.RESET_ALL} ❌ 退出系统")
-            
-            print(f"\n{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
-            
-            # 添加快捷键提示
-            print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
-            
-                # 非交互式环境处理
-                if not (is_force_interactive() or is_interactive()):
-                    print(f"\n{Fore.CYAN}🤖 非交互式环境检测，显示状态后进入守护模式...{Style.RESET_ALL}")
-                    time.sleep(2)
-                    self.show_enhanced_monitoring_status()
-                    
-                    print(f"\n{Fore.YELLOW}🔄 程序进入守护模式，每5分钟显示一次状态...{Style.RESET_ALL}")
-                    print(f"   💡 按 Ctrl+C 退出程序")
-                    
-                    # 守护模式循环
-                    while True:
-                        time.sleep(300)  # 5分钟
-                        print(f"\n{Fore.CYAN}📊 {time.strftime('%Y-%m-%d %H:%M:%S')} - 系统运行中...{Style.RESET_ALL}")
-                        if hasattr(self, 'addresses') and self.addresses:
-                            print(f"   监控地址: {len(self.addresses)} 个")
-                        else:
-                            print(f"   💡 尚未配置监控地址")
+                print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
                 
                 # 获取用户选择
                 choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "", allow_empty=True).lower()
                 
-                # 空输入处理
-                if not choice:
+                # 处理用户选择
+                if choice == 'q' or choice == '13':
+                    print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+                    break
+                elif choice == "" or not choice:
                     print(f"{Fore.YELLOW}⚠️ 请输入有效的选项 (1-13){Style.RESET_ALL}")
                     time.sleep(1)
                     continue
-                
-            if choice == 'q' or choice == '13':
-                print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
-                break
-            elif choice == "":
-                # 空输入，显示提示并等待
-                print(f"{Fore.YELLOW}⚠️ 请输入有效的选项 (1-13){Style.RESET_ALL}")
-                time.sleep(1)
-            elif choice == "1":
-                try:
-                    self.show_enhanced_monitoring_status()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 状态显示错误: {str(e)}{Style.RESET_ALL}")
+                elif choice == "1":
+                    try:
+                        self.show_enhanced_monitoring_status()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 状态显示错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "2":
+                    try:
+                        self.control_monitoring()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 监控控制错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "3":
+                    try:
+                        self.save_state_with_feedback()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 状态保存错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "4":
+                    try:
+                        self.manage_wallet_addresses_enhanced()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 地址管理错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "5":
+                    try:
+                        self.pre_check_selected_address()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 地址预检查错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "6":
+                    print(f"{Fore.YELLOW}🚧 该功能正在开发中...{Style.RESET_ALL}")
                     time.sleep(2)
-            elif choice == "2":
-                try:
-                    self.control_monitoring()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 监控控制错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "3":
-                try:
-                    self.save_state_with_feedback()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 状态保存错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "4":
-                try:
-                    self.manage_wallet_addresses_enhanced()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 地址管理错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "5":
-                try:
-                    self.pre_check_selected_address()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 地址预检查错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "6":
-                # 预留功能
-                print(f"{Fore.YELLOW}🚧 该功能正在开发中...{Style.RESET_ALL}")
-                time.sleep(2)
-            elif choice == "7":
-                try:
-                    self.check_rpc_connections()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ RPC连接检查错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "8":
-                try:
-                    self.immediate_balance_check()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 余额检查错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "9":
-                try:
-                    self.reinitialize_rpc_connections()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ RPC重初始化错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "10":
-                try:
-                    self.configure_telegram()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ Telegram配置错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "11":
-                try:
-                    self.configure_monitoring_settings()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 监控设置错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            elif choice == "12":
-                try:
-                    self.view_logs()
-                except Exception as e:
-                    print(f"{Fore.RED}❌ 日志查看错误: {str(e)}{Style.RESET_ALL}")
-                    time.sleep(2)
-            else:
-                print(f"{Fore.RED}❌ 无效选择！请输入 1-13 或 'q' 退出{Style.RESET_ALL}")
-                time.sleep(1.5)
+                elif choice == "7":
+                    try:
+                        self.check_rpc_connections()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ RPC连接检查错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "8":
+                    try:
+                        self.immediate_balance_check()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 余额检查错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "9":
+                    try:
+                        self.reinitialize_rpc_connections()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ RPC重初始化错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "10":
+                    try:
+                        self.configure_telegram()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ Telegram配置错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "11":
+                    try:
+                        self.configure_monitoring_settings()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 监控设置错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                elif choice == "12":
+                    try:
+                        self.view_logs()
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 日志查看错误: {str(e)}{Style.RESET_ALL}")
+                        time.sleep(2)
+                else:
+                    print(f"{Fore.RED}❌ 无效选择！请输入 1-13 或 'q' 退出{Style.RESET_ALL}")
+                    time.sleep(1.5)
+                    
         except KeyboardInterrupt:
             print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
         except Exception as e:
