@@ -424,7 +424,7 @@ install_dependencies() {
         done
         
         # 尝试安装可选依赖
-        local optional_deps=("solana" "solders" "base58" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
+        local optional_deps=("solana" "solders" "base58" "spl-token" "alchemy" "python-telegram-bot" "asyncio-throttle" "eth-account" "typing-extensions")
         for dep in "${optional_deps[@]}"; do
             log "安装可选依赖 $dep..."
             python -m pip install "$dep" -q || warn "安装 $dep 失败（可选）"
@@ -579,11 +579,15 @@ auto_launch_app() {
     echo -e "${GREEN}🎉 安装成功完成！${NC}"
     echo ""
     
-    # 直接启动程序，不需要用户手动输入命令
+    # 显示启动信息和使用提示
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║${NC} ${YELLOW}🚀 自动启动钱包监控器${NC} ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC} ${GREEN}程序将在3秒后自动启动...${NC} ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC} ${YELLOW}💡 如需手动启动，按 Ctrl+C 取消${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${NC}║${NC}"
+    echo -e "${CYAN}║${NC} ${BLUE}💡 启动模式说明：${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}• 交互模式：python wallet_monitor.py --force-interactive${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}• 后台模式：nohup python wallet_monitor.py > monitor.log 2>&1 &${NC} ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}• 如需手动启动，按 Ctrl+C 取消${NC} ${CYAN}║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
@@ -594,6 +598,18 @@ auto_launch_app() {
     done
     
     echo -e "${GREEN}🚀 启动钱包监控器...${NC}"
+    
+    # 检测终端环境
+    if [[ -n "$SSH_CLIENT" ]] || [[ -n "$SSH_TTY" ]]; then
+        echo -e "${CYAN}🔍 检测到SSH连接环境${NC}"
+    else
+        echo -e "${CYAN}🔍 检测到本地终端环境${NC}"
+    fi
+    
+    echo -e "${YELLOW}💡 提示：如果程序无法交互，您可以：${NC}"
+    echo -e "${YELLOW}   1. 重新SSH连接到服务器${NC}"
+    echo -e "${YELLOW}   2. 使用 screen 或 tmux 会话${NC}"
+    echo -e "${YELLOW}   3. 运行：python wallet_monitor.py --force-interactive${NC}"
     echo ""
     
     # 直接启动程序
