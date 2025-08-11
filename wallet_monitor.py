@@ -2755,17 +2755,26 @@ class WalletMonitor:
                 print(f"\n{Fore.CYAN}{'='*85}{Style.RESET_ALL}")
                 print(f"{Fore.WHITE}💡 提示: 输入数字选择功能，输入 'q' 快速退出{Style.RESET_ALL}")
                 
-                # 获取用户选择
-                choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "", allow_empty=True).lower()
+                # 获取用户选择，添加防闪烁保护
+                try:
+                    choice = safe_input(f"\n{Fore.YELLOW}{Style.BRIGHT}👉 请选择操作 (1-13): {Style.RESET_ALL}", "1", allow_empty=True).lower()
+                    # 确保choice不为None或空
+                    if not choice or choice.isspace():
+                        choice = "1"
+                except Exception as e:
+                    print(f"{Fore.YELLOW}⚠️ 输入处理异常，自动选择状态总览: {str(e)}{Style.RESET_ALL}")
+                    choice = "1"
+                    time.sleep(1)
                 
                 # 处理用户选择
                 if choice == 'q' or choice == '13':
                     print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
                     break
                 elif choice == "" or not choice:
-                    print(f"{Fore.YELLOW}⚠️ 请输入有效的选项 (1-13){Style.RESET_ALL}")
+                    # 空输入时显示状态概览，避免闪烁
+                    print(f"{Fore.CYAN}💡 未输入选项，显示状态总览...{Style.RESET_ALL}")
                     time.sleep(1)
-                    continue
+                    choice = "1"  # 自动设置为状态总览
                 elif choice == "1":
                     try:
                         self.show_enhanced_monitoring_status()
@@ -2837,7 +2846,11 @@ class WalletMonitor:
                         time.sleep(2)
                 else:
                     print(f"{Fore.RED}❌ 无效选择！请输入 1-13 或 'q' 退出{Style.RESET_ALL}")
-                    time.sleep(1.5)
+                    time.sleep(2)
+                
+                # 在每次循环结束时添加短暂延迟，防止快速闪烁
+                if menu_loop_count > 1:  # 第一次不延迟
+                    time.sleep(0.1)
                     
         except KeyboardInterrupt:
             print(f"\n{Fore.YELLOW}⏹️ 程序被用户中断{Style.RESET_ALL}")
@@ -3010,7 +3023,7 @@ class WalletMonitor:
             print("6. ⬅️  返回主菜单")
             print("="*60)
             
-            choice = input("请选择操作 (1-6): ").strip()
+            choice = safe_input("请选择操作 (1-6): ", "5", allow_empty=True).strip()
             
             if choice == "1":
                 self.list_all_addresses()
@@ -3055,7 +3068,7 @@ class WalletMonitor:
         print("="*60)
         
         # 输入私钥
-        private_key = input("请输入私钥: ").strip()
+        private_key = safe_input("请输入私钥: ", "", allow_empty=True).strip()
         if not private_key:
             print("❌ 私钥不能为空")
             return
@@ -3093,7 +3106,7 @@ class WalletMonitor:
             print(f"✅ 成功添加地址: {address} (类型: {key_type.upper()})")
             
             # 询问是否立即预检查
-            if input("是否立即预检查此地址? (y/n): ").strip().lower() == 'y':
+            if safe_input("是否立即预检查此地址? (y/n): ", "n", allow_empty=True).strip().lower() == 'y':
                 asyncio.create_task(self.pre_check_address(address))
             
         except Exception as e:
@@ -3114,10 +3127,10 @@ class WalletMonitor:
             print(f"{i}. {address}")
         
         try:
-            choice = int(input(f"\n请选择要删除的地址 (1-{len(self.addresses)}): ").strip())
+            choice = int(safe_input(f"\n请选择要删除的地址 (1-{len(self.addresses)}): ", "0", allow_empty=True).strip() or 0)
             if 1 <= choice <= len(self.addresses):
                 address = self.addresses[choice - 1]
-                confirm = input(f"确认删除地址 {address}? (y/n): ").strip().lower()
+                confirm = safe_input(f"确认删除地址 {address}? (y/n): ", "n", allow_empty=True).strip().lower()
                 
                 if confirm == 'y':
                     # 删除地址
@@ -3152,7 +3165,7 @@ class WalletMonitor:
             print(f"{i}. {address}")
         
         try:
-            choice = int(input(f"\n请选择要预检查的地址 (1-{len(self.addresses)}): ").strip())
+            choice = int(safe_input(f"\n请选择要预检查的地址 (1-{len(self.addresses)}): ", "0", allow_empty=True).strip() or 0)
             if 1 <= choice <= len(self.addresses):
                 address = self.addresses[choice - 1]
                 print(f"🔍 开始预检查地址: {address}")
@@ -3185,7 +3198,7 @@ class WalletMonitor:
             print(f"{i}. {address}")
         
         try:
-            choice = int(input(f"\n请选择要查看的地址 (1-{len(self.addresses)}): ").strip())
+            choice = int(safe_input(f"\n请选择要查看的地址 (1-{len(self.addresses)}): ", "0", allow_empty=True).strip() or 0)
             if 1 <= choice <= len(self.addresses):
                 address = self.addresses[choice - 1]
                 print(f"\n📊 地址详情: {address}")
@@ -3402,7 +3415,7 @@ class WalletMonitor:
             
             print(f"{Fore.CYAN}{Back.BLACK}{'='*80}{Style.RESET_ALL}")
             
-            choice = input(f"{Fore.YELLOW}请选择操作 (1-6): {Style.RESET_ALL}").strip()
+            choice = safe_input(f"{Fore.YELLOW}请选择操作 (1-6): {Style.RESET_ALL}", "6", allow_empty=True).strip()
             
             if choice == "1":
                 self.view_recent_logs(log_file)
@@ -4496,25 +4509,23 @@ def safe_input(prompt, default="", allow_empty=False):
             user_input = input(prompt).strip()
             return user_input if user_input else default
         except (EOFError, KeyboardInterrupt):
-            print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
+            if default:
+                print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
             return default
     
     # 非交互式环境的处理
     if not is_interactive():
-        if allow_empty or default:
+        if default:
             print(f"⚠️ 非交互式环境，使用默认值: {default}")
-            return default
-        else:
-            # 对于关键输入，在非交互式环境中使用默认值
-            print(f"⚠️ 非交互式环境，使用默认值: {default}")
-            return default
+        return default
     
     # 正常交互式环境
     try:
         user_input = input(prompt).strip()
         return user_input if user_input else default
     except (EOFError, KeyboardInterrupt):
-        print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
+        if default:
+            print(f"\n⚠️ 检测到输入中断，使用默认值: {default}")
         return default
 
 def ask_resume():
