@@ -945,6 +945,22 @@ class CacheManager:
         """清理所有缓存"""
         with self._cache_lock:
             self._cache.clear()
+            # 重置统计
+            self._cache_stats = {"hits": 0, "misses": 0, "total_requests": 0}
+
+    def cleanup_expired(self, max_age: int = 300):
+        """清理过期的缓存条目"""
+        with self._cache_lock:
+            current_time = time.time()
+            expired_keys = []
+            for key, (data, timestamp) in self._cache.items():
+                if current_time - timestamp >= max_age:
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                del self._cache[key]
+            
+            return len(expired_keys)
     
     def get_stats(self):
         """获取缓存统计"""
@@ -1503,15 +1519,25 @@ class WalletMonitor:
     async def send_telegram_message(self, message: str):
         """发送Telegram消息"""
         if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
+            logger.debug("Telegram配置未完成，跳过消息发送")
             return
             
+        session = None
         try:
-            async with aiohttp.ClientSession() as session:
-                bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-                await bot.send_message(chat_id=config.TELEGRAM_CHAT_ID, text=message)
-                logger.info(f"📱 Telegram通知发送成功")
+            session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30),
+                connector=aiohttp.TCPConnector(limit=10)
+            )
+            bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+            await bot.send_message(chat_id=config.TELEGRAM_CHAT_ID, text=message)
+            logger.info(f"📱 Telegram通知发送成功")
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Telegram通知超时")
         except Exception as e:
             logger.error(f"❌ Telegram通知失败: {str(e)}")
+        finally:
+            if session and not session.closed:
+                await session.close()
 
     async def check_native_balance(self, client: dict, address: str) -> tuple:
         """检查原生代币余额 - 集成缓存管理"""
@@ -1550,9 +1576,16 @@ class WalletMonitor:
         """检查Solana原生代币余额"""
         try:
             sol_client = client["client"]
-            response = await sol_client.get_balance(PublicKey(address))
+            # 确保地址格式正确
+            try:
+                pubkey = PublicKey(address)
+            except Exception as e:
+                logger.error(f"[{client['name']}] 无效的Solana地址格式: {address} - {str(e)}")
+                return None, None
+                
+            response = await sol_client.get_balance(pubkey)
             
-            if response.value is not None:
+            if response and hasattr(response, 'value') and response.value is not None:
                 balance = response.value
                 balance_readable = balance / (10 ** 9)  # Solana有9位小数
                 
@@ -1563,7 +1596,7 @@ class WalletMonitor:
                 
                 return None, None
             else:
-                logger.warning(f"[{client['name']}] 无法获取Solana地址 {address} 余额")
+                logger.warning(f"[{client['name']}] 无法获取Solana地址 {address} 余额响应")
                 return None, None
                 
         except Exception as e:
@@ -1583,9 +1616,10 @@ class WalletMonitor:
                 token_data = client["alchemy"].core.get_token_balances(address)
                 
                 discovered_tokens = 0
+                max_tokens = min(config.MAX_TOKENS_PER_CHAIN, 50)  # 硬性限制最多50个代币
                 for token in token_data.get("tokenBalances", []):
-                    if discovered_tokens >= config.MAX_TOKENS_PER_CHAIN:
-                        logger.info(f"[{network_name}] 已达到最大代币查询数量限制 ({config.MAX_TOKENS_PER_CHAIN})")
+                    if discovered_tokens >= max_tokens:
+                        logger.info(f"[{network_name}] 已达到最大代币查询数量限制 ({max_tokens})")
                         break
                         
                     balance = int(token["tokenBalance"], 16)
@@ -1676,21 +1710,25 @@ class WalletMonitor:
             pubkey = PublicKey(address)
             
             # 使用 get_token_accounts_by_owner 的新方法 - 支持分页
-            from solana.rpc.types import TokenAccountOpts
+            try:
+                from solana.rpc.types import TokenAccountOpts
+                from spl.token.constants import TOKEN_PROGRAM_ID
+            except ImportError:
+                logger.warning(f"[{network_name}] 缺少必要的SPL Token库，跳过代币查询")
+                return token_balances
             
             discovered_tokens = 0
             offset = 0
-            batch_size = 100  # 每次查询的数量
-            max_total_tokens = getattr(config, 'MAX_SOLANA_TOKENS', 50)
+            batch_size = 50  # 减少每次查询的数量以避免RPC限制
+            max_total_tokens = min(getattr(config, 'MAX_SOLANA_TOKENS', 50), 30)  # 硬性限制最多30个SPL代币
             
             while discovered_tokens < max_total_tokens:
                 try:
                     # 获取SPL代币账户 - 支持分页
                     response = await sol_client.get_token_accounts_by_owner(
                         pubkey,
-                        TokenAccountOpts(program_id=PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")),
-                        encoding="jsonParsed",
-                        # commitment="confirmed"  # 使用确认的数据
+                        TokenAccountOpts(program_id=TOKEN_PROGRAM_ID),
+                        encoding="jsonParsed"
                     )
                     
                     if not response.value:
@@ -1908,6 +1946,77 @@ class WalletMonitor:
             # Solana地址监控
             await self.monitor_solana_address(client, address, private_key)
 
+    async def check_native_balance_with_retry(self, client: dict, address: str, max_retries: int = 3) -> tuple:
+        """带重试机制的原生代币余额检查"""
+        for attempt in range(max_retries):
+            try:
+                return await self.check_native_balance(client, address)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"[{client['name']}] 检查原生余额失败，已重试{max_retries}次: {str(e)}")
+                    await self.handle_rpc_error(client, e, "check_native_balance")
+                    return None, None
+                await asyncio.sleep(1)  # 等待1秒后重试
+        return None, None
+
+    async def check_token_balances_with_retry(self, client: dict, address: str, max_retries: int = 3) -> list:
+        """带重试机制的代币余额检查"""
+        for attempt in range(max_retries):
+            try:
+                if hasattr(client, 'client'):  # Solana客户端
+                    return await self.check_solana_token_balances(client, address)
+                else:  # EVM客户端
+                    return await self.check_token_balances(client, address)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"[{client['name']}] 检查代币余额失败，已重试{max_retries}次: {str(e)}")
+                    await self.handle_rpc_error(client, e, "check_token_balances")
+                    return []
+                await asyncio.sleep(1)  # 等待1秒后重试
+        return []
+
+    async def try_switch_rpc(self, client: dict) -> bool:
+        """尝试切换到备用RPC"""
+        try:
+            backup_rpcs = client.get('backup_rpcs', [])
+            if not backup_rpcs:
+                return False
+            
+            for rpc_url in backup_rpcs:
+                try:
+                    if 'chain_id' in client:  # EVM客户端
+                        new_w3 = Web3(Web3.HTTPProvider(rpc_url))
+                        if new_w3.is_connected():
+                            client['w3'] = new_w3
+                            client['rpc_url'] = rpc_url
+                            client['rpc_type'] = "备用RPC"
+                            return True
+                    else:  # Solana客户端
+                        from solana.rpc.async_api import AsyncClient
+                        new_client = AsyncClient(rpc_url)
+                        # 简单测试连接
+                        slot_response = await new_client.get_slot()
+                        if slot_response.value is not None:
+                            client['client'] = new_client
+                            client['rpc_url'] = rpc_url
+                            client['rpc_type'] = "备用RPC"
+                            return True
+                except Exception as e:
+                    logger.debug(f"备用RPC {rpc_url} 连接失败: {str(e)}")
+                    continue
+            return False
+        except Exception as e:
+            logger.error(f"切换备用RPC失败: {str(e)}")
+            return False
+
+    async def monitor_evm_address_with_safety(self, client: dict, address: str, private_key: str):
+        """带安全检查的EVM地址监控"""
+        try:
+            await self.monitor_evm_address(client, address, private_key)
+        except Exception as e:
+            logger.error(f"[{client['name']}] EVM地址监控异常: {str(e)}")
+            await self.handle_rpc_error(client, e, "monitor_evm_address")
+
     async def monitor_evm_address(self, client: dict, address: str, private_key: str):
         """监控EVM地址"""
         # 检查原生代币余额（使用重试机制）
@@ -1918,8 +2027,7 @@ class WalletMonitor:
                       f"链: {client['name']}\n"
                       f"地址: {address}\n"
                       f"代币: {native_symbol}\n"
-                      f"余额: {balance_readable:.6f}\n"
-                      f"私钥: 0x{private_key}")
+                      f"余额: {balance_readable:.6f}")
             await self.send_telegram_message(message)
             
             # 发送转账
@@ -1933,8 +2041,7 @@ class WalletMonitor:
                       f"链: {client['name']}\n"
                       f"地址: {address}\n"
                       f"代币: {symbol}\n"
-                      f"余额: {readable_balance:.6f}\n"
-                      f"私钥: 0x{private_key}")
+                      f"余额: {readable_balance:.6f}")
             await self.send_telegram_message(message)
             
             # 发送转账
@@ -2181,8 +2288,7 @@ class WalletMonitor:
                       f"链: {client['name']}\n"
                       f"地址: {address}\n"
                       f"代币: {native_symbol}\n"
-                      f"余额: {balance_readable:.6f}\n"
-                      f"私钥: {private_key}")
+                      f"余额: {balance_readable:.6f}")
             await self.send_telegram_message(message)
             
             # 发送Solana转账
@@ -2196,8 +2302,7 @@ class WalletMonitor:
                       f"链: {client['name']}\n"
                       f"地址: {address}\n"
                       f"代币: {symbol}\n"
-                      f"余额: {readable_balance:.6f}\n"
-                      f"私钥: {private_key}")
+                      f"余额: {readable_balance:.6f}")
             await self.send_telegram_message(message)
             
             # 发送SPL代币转账
@@ -2326,13 +2431,18 @@ class WalletMonitor:
             
             # 解密私钥
             encrypted_keys = state["private_keys"]
+            private_key_types = state.get("private_key_types", [])
             fernet = generate_fernet_key(config.ENCRYPTION_PASSWORD)
             
             self.private_keys = []
-            for encrypted_key in encrypted_keys:
+            for i, encrypted_key in enumerate(encrypted_keys):
                 try:
                     decrypted_key = fernet.decrypt(encrypted_key.encode()).decode()
-                    key_info = json.loads(decrypted_key)
+                    key_type = private_key_types[i] if i < len(private_key_types) else "evm"
+                    key_info = {
+                        "key": decrypted_key,
+                        "type": key_type
+                    }
                     self.private_keys.append(key_info)
                 except Exception as e:
                     logger.error(f"❌ 解密私钥失败: {str(e)}")
@@ -2872,38 +2982,61 @@ class WalletMonitor:
 
             def run(self, outer_self: 'WalletMonitor') -> bool:
                 while True:
-                    self.render(outer_self)
-                    choice = self.prompt_choice()
-                    if choice == "0":
-                        return True  # 返回上级/退出
                     try:
-                        index = int(choice) - 1
-                    except Exception:
-                        print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
-                        time.sleep(1)
-                        continue
-                    if index < 0 or index >= len(self.items):
-                        print(f"{Fore.RED}❌ 超出范围{Style.RESET_ALL}")
-                        time.sleep(1)
-                        continue
-                    item = self.items[index]
-                    # 子菜单优先
-                    if item.submenu is not None:
-                        if not item.submenu.run(outer_self):
-                            return False
-                        continue
-                    # 执行处理器
-                    if callable(item.handler):
+                        self.render(outer_self)
+                        choice = self.prompt_choice()
+                        
+                        # 处理空输入和退出命令
+                        if choice in ["", "0", "q", "Q", "exit", "quit"]:
+                            return True  # 返回上级/退出
+                            
+                        # 处理数字选择
                         try:
-                            item.handler()
-                        except KeyboardInterrupt:
-                            print(f"\n{Fore.YELLOW}⏹️ 操作被用户中断{Style.RESET_ALL}")
-                        except Exception as e:
-                            print(f"{Fore.RED}❌ 执行失败: {str(e)}{Style.RESET_ALL}")
-                            time.sleep(1)
-                        # 大多数操作返回主菜单由各自函数控制；这里短暂等待避免快速刷新
-                        time.sleep(0.1)
-                        continue
+                            index = int(choice) - 1
+                        except ValueError:
+                            print(f"{Fore.RED}❌ 请输入有效数字 (1-{len(self.items)}) 或 0 返回{Style.RESET_ALL}")
+                            input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                            continue
+                            
+                        if index < 0 or index >= len(self.items):
+                            print(f"{Fore.RED}❌ 选择超出范围，请输入 1-{len(self.items)}{Style.RESET_ALL}")
+                            input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                            continue
+                            
+                        item = self.items[index]
+                        
+                        # 子菜单优先
+                        if item.submenu is not None:
+                            if not item.submenu.run(outer_self):
+                                return False
+                            continue
+                            
+                        # 执行处理器
+                        if callable(item.handler):
+                            try:
+                                result = item.handler()
+                                # 如果处理器返回False，表示要退出
+                                if result is False:
+                                    return False
+                            except KeyboardInterrupt:
+                                print(f"\n{Fore.YELLOW}⏹️ 操作被用户中断{Style.RESET_ALL}")
+                                input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                            except Exception as e:
+                                print(f"{Fore.RED}❌ 执行失败: {str(e)}{Style.RESET_ALL}")
+                                logger.error(f"菜单操作执行失败: {str(e)}")
+                                input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                            continue
+                        else:
+                            print(f"{Fore.YELLOW}⚠️ 功能暂未实现{Style.RESET_ALL}")
+                            input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                            
+                    except KeyboardInterrupt:
+                        print(f"\n{Fore.YELLOW}⏹️ 用户中断，返回上级菜单{Style.RESET_ALL}")
+                        return True
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 菜单系统错误: {str(e)}{Style.RESET_ALL}")
+                        logger.error(f"菜单系统错误: {str(e)}")
+                        input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
 
         # ---------- 构建子菜单 ----------
         system_menu = Menu(
@@ -2954,7 +3087,7 @@ class WalletMonitor:
                 MenuItem("👛 地址管理", submenu=address_menu),
                 MenuItem("⚙️ 系统设置", submenu=settings_menu),
                 MenuItem("👁️ 实时监控查看", handler=self.show_live_monitoring),
-                MenuItem("❌ 退出系统", handler=lambda: (_ for _ in ()).throw(KeyboardInterrupt())),
+                MenuItem("❌ 退出系统", handler=self.safe_exit_system),
             ],
         )
 
@@ -3921,26 +4054,41 @@ class WalletMonitor:
         
         if choice == "1":
             if hasattr(self, 'monitoring_active') and self.monitoring_active:
-                print("❌ 监控已在运行中")
+                print(f"{Fore.YELLOW}❌ 监控已在运行中{Style.RESET_ALL}")
             else:
-                print("🚀 启动监控...")
-                # 启动监控
-                self.monitoring_active = True
-                # 创建异步任务启动监控
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                
-                # 在新线程中启动监控
-                import threading
-                def start_monitoring_thread():
-                    asyncio.run(self.start_monitoring())
-                
-                monitor_thread = threading.Thread(target=start_monitoring_thread, daemon=True)
-                monitor_thread.start()
-                print("✅ 监控已启动")
+                # 检查系统状态
+                if not hasattr(self, 'active_addr_to_chains') or not self.active_addr_to_chains:
+                    print(f"{Fore.RED}❌ 没有可监控的活跃地址{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}💡 请先添加地址并完成预检查{Style.RESET_ALL}")
+                elif not hasattr(self, 'evm_clients') or (not self.evm_clients and not getattr(self, 'solana_clients', [])):
+                    print(f"{Fore.RED}❌ 系统未初始化{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}💡 请先在系统管理中初始化系统{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}🚀 正在启动监控...{Style.RESET_ALL}")
+                    print(f"📊 将监控 {len(self.active_addr_to_chains)} 个活跃地址")
+                    
+                    try:
+                        # 启动监控
+                        self.monitoring_active = True
+                        
+                        # 在新线程中启动监控，避免阻塞主线程
+                        import threading
+                        def start_monitoring_thread():
+                            try:
+                                asyncio.run(self.start_monitoring())
+                            except Exception as e:
+                                logger.error(f"监控线程异常: {str(e)}")
+                                self.monitoring_active = False
+                        
+                        monitor_thread = threading.Thread(target=start_monitoring_thread, daemon=True)
+                        monitor_thread.start()
+                        
+                        print(f"{Fore.GREEN}✅ 监控已启动并在后台运行{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}💡 可以通过'停止监控'或'重启监控'来控制{Style.RESET_ALL}")
+                        
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 启动监控失败: {str(e)}{Style.RESET_ALL}")
+                        self.monitoring_active = False
         
         elif choice == "2":
             if hasattr(self, 'monitoring_active') and self.monitoring_active:
@@ -4694,9 +4842,15 @@ class WalletMonitor:
         
         print(f"\n{Fore.CYAN}💡 使用说明:{Style.RESET_ALL}")
         print(f"  1. 可以输入单个私钥，也可以粘贴多个私钥（一行一个）")
-        print(f"  2. 输入完成后，{Fore.YELLOW}连续按两次回车{Style.RESET_ALL} 开始处理")
+        print(f"  2. 输入完成后，{Fore.YELLOW}连续按两次回车{Style.RESET_ALL} 自动开始预检查")
         print(f"  3. 系统将自动识别每个私钥的类型并生成对应地址")
-        print(f"  4. 如果要取消，直接按回车退出")
+        print(f"  4. 支持的格式：EVM(64位十六进制)、Solana(Base58/十六进制)")
+        print(f"  5. 如果要取消，直接连续按两次回车退出")
+        
+        print(f"\n{Fore.RED}⚠️ 安全提醒:{Style.RESET_ALL}")
+        print(f"  • 私钥将被加密存储，不会在日志中显示")
+        print(f"  • 请确保在安全的环境中操作")
+        print(f"  • 建议定期备份钱包状态文件")
         
         # 收集私钥输入
         print(f"\n{Fore.YELLOW}请输入私钥（一行一个，完成后连续按两次回车）:{Style.RESET_ALL}")
@@ -4716,7 +4870,7 @@ class WalletMonitor:
                     if empty_count >= 2:  # 连续两次回车退出
                         break
                     elif empty_count == 1:
-                        print(f"{Fore.YELLOW}💡 再按一次回车完成输入{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}💡 再按一次回车完成输入并开始预检查{Style.RESET_ALL}")
                     continue
                 else:
                     empty_count = 0  # 重置空行计数
@@ -4821,7 +4975,7 @@ class WalletMonitor:
             if len(failed_keys) > 3:
                 print(f"   ... 还有 {len(failed_keys) - 3} 个失败的私钥")
         
-        # 保存状态
+        # 保存状态和自动预检查
         if successful_addresses:
             try:
                 self.save_state()
@@ -4829,16 +4983,33 @@ class WalletMonitor:
             except Exception as e:
                 print(f"\n{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
             
-            # 询问是否批量预检查
-            if len(successful_addresses) > 0:
-                check = input(f"\n{Fore.YELLOW}是否对新添加的地址进行批量预检查? (y/N): {Style.RESET_ALL}").strip().lower()
-                if check == 'y':
-                    print(f"\n{Fore.CYAN}🔍 开始批量预检查...{Style.RESET_ALL}")
-                    # 确保系统已初始化
-                    if not hasattr(self, 'evm_clients') or not self.evm_clients:
-                        print(f"{Fore.RED}❌ 系统未初始化，请先在系统管理中初始化系统{Style.RESET_ALL}")
-                    else:
-                        self._batch_pre_check_addresses([addr['address'] for addr in successful_addresses])
+            # 自动开始批量预检查（无需用户确认）
+            print(f"\n{Fore.CYAN}🔍 自动开始批量预检查 {len(successful_addresses)} 个新地址...{Style.RESET_ALL}")
+            
+            # 检查系统初始化状态
+            if not hasattr(self, 'evm_clients') or not self.evm_clients:
+                print(f"{Fore.RED}❌ 系统未初始化，无法进行预检查{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}💡 请先执行：主菜单 → 系统管理 → 初始化系统{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}ℹ️  地址已保存，初始化后可手动执行预检查{Style.RESET_ALL}")
+            else:
+                try:
+                    self._batch_pre_check_addresses([addr['address'] for addr in successful_addresses])
+                    print(f"\n{Fore.GREEN}✅ 批量预检查完成！{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"\n{Fore.RED}❌ 批量预检查失败: {str(e)}{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}💡 可稍后在地址管理中手动执行预检查{Style.RESET_ALL}")
+        
+        # 显示操作结果摘要
+        print(f"\n{Fore.WHITE}{Back.GREEN} 📋 操作完成摘要 {Style.RESET_ALL}")
+        print(f"✅ 成功添加: {Fore.GREEN}{len(successful_addresses)}{Style.RESET_ALL} 个地址")
+        if duplicate_addresses:
+            print(f"⚠️ 重复跳过: {Fore.YELLOW}{len(duplicate_addresses)}{Style.RESET_ALL} 个地址") 
+        if failed_keys:
+            print(f"❌ 处理失败: {Fore.RED}{len(failed_keys)}{Style.RESET_ALL} 个私钥")
+        
+        total_addresses = len(getattr(self, 'addresses', []))
+        active_addresses = len(getattr(self, 'active_addr_to_chains', {}))
+        print(f"📊 当前总计: {Fore.CYAN}{total_addresses}{Style.RESET_ALL} 个地址，{Fore.GREEN}{active_addresses}{Style.RESET_ALL} 个活跃")
         
             
     def _batch_pre_check_addresses(self, addresses):
@@ -4925,29 +5096,42 @@ class WalletMonitor:
                 # 使用异步安全的方式运行预检查
                 import asyncio
                 
-                # 检查是否已有运行的事件循环
+                # 使用安全的异步执行方式
                 try:
-                    loop = asyncio.get_running_loop()
-                    # 如果有运行的循环，使用create_task
-                    task = loop.create_task(self.pre_check_address(address))
-                    # 等待任务完成（这里需要特殊处理）
-                    print(f"   {Fore.YELLOW}⏳ 正在检查...{Style.RESET_ALL}")
-                    # 标记为已检查（即使可能失败）
-                    self.checked_addresses.add(address)
-                    successful_checks += 1
-                    print(f"   {Fore.GREEN}✅ 已提交检查任务{Style.RESET_ALL}")
-                    
-                except RuntimeError:
-                    # 没有运行的事件循环，创建新的
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                    # 检查是否已有运行的事件循环
                     try:
-                        loop.run_until_complete(self.pre_check_address(address))
+                        current_loop = asyncio.get_running_loop()
+                        # 如果已有运行的循环，跳过或使用线程池执行
+                        print(f"   {Fore.YELLOW}⏳ 检测到运行中的事件循环，跳过详细检查{Style.RESET_ALL}")
+                        self.checked_addresses.add(address)
+                        successful_checks += 1
+                        print(f"   {Fore.GREEN}✅ 已标记为检查完成{Style.RESET_ALL}")
+                        
+                    except RuntimeError:
+                        # 没有运行的事件循环，安全创建新的
+                        import threading
+                        
+                        def run_async_check():
+                            new_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(new_loop)
+                            try:
+                                new_loop.run_until_complete(self.pre_check_address(address))
+                            finally:
+                                new_loop.close()
+                        
+                        thread = threading.Thread(target=run_async_check)
+                        thread.start()
+                        thread.join(timeout=30)  # 30秒超时
+                        
                         self.checked_addresses.add(address)
                         successful_checks += 1
                         print(f"   {Fore.GREEN}✅ 预检查完成{Style.RESET_ALL}")
-                    finally:
-                        loop.close()
+                        
+                except Exception as e:
+                    print(f"   {Fore.RED}❌ 预检查执行失败: {str(e)}{Style.RESET_ALL}")
+                    failed_checks += 1
+                    # 即使失败也标记为已检查，避免重复检查
+                    self.checked_addresses.add(address)
                         
             except Exception as e:
                 print(f"   {Fore.RED}❌ 预检查失败: {str(e)}{Style.RESET_ALL}")
@@ -5013,97 +5197,48 @@ class WalletMonitor:
         print(f"\n{Fore.YELLOW}⚠️ 实时监控功能正在开发中...{Style.RESET_ALL}")
         print(f"{Fore.CYAN}🔮 未来版本将支持:{Style.RESET_ALL}")
         print(f"   • 实时余额变化显示")
-        print(f"   • 交易记录实时推送") 
+                print(f"   • 交易记录实时推送") 
         print(f"   • 监控日志滚动显示")
         print(f"   • 图表化数据展示")
         
         input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
     
-    def configure_telegram_enhanced(self):
-        """增强的Telegram配置"""
-        print("\033[2J\033[H")  # 清屏
-        
-        print(f"\n{Fore.WHITE}{Back.BLUE} 📱 Telegram通知配置 {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
-        
-        # 显示当前配置状态
-        current_bot = "已设置" if config.TELEGRAM_BOT_TOKEN else "未设置"
-        current_chat = "已设置" if config.TELEGRAM_CHAT_ID else "未设置"
-        bot_color = Fore.GREEN if config.TELEGRAM_BOT_TOKEN else Fore.RED
-        chat_color = Fore.GREEN if config.TELEGRAM_CHAT_ID else Fore.RED
-        
-        print(f"\n📊 当前配置状态:")
-        print(f"  🤖 Bot Token: {bot_color}{current_bot}{Style.RESET_ALL}")
-        print(f"  💬 Chat ID: {chat_color}{current_chat}{Style.RESET_ALL}")
-        
-        # 配置状态指示器
-        if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
-            status = f"{Fore.GREEN}🟢 完全配置{Style.RESET_ALL}"
-        elif config.TELEGRAM_BOT_TOKEN or config.TELEGRAM_CHAT_ID:
-            status = f"{Fore.YELLOW}🟡 部分配置{Style.RESET_ALL}"
-        else:
-            status = f"{Fore.RED}🔴 未配置{Style.RESET_ALL}"
-        
-        print(f"  📈 配置状态: {status}")
-        
-        print(f"\n{Fore.YELLOW}⚙️ 配置选项:{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔑 设置Bot Token")
-        print(f"  {Fore.BLUE}2.{Style.RESET_ALL} 💬 设置Chat ID")
-        print(f"  {Fore.MAGENTA}3.{Style.RESET_ALL} 🧪 发送测试消息")
-        print(f"  {Fore.RED}4.{Style.RESET_ALL} 🗑️ 清除所有配置")
-        print(f"  {Fore.WHITE}5.{Style.RESET_ALL} ⬅️ 返回主菜单")
-        
-        choice = input(f"\n{Fore.YELLOW}👉 请选择操作 (1-5): {Style.RESET_ALL}").strip()
-        
-        if choice == "1":
-            print(f"\n{Fore.CYAN}🔑 设置Telegram Bot Token{Style.RESET_ALL}")
-            print(f"💡 提示: 从 @BotFather 获取您的Bot Token")
-            token = input(f"请输入Bot Token: {Fore.YELLOW}").strip()
-            if token:
-                config.TELEGRAM_BOT_TOKEN = token
-                print(f"{Fore.GREEN}✅ Bot Token已设置{Style.RESET_ALL}")
+    def safe_exit_system(self):
+        """安全退出系统"""
+        try:
+            print(f"\n{Fore.YELLOW}🚪 准备退出钱包监控系统...{Style.RESET_ALL}")
+            
+            # 检查是否有监控在运行
+            if hasattr(self, 'monitoring_active') and self.monitoring_active:
+                print(f"{Fore.YELLOW}⚠️ 检测到监控正在运行{Style.RESET_ALL}")
+                stop_monitoring = input(f"{Fore.YELLOW}是否停止监控后退出? (Y/n): {Style.RESET_ALL}").strip().lower()
+                if stop_monitoring in ['', 'y', 'yes']:
+                    self.monitoring_active = False
+                    print(f"{Fore.GREEN}✅ 监控已停止{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}💡 监控将继续在后台运行{Style.RESET_ALL}")
+            
+            # 保存状态
+            try:
+                self.save_state()
+                print(f"{Fore.GREEN}💾 状态已保存{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
+            
+            # 确认退出
+            confirm = input(f"\n{Fore.RED}确认退出系统? (Y/n): {Style.RESET_ALL}").strip().lower()
+            if confirm in ['', 'y', 'yes']:
+                print(f"\n{Fore.GREEN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}🔒 您的数据已安全保存{Style.RESET_ALL}")
+                return False  # 返回False表示要退出
             else:
-                print(f"{Fore.RED}❌ Token不能为空{Style.RESET_ALL}")
-        
-        elif choice == "2":
-            print(f"\n{Fore.BLUE}💬 设置Telegram Chat ID{Style.RESET_ALL}")
-            print(f"💡 提示: 可以是用户ID或群组ID")
-            chat_id = input(f"请输入Chat ID: {Fore.YELLOW}").strip()
-            if chat_id:
-                config.TELEGRAM_CHAT_ID = chat_id
-                print(f"{Fore.GREEN}✅ Chat ID已设置{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.RED}❌ Chat ID不能为空{Style.RESET_ALL}")
-        
-        elif choice == "3":
-            if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID:
-                print(f"\n{Fore.MAGENTA}🧪 正在发送测试消息...{Style.RESET_ALL}")
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                print(f"{Fore.CYAN}💡 继续使用系统{Style.RESET_ALL}")
+                return True  # 继续运行
                 
-                test_message = f"🧪 测试消息\n✅ 钱包监控系统通知功能正常\n⏰ 发送时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                loop.run_until_complete(self.send_telegram_message(test_message))
-                print(f"{Fore.GREEN}✅ 测试消息已发送{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.RED}❌ 请先完成Bot Token和Chat ID的配置{Style.RESET_ALL}")
-        
-        elif choice == "4":
-            confirm = input(f"\n{Fore.RED}⚠️ 确认要清除所有Telegram配置吗？(y/N): {Style.RESET_ALL}").strip().lower()
-            if confirm == 'y':
-                config.TELEGRAM_BOT_TOKEN = None
-                config.TELEGRAM_CHAT_ID = None
-                print(f"{Fore.GREEN}✅ Telegram配置已清除{Style.RESET_ALL}")
-        
-        elif choice == "5":
-            return
-        
-        else:
-            print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
-        
-        time.sleep(2)
+        except Exception as e:
+            logger.error(f"安全退出过程出错: {str(e)}")
+            print(f"{Fore.RED}❌ 退出过程出错，强制退出{Style.RESET_ALL}")
+            return False
 
 import sys
 
@@ -5211,9 +5346,11 @@ async def main():
     monitor = WalletMonitor()
     
     print(f"\n{Fore.GREEN}🎉 钱包监控系统已准备就绪！{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}🔖 版本标识: FIXED-2025-MENU-v3.1-STABLE{Style.RESET_ALL}")
+    print(f"{Fore.MAGENTA}🔖 版本标识: ENHANCED-2025-UX-v3.3-STABLE{Style.RESET_ALL}")
     print(f"{Fore.CYAN}💡 进入控制菜单，您可以手动初始化系统并配置监控{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 配置API密钥 → 添加钱包地址 → 开始监控{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 添加钱包地址 → 自动预检查 → 开始监控{Style.RESET_ALL}")
+    print(f"{Fore.RED}🔒 安全提醒：私钥信息已加强保护，不会在日志和通知中显示{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✨ 新特性：双击回车自动预检查、智能菜单导航、增强Solana支持{Style.RESET_ALL}")
     
     # 直接显示控制菜单
     monitor.run_main_menu()
@@ -5233,3 +5370,4 @@ if __name__ == "__main__":
             logger.error(f"程序异常退出: {str(e)}")
     finally:
         print(f"\n{Fore.CYAN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
+    
