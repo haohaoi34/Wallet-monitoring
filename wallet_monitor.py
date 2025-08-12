@@ -316,27 +316,40 @@ class Config:
     
     def _validate_addresses(self):
         """验证目标地址格式"""
+        validation_passed = True
+        
         try:
             # 验证EVM地址
             if not Web3.is_address(self.EVM_TARGET_ADDRESS):
                 print(f"⚠️ 无效的EVM目标地址: {self.EVM_TARGET_ADDRESS}")
                 print("🔧 请检查配置文件中的EVM_TARGET_ADDRESS设置")
-                return False
+                validation_passed = False
+            else:
+                print(f"✅ EVM目标地址验证通过: {self.EVM_TARGET_ADDRESS}")
             
             # 验证Solana地址（安全检查）
             try:
                 if SOLANA_AVAILABLE:
                     from solana.publickey import PublicKey
                     PublicKey(self.SOLANA_TARGET_ADDRESS)
-                    print(f"✅ 地址验证通过")
+                    print(f"✅ Solana目标地址验证通过: {self.SOLANA_TARGET_ADDRESS}")
                 else:
                     print(f"⚠️ Solana库未安装，跳过Solana地址验证")
             except Exception as e:
                 print(f"⚠️ Solana地址验证失败: {self.SOLANA_TARGET_ADDRESS}")
                 print(f"🔧 错误: {str(e)}")
-                return False
+                validation_passed = False
             
-            return True
+            # 验证其他配置项
+            if self.MIN_BALANCE_WEI <= 0:
+                print(f"⚠️ 最小余额阈值设置过小: {self.MIN_BALANCE_WEI}")
+                validation_passed = False
+                
+            if self.SLEEP_INTERVAL <= 0:
+                print(f"⚠️ 监控间隔设置无效: {self.SLEEP_INTERVAL}")
+                validation_passed = False
+            
+            return validation_passed
             
         except Exception as e:
             print(f"❌ 地址验证过程出错: {str(e)}")
@@ -519,17 +532,21 @@ def identify_private_key_type(private_key: str) -> str:
         # 1. 检查base58格式的Solana私钥
         if len(cleaned_key) >= 87 and len(cleaned_key) <= 88:
             try:
-                import base58
-                decoded = base58.b58decode(cleaned_key)
-                if len(decoded) == 64:
-                    # 进一步验证是否为有效的Solana私钥
-                    if SOLANA_AVAILABLE:
-                        from solana.keypair import Keypair
-                        Keypair.from_secret_key(decoded)
-                        return "solana"
-                    else:
-                        return "solana"  # 无法验证但格式正确
-            except Exception:
+                if BASE58_AVAILABLE:
+                    import base58
+                    decoded = base58.b58decode(cleaned_key)
+                    if len(decoded) == 64:
+                        # 进一步验证是否为有效的Solana私钥
+                        if SOLANA_AVAILABLE:
+                            from solana.keypair import Keypair
+                            Keypair.from_secret_key(decoded)
+                            return "solana"
+                        else:
+                            return "solana"  # 无法验证但格式正确
+                else:
+                    logger.warning("base58库不可用，无法验证Solana私钥格式")
+            except Exception as e:
+                logger.debug(f"Base58解码失败: {str(e)}")
                 pass
         
         # 2. 检查base64格式的Solana私钥
@@ -1975,6 +1992,19 @@ class WalletMonitor:
                 await asyncio.sleep(1)  # 等待1秒后重试
         return []
 
+    async def check_solana_native_balance_with_retry(self, client: dict, address: str, max_retries: int = 3) -> tuple:
+        """带重试机制的Solana原生代币余额检查"""
+        for attempt in range(max_retries):
+            try:
+                return await self.check_solana_native_balance(client, address)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"[{client['name']}] 检查Solana原生余额失败，已重试{max_retries}次: {str(e)}")
+                    await self.handle_rpc_error(client, e, "check_solana_native_balance")
+                    return None, None
+                await asyncio.sleep(1)  # 等待1秒后重试
+        return None, None
+
     async def try_switch_rpc(self, client: dict) -> bool:
         """尝试切换到备用RPC"""
         try:
@@ -2281,7 +2311,7 @@ class WalletMonitor:
     async def monitor_solana_address(self, client: dict, address: str, private_key: str):
         """监控Solana地址"""
         # 检查原生代币余额（使用重试机制）
-        native_balance, native_symbol = await self.check_native_balance_with_retry(client, address)
+        native_balance, native_symbol = await self.check_solana_native_balance_with_retry(client, address)
         if native_balance:
             balance_readable = native_balance / (10 ** 9)  # Solana有9位小数
             message = (f"💰 发现Solana余额!\n"
@@ -2866,19 +2896,41 @@ class WalletMonitor:
         print(f"{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
         
         # 检查是否已经初始化
-        if self.evm_clients or self.solana_clients:
-            print(f"\n{Fore.YELLOW}⚠️ 系统已部分初始化{Style.RESET_ALL}")
-            print(f"   EVM链客户端: {len(self.evm_clients)} 个")
-            print(f"   Solana客户端: {len(self.solana_clients)} 个")
+        evm_count = len(getattr(self, 'evm_clients', []))
+        solana_count = len(getattr(self, 'solana_clients', []))
+        
+        if evm_count > 0 or solana_count > 0:
+            print(f"\n{Fore.GREEN}📊 系统初始化状态{Style.RESET_ALL}")
+            print(f"   🔗 EVM链客户端: {Fore.BLUE}{evm_count}{Style.RESET_ALL} 个")
+            print(f"   ☀️ Solana客户端: {Fore.MAGENTA}{solana_count}{Style.RESET_ALL} 个")
+            print(f"   📈 总连接数: {Fore.CYAN}{evm_count + solana_count}{Style.RESET_ALL}")
             
-            reinit = safe_input(f"\n{Fore.YELLOW}是否重新初始化? (y/N): {Style.RESET_ALL}", "n", allow_empty=True).lower()
-            if reinit != 'y':
-                safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+            print(f"\n{Fore.YELLOW}选择操作:{Style.RESET_ALL}")
+            print(f"  1. 保持现有配置并返回")
+            print(f"  2. 重新初始化所有连接")
+            print(f"  3. 仅重新初始化EVM链")
+            print(f"  4. 仅重新初始化Solana链")
+            
+            choice = safe_input(f"\n{Fore.YELLOW}请选择 (1-4): {Style.RESET_ALL}", "1", allow_empty=True)
+            
+            if choice == "1":
+                print(f"\n{Fore.GREEN}✅ 保持现有配置{Style.RESET_ALL}")
+                input(f"{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
                 return
-            
-            # 清空现有客户端
-            self.evm_clients = []
-            self.solana_clients = []
+            elif choice == "2":
+                print(f"\n{Fore.CYAN}🔄 重新初始化所有连接...{Style.RESET_ALL}")
+                self.evm_clients = []
+                self.solana_clients = []
+            elif choice == "3":
+                print(f"\n{Fore.CYAN}🔄 重新初始化EVM链连接...{Style.RESET_ALL}")
+                self.evm_clients = []
+            elif choice == "4":
+                print(f"\n{Fore.CYAN}🔄 重新初始化Solana连接...{Style.RESET_ALL}")
+                self.solana_clients = []
+            else:
+                print(f"\n{Fore.GREEN}✅ 保持现有配置{Style.RESET_ALL}")
+                input(f"{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
+                return
         
         print(f"\n{Fore.YELLOW}📋 开始系统初始化...{Style.RESET_ALL}")
         
@@ -2913,11 +2965,34 @@ class WalletMonitor:
         # 检查是否有保存的状态
         print(f"\n{Fore.YELLOW}📂 检查保存的配置...{Style.RESET_ALL}")
         if self.load_state():
-            print(f"{Fore.GREEN}✅ 已加载保存的地址配置 - {len(self.addresses)} 个地址{Style.RESET_ALL}")
+            addr_count = len(getattr(self, 'addresses', []))
+            active_count = len(getattr(self, 'active_addr_to_chains', {}))
+            print(f"{Fore.GREEN}✅ 已加载保存的地址配置{Style.RESET_ALL}")
+            print(f"   📊 总地址: {addr_count} 个，活跃地址: {active_count} 个")
+            
+            # 智能建议
+            if addr_count == 0:
+                print(f"\n{Fore.CYAN}💡 建议下一步操作：{Style.RESET_ALL}")
+                print(f"   1. 地址管理 → 添加新地址")
+                print(f"   2. 系统会自动进行预检查")
+                print(f"   3. 监控操作 → 启动监控")
+            elif active_count == 0:
+                print(f"\n{Fore.YELLOW}💡 建议下一步操作：{Style.RESET_ALL}")
+                print(f"   1. 地址管理 → 地址预检查")
+                print(f"   2. 等待预检查完成")
+                print(f"   3. 监控操作 → 启动监控")
+            else:
+                print(f"\n{Fore.GREEN}💡 系统已就绪，建议下一步操作：{Style.RESET_ALL}")
+                print(f"   1. 监控操作 → 启动监控")
+                print(f"   2. 查看实时监控状态")
         else:
-            print(f"{Fore.CYAN}💡 未找到保存的配置，可以在地址管理中添加新地址{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 未找到保存的配置{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}💡 建议下一步操作：{Style.RESET_ALL}")
+            print(f"   1. 地址管理 → 添加新地址")
+            print(f"   2. 系统会自动进行预检查")
+            print(f"   3. 监控操作 → 启动监控")
         
-        safe_input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}", "")
+        input(f"\n{Fore.YELLOW}💡 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def show_control_menu(self):
         """重写的简化菜单系统 - 更健壮的实现"""
@@ -4301,7 +4376,8 @@ class WalletMonitor:
                 try:
                     print(f"  🔗 链: {client['name']}")
                     
-                    if self.addr_type[address] == "evm":
+                    addr_type = self.addr_type.get(address, "evm")
+                    if addr_type == "evm":
                         # EVM链余额检查
                         # 检查原生代币（使用重试机制）
                         native_balance, native_symbol = await self.check_native_balance_with_retry(client, address)
@@ -4326,7 +4402,7 @@ class WalletMonitor:
                     else:
                         # Solana链余额检查
                         # 检查原生代币（使用重试机制）
-                        native_balance, native_symbol = await self.check_native_balance_with_retry(client, address)
+                        native_balance, native_symbol = await self.check_solana_native_balance_with_retry(client, address)
                         if native_balance:
                             balance_readable = native_balance / (10 ** 9)
                             print(f"    💰 原生代币: {native_symbol} {balance_readable:.6f}")
@@ -4883,8 +4959,12 @@ class WalletMonitor:
                 return
         
         if not private_keys:
-            print(f"\n{Fore.RED}❌ 没有输入任何私钥{Style.RESET_ALL}")
-            time.sleep(2)
+            print(f"\n{Fore.YELLOW}💡 没有输入任何私钥{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}📝 提示：{Style.RESET_ALL}")
+            print(f"  • 请输入至少一个有效的私钥")
+            print(f"  • 支持EVM和Solana格式的私钥")
+            print(f"  • 如需帮助，请查看使用说明")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
             return
         
         print(f"\n{Fore.CYAN}{'='*90}{Style.RESET_ALL}")
@@ -5197,7 +5277,7 @@ class WalletMonitor:
         print(f"\n{Fore.YELLOW}⚠️ 实时监控功能正在开发中...{Style.RESET_ALL}")
         print(f"{Fore.CYAN}🔮 未来版本将支持:{Style.RESET_ALL}")
         print(f"   • 实时余额变化显示")
-                print(f"   • 交易记录实时推送") 
+        print(f"   • 交易记录实时推送") 
         print(f"   • 监控日志滚动显示")
         print(f"   • 图表化数据展示")
         
@@ -5346,11 +5426,12 @@ async def main():
     monitor = WalletMonitor()
     
     print(f"\n{Fore.GREEN}🎉 钱包监控系统已准备就绪！{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}🔖 版本标识: ENHANCED-2025-UX-v3.3-STABLE{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}💡 进入控制菜单，您可以手动初始化系统并配置监控{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}📝 建议操作顺序：系统初始化 → 添加钱包地址 → 自动预检查 → 开始监控{Style.RESET_ALL}")
-    print(f"{Fore.RED}🔒 安全提醒：私钥信息已加强保护，不会在日志和通知中显示{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}✨ 新特性：双击回车自动预检查、智能菜单导航、增强Solana支持{Style.RESET_ALL}")
+    print(f"{Fore.MAGENTA}🔖 版本标识: OPTIMIZED-2025-SMART-v3.4-STABLE{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}💡 进入智能控制菜单，系统将提供操作建议和引导{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}📝 操作流程：系统初始化 → 添加钱包地址 → 自动预检查 → 启动监控{Style.RESET_ALL}")
+    print(f"{Fore.RED}🔒 安全保障：私钥加密存储，敏感信息过滤，安全传输{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✨ 智能特性：自动预检查、智能建议、错误恢复、人性化交互{Style.RESET_ALL}")
+    print(f"{Fore.BLUE}🛠️ 技术优化：Solana支持修复、异步优化、缓存管理、负载均衡{Style.RESET_ALL}")
     
     # 直接显示控制菜单
     monitor.run_main_menu()
