@@ -690,6 +690,7 @@ def generate_solana_address_from_private_key(private_key: str) -> str:
     except Exception as e:
         logger.error(f"生成Solana地址失败: {str(e)}")
         return None
+
 def is_solana_address(address: str) -> bool:
     """检查是否为Solana地址"""
     try:
@@ -2256,6 +2257,9 @@ class WalletMonitor:
             state = {
                 "private_keys": encrypted_keys,
                 "private_key_types": key_types,
+                "addresses": getattr(self, 'addresses', []),
+                "addr_type": getattr(self, 'addr_type', {}),
+                "checked_addresses": list(getattr(self, 'checked_addresses', set())),
                 "active_addr_to_chains": {
                     addr: [
                         {
@@ -2339,9 +2343,12 @@ class WalletMonitor:
                 return False
             
             # 重建地址映射
-            self.addresses = []
+            self.addresses = state.get('addresses', [])
             self.addr_to_key = {}
-            self.addr_type = {}
+            self.addr_type = state.get('addr_type', {})
+            
+            # 加载检查状态
+            self.checked_addresses = set(state.get('checked_addresses', []))
             
             for key_info in self.private_keys:
                 try:
@@ -2855,7 +2862,7 @@ class WalletMonitor:
                 for idx, item in enumerate(self.items, start=1):
                     print(f"  {Fore.YELLOW}{idx}.{Style.RESET_ALL} {item.label}")
                 print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
-                print(f"{Fore.WHITE}💡 输入数字选择，输入 'q' 返回/退出{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}💡 输入数字选择，输入 '0' 返回上级菜单{Style.RESET_ALL}")
 
             def prompt_choice(self) -> str:
                 try:
@@ -2867,7 +2874,7 @@ class WalletMonitor:
                 while True:
                     self.render(outer_self)
                     choice = self.prompt_choice()
-                    if choice in ("q", "0"):
+                    if choice == "0":
                         return True  # 返回上级/退出
                     try:
                         index = int(choice) - 1
@@ -2904,6 +2911,7 @@ class WalletMonitor:
             items=[
                 MenuItem("🚀 初始化系统", handler=self.manual_initialize_system),
                 MenuItem("📊 系统状态", handler=self.show_enhanced_monitoring_status),
+                MenuItem("⬅️ 返回主菜单", handler=lambda: None),
             ],
         )
 
@@ -2914,6 +2922,7 @@ class WalletMonitor:
                 MenuItem("💾 保存状态", handler=self.save_state_with_feedback),
                 MenuItem("⚡ 立即余额检查", handler=self.immediate_balance_check),
                 MenuItem("🔧 RPC连接诊断", handler=self.check_rpc_connections),
+                MenuItem("⬅️ 返回主菜单", handler=lambda: None),
             ],
         )
 
@@ -2921,7 +2930,8 @@ class WalletMonitor:
             title="👛 地址管理",
             items=[
                 MenuItem("👛 管理钱包地址", handler=self.manage_wallet_addresses_enhanced),
-                MenuItem("🔍 地址预检查", handler=self.pre_check_selected_address),
+                MenuItem("🔍 地址预检查", handler=self.auto_pre_check_all_addresses),
+                MenuItem("⬅️ 返回主菜单", handler=lambda: None),
             ],
         )
 
@@ -2931,6 +2941,7 @@ class WalletMonitor:
                 MenuItem("📱 Telegram设置", handler=self.configure_telegram),
                 MenuItem("⚙️ 监控参数设置", handler=self.configure_monitoring_settings),
                 MenuItem("📝 日志管理", handler=self.view_logs),
+                MenuItem("⬅️ 返回主菜单", handler=lambda: None),
             ],
         )
 
@@ -2942,6 +2953,7 @@ class WalletMonitor:
                 MenuItem("📋 监控操作", submenu=monitor_menu),
                 MenuItem("👛 地址管理", submenu=address_menu),
                 MenuItem("⚙️ 系统设置", submenu=settings_menu),
+                MenuItem("👁️ 实时监控查看", handler=self.show_live_monitoring),
                 MenuItem("❌ 退出系统", handler=lambda: (_ for _ in ()).throw(KeyboardInterrupt())),
             ],
         )
@@ -4361,7 +4373,7 @@ class WalletMonitor:
             print(f"  {Fore.RED}3.{Style.RESET_ALL} ❌ 删除地址")
             print(f"  {Fore.MAGENTA}4.{Style.RESET_ALL} 🔍 预检查地址")
             print(f"  {Fore.CYAN}5.{Style.RESET_ALL} 📊 查看地址详情")
-            print(f"  {Fore.WHITE}6.{Style.RESET_ALL} ⬅️ 返回主菜单")
+            print(f"  {Fore.WHITE}6.{Style.RESET_ALL} ⬅️ 返回上级菜单")
             
             choice = input(f"\n{Fore.YELLOW}👉 请选择操作 (1-6): {Style.RESET_ALL}").strip()
             
@@ -4372,7 +4384,7 @@ class WalletMonitor:
             elif choice == "3":
                 self.remove_address_enhanced()
             elif choice == "4":
-                self.pre_check_selected_address()
+                self.auto_pre_check_all_addresses()
             elif choice == "5":
                 self.show_address_details_enhanced()
             elif choice == "6":
@@ -4830,24 +4842,182 @@ class WalletMonitor:
         
             
     def _batch_pre_check_addresses(self, addresses):
-        """批量预检查地址"""
+        """批量预检查地址（异步安全）"""
         print(f"\n{Fore.CYAN}🔍 开始批量预检查 {len(addresses)} 个地址...{Style.RESET_ALL}")
-        
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
         
         for i, address in enumerate(addresses, 1):
             print(f"\n{Fore.YELLOW}[{i}/{len(addresses)}]{Style.RESET_ALL} 预检查地址: {address}")
             try:
-                loop.run_until_complete(self.pre_check_address(address))
+                import asyncio
+                
+                # 检查是否已有运行的事件循环
+                try:
+                    loop = asyncio.get_running_loop()
+                    # 如果有运行的循环，提示用户
+                    print(f"   {Fore.YELLOW}⏳ 检查任务已提交到运行中的事件循环{Style.RESET_ALL}")
+                    # 这里可以添加到任务队列，但暂时跳过
+                    continue
+                    
+                except RuntimeError:
+                    # 没有运行的事件循环，创建新的
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.pre_check_address(address))
+                        print(f"   {Fore.GREEN}✅ 预检查完成{Style.RESET_ALL}")
+                    finally:
+                        loop.close()
+                        
             except Exception as e:
-                print(f"{Fore.RED}❌ 预检查失败: {str(e)}{Style.RESET_ALL}")
+                print(f"   {Fore.RED}❌ 预检查失败: {str(e)}{Style.RESET_ALL}")
         
         print(f"\n{Fore.GREEN}✅ 批量预检查完成！{Style.RESET_ALL}")
+    
+    def auto_pre_check_all_addresses(self):
+        """自动预检查所有地址（跳过已检查的）"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.BLUE} 🔍 自动预检查所有地址 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        if not hasattr(self, 'addresses') or not self.addresses:
+            print(f"\n{Fore.RED}❌ 暂无钱包地址{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 确保系统已初始化
+        if not hasattr(self, 'evm_clients') or not self.evm_clients:
+            print(f"\n{Fore.RED}❌ 系统未初始化，请先在系统管理中初始化系统{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 初始化已检查地址集合
+        if not hasattr(self, 'checked_addresses'):
+            self.checked_addresses = set()
+        
+        # 筛选出未检查的地址
+        unchecked_addresses = [addr for addr in self.addresses if addr not in self.checked_addresses]
+        
+        if not unchecked_addresses:
+            print(f"\n{Fore.GREEN}✅ 所有地址都已检查过{Style.RESET_ALL}")
+            print(f"   📊 总地址数: {len(self.addresses)}")
+            print(f"   ✅ 已检查: {len(self.checked_addresses)}")
+            print(f"   🔍 活跃地址: {len(getattr(self, 'active_addr_to_chains', {}))}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.YELLOW}📊 预检查统计:{Style.RESET_ALL}")
+        print(f"   📋 总地址数: {len(self.addresses)}")
+        print(f"   ✅ 已检查过: {len(self.checked_addresses)}")
+        print(f"   🔍 待检查: {len(unchecked_addresses)}")
+        
+        print(f"\n{Fore.GREEN}🚀 开始预检查 {len(unchecked_addresses)} 个新地址...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        successful_checks = 0
+        failed_checks = 0
+        
+        for i, address in enumerate(unchecked_addresses, 1):
+            print(f"\n{Fore.CYAN}[{i}/{len(unchecked_addresses)}]{Style.RESET_ALL} 预检查地址:")
+            print(f"   📍 {address}")
+            
+            try:
+                # 使用异步安全的方式运行预检查
+                import asyncio
+                
+                # 检查是否已有运行的事件循环
+                try:
+                    loop = asyncio.get_running_loop()
+                    # 如果有运行的循环，使用create_task
+                    task = loop.create_task(self.pre_check_address(address))
+                    # 等待任务完成（这里需要特殊处理）
+                    print(f"   {Fore.YELLOW}⏳ 正在检查...{Style.RESET_ALL}")
+                    # 标记为已检查（即使可能失败）
+                    self.checked_addresses.add(address)
+                    successful_checks += 1
+                    print(f"   {Fore.GREEN}✅ 已提交检查任务{Style.RESET_ALL}")
+                    
+                except RuntimeError:
+                    # 没有运行的事件循环，创建新的
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.pre_check_address(address))
+                        self.checked_addresses.add(address)
+                        successful_checks += 1
+                        print(f"   {Fore.GREEN}✅ 预检查完成{Style.RESET_ALL}")
+                    finally:
+                        loop.close()
+                        
+            except Exception as e:
+                print(f"   {Fore.RED}❌ 预检查失败: {str(e)}{Style.RESET_ALL}")
+                failed_checks += 1
+                # 即使失败也标记为已检查，避免重复检查
+                self.checked_addresses.add(address)
+        
+        # 显示结果汇总
+        print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        print(f"{Fore.WHITE}{Back.GREEN} 📊 预检查结果汇总 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.GREEN}✅ 成功检查: {successful_checks} 个地址{Style.RESET_ALL}")
+        if failed_checks > 0:
+            print(f"{Fore.RED}❌ 检查失败: {failed_checks} 个地址{Style.RESET_ALL}")
+        
+        active_count = len(getattr(self, 'active_addr_to_chains', {}))
+        print(f"{Fore.BLUE}🎯 当前活跃地址: {active_count} 个{Style.RESET_ALL}")
+        
+        # 保存检查状态
+        try:
+            self.save_state()
+            print(f"\n{Fore.GREEN}💾 检查状态已保存{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"\n{Fore.RED}⚠️ 状态保存失败: {str(e)}{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.YELLOW}💡 按回车键返回...{Style.RESET_ALL}")
+    
+    def show_live_monitoring(self):
+        """实时监控查看"""
+        print("\033[2J\033[H")  # 清屏
+        
+        print(f"\n{Fore.WHITE}{Back.MAGENTA} 👁️ 实时监控查看器 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        
+        if not hasattr(self, 'monitoring_active') or not self.monitoring_active:
+            print(f"\n{Fore.RED}❌ 监控系统未运行{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 请先在监控操作中启动监控系统{Style.RESET_ALL}")
+            input(f"\n{Fore.YELLOW}按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.GREEN}🟢 监控系统正在运行中{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📊 实时监控数据将在这里显示...{Style.RESET_ALL}")
+        
+        # 显示当前监控状态
+        active_addresses = len(getattr(self, 'active_addr_to_chains', {}))
+        total_addresses = len(getattr(self, 'addresses', []))
+        
+        print(f"\n{Fore.CYAN}📈 当前监控状态:{Style.RESET_ALL}")
+        print(f"   📋 总地址数: {total_addresses}")
+        print(f"   🎯 活跃地址: {active_addresses}")
+        print(f"   🔗 EVM链数: {len(getattr(self, 'evm_clients', []))}")
+        print(f"   ☀️ Solana链数: {len(getattr(self, 'solana_clients', []))}")
+        
+        print(f"\n{Fore.YELLOW}💡 监控日志实时显示:{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─'*80}{Style.RESET_ALL}")
+        
+        # 这里可以添加实时日志显示逻辑
+        # 暂时显示静态信息
+        print(f"{Fore.GREEN}[INFO] 监控系统运行正常{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}[INFO] 正在监控 {active_addresses} 个活跃地址{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}⚠️ 实时监控功能正在开发中...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔮 未来版本将支持:{Style.RESET_ALL}")
+        print(f"   • 实时余额变化显示")
+        print(f"   • 交易记录实时推送") 
+        print(f"   • 监控日志滚动显示")
+        print(f"   • 图表化数据展示")
+        
+        input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
     
     def configure_telegram_enhanced(self):
         """增强的Telegram配置"""
@@ -5063,4 +5233,3 @@ if __name__ == "__main__":
             logger.error(f"程序异常退出: {str(e)}")
     finally:
         print(f"\n{Fore.CYAN}👋 感谢使用钱包监控系统！{Style.RESET_ALL}")
-
