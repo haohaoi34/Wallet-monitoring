@@ -4217,11 +4217,14 @@ class EVMMonitor:
         
         file_path = None
         if file_choice == '1':
-            # 自定义文件路径
-            default_path = "1.txt"
-            file_path = self.safe_input(f"\n{Fore.CYAN}➜ 请输入文件路径 [默认: {default_path}]: {Style.RESET_ALL}").strip()
-            if not file_path:
-                file_path = default_path
+            # 自定义文件名（智能搜索）
+            default_filename = "1.txt"
+            filename = self.safe_input(f"\n{Fore.CYAN}➜ 请输入文件名 [默认: {default_filename}]: {Style.RESET_ALL}").strip()
+            if not filename:
+                filename = default_filename
+            
+            # 智能搜索文件
+            file_path = self._smart_find_file(filename)
         elif file_choice == '2':
             # 列出当前目录文件
             file_path = self._select_file_from_directory()
@@ -4240,6 +4243,124 @@ class EVMMonitor:
         
         # 3. 匹配和导入RPC
         self._process_chainlist_data(chainlist_data)
+    
+    def _smart_find_file(self, filename: str) -> str:
+        """智能搜索文件，支持多个可能的路径"""
+        import os
+        import glob
+        
+        print(f"\n{Fore.CYAN}🔍 智能搜索文件: {filename}{Style.RESET_ALL}")
+        
+        # 搜索路径列表（按优先级排序）
+        search_paths = [
+            # 1. 当前工作目录
+            os.getcwd(),
+            # 2. 脚本所在目录
+            os.path.dirname(os.path.abspath(__file__)),
+            # 3. 用户主目录
+            os.path.expanduser("~"),
+            # 4. 桌面目录
+            os.path.expanduser("~/Desktop"),
+            # 5. 下载目录
+            os.path.expanduser("~/Downloads"),
+            # 6. 文档目录
+            os.path.expanduser("~/Documents"),
+            # 7. 根目录（服务器场景）
+            "/",
+            # 8. /tmp目录
+            "/tmp",
+            # 9. /home/用户名 目录
+            f"/home/{os.getenv('USER', 'root')}",
+        ]
+        
+        found_files = []
+        
+        # 在每个路径中搜索
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+                
+            try:
+                # 精确匹配
+                exact_path = os.path.join(search_path, filename)
+                if os.path.isfile(exact_path):
+                    file_size = os.path.getsize(exact_path) // 1024  # KB
+                    found_files.append({
+                        'path': exact_path,
+                        'size': file_size,
+                        'location': search_path,
+                        'match_type': 'exact'
+                    })
+                    print(f"  ✅ 找到精确匹配: {exact_path} ({file_size} KB)")
+                
+                # 模糊匹配（无扩展名的情况）
+                if '.' not in filename:
+                    for ext in ['.txt', '.json', '.data', '.log']:
+                        fuzzy_path = os.path.join(search_path, filename + ext)
+                        if os.path.isfile(fuzzy_path):
+                            file_size = os.path.getsize(fuzzy_path) // 1024
+                            found_files.append({
+                                'path': fuzzy_path,
+                                'size': file_size,
+                                'location': search_path,
+                                'match_type': 'fuzzy'
+                            })
+                            print(f"  🔍 找到模糊匹配: {fuzzy_path} ({file_size} KB)")
+                
+                # 通配符搜索
+                pattern = os.path.join(search_path, f"*{filename}*")
+                for wild_path in glob.glob(pattern):
+                    if os.path.isfile(wild_path) and wild_path not in [f['path'] for f in found_files]:
+                        file_size = os.path.getsize(wild_path) // 1024
+                        found_files.append({
+                            'path': wild_path,
+                            'size': file_size,
+                            'location': search_path,
+                            'match_type': 'wildcard'
+                        })
+                        print(f"  🌟 找到通配符匹配: {wild_path} ({file_size} KB)")
+                        
+            except (PermissionError, OSError):
+                # 跳过无权限访问的目录
+                continue
+        
+        if not found_files:
+            print(f"\n{Fore.RED}❌ 在所有可能的位置都没有找到文件: {filename}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 搜索的位置包括：{Style.RESET_ALL}")
+            for path in search_paths[:5]:  # 只显示前5个
+                if os.path.exists(path):
+                    print(f"   • {path}")
+            return None
+        
+        # 如果只找到一个文件，直接返回
+        if len(found_files) == 1:
+            selected_file = found_files[0]
+            print(f"\n{Fore.GREEN}✅ 自动选择文件: {selected_file['path']}{Style.RESET_ALL}")
+            return selected_file['path']
+        
+        # 多个文件时让用户选择
+        print(f"\n{Fore.YELLOW}📋 找到多个匹配的文件，请选择：{Style.RESET_ALL}")
+        for i, file_info in enumerate(found_files, 1):
+            match_icon = {
+                'exact': '🎯',
+                'fuzzy': '🔍', 
+                'wildcard': '🌟'
+            }.get(file_info['match_type'], '📄')
+            
+            print(f"  {Fore.GREEN}{i:2d}.{Style.RESET_ALL} {match_icon} {os.path.basename(file_info['path'])} "
+                  f"({file_info['size']} KB) - {file_info['location']}")
+        
+        choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择文件编号 (1-{len(found_files)}): {Style.RESET_ALL}").strip()
+        
+        if choice.isdigit():
+            index = int(choice) - 1
+            if 0 <= index < len(found_files):
+                selected_file = found_files[index]
+                print(f"\n{Fore.GREEN}✅ 已选择: {selected_file['path']}{Style.RESET_ALL}")
+                return selected_file['path']
+        
+        print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+        return None
     
     def _select_file_from_directory(self) -> str:
         """从当前目录选择文件"""
