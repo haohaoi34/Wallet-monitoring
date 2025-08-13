@@ -391,12 +391,31 @@ export PYTHONIOENCODING=utf-8
 # 创建Python启动器 - 最可靠的方法
 cat > "$INSTALL_DIR/launcher.py" << 'LAUNCHER_EOF'
 #!/usr/bin/env python3
-import os, sys
+import os, sys, subprocess
+
+# 设置工作目录
 os.chdir(os.path.expanduser("~/evm_monitor"))
 sys.path.insert(0, os.getcwd())
+
+# 设置环境变量
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ['PYTHONUNBUFFERED'] = '1'
+
 print("🚀 启动 EVM 钱包监控程序...")
 print("=" * 50)
-exec(open('evm_monitor.py').read())
+
+try:
+    # 使用subprocess启动，避免exec的问题
+    result = subprocess.run([sys.executable, 'evm_monitor.py', '--force-interactive'])
+    sys.exit(result.returncode)
+except KeyboardInterrupt:
+    print("\n👋 程序被用户中断")
+    sys.exit(0)
+except Exception as e:
+    print(f"❌ 启动失败: {e}")
+    print("💡 尝试直接执行...")
+    # 后备方案：直接exec
+    exec(open('evm_monitor.py').read())
 LAUNCHER_EOF
 
 # 启动程序
@@ -439,17 +458,31 @@ if [ -t 0 ] && [ -t 1 ]; then
     fi
 else
     # 非交互式环境（脚本、SSH等）
-    echo "📋 检测到非交互式环境"
-    echo "✅ 程序安装完成！"
+    echo "📋 检测到非交互式环境，将自动启动程序"
     echo ""
-    echo "🚀 启动方式："
-    echo "1. 交互式模式: cd $INSTALL_DIR && python3 evm_monitor.py"
-    echo "2. 自动监控模式: cd $INSTALL_DIR && python3 evm_monitor.py --auto-start"
-    echo "3. 守护进程模式: cd $INSTALL_DIR && python3 evm_monitor.py --daemon"
-    echo "4. 快捷启动: $INSTALL_DIR/start.sh"
+    echo "🚀 正在启动EVM钱包监控程序..."
+    echo "💡 提示：程序将以强制交互模式启动，支持菜单操作"
+    echo "=================================================="
+    sleep 1
+    
+    # 切换到程序目录
+    cd "$INSTALL_DIR" || exit 1
+    
+    # 设置环境变量以支持交互式操作
+    export PYTHONIOENCODING=utf-8
+    export PYTHONUNBUFFERED=1
+    export FORCE_COLOR=1
+    
+    # 启动程序，强制交互模式
+    echo "🔄 正在加载程序，请稍候..."
+    
+    # 直接启动程序
+    python3 launcher.py
+    
     echo ""
-    echo "📝 查看程序状态："
-    echo "   ps aux | grep evm_monitor"
+    success "程序运行结束"
     echo ""
-    success "安装脚本执行完成！请使用上述命令启动程序。"
+    echo "📝 如需重新启动："
+    echo "   cd $INSTALL_DIR && python3 evm_monitor.py"
+    echo "   或使用: $INSTALL_DIR/start.sh"
 fi
