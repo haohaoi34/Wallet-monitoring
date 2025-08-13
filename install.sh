@@ -455,35 +455,61 @@ if [ -t 0 ] && [ -t 1 ]; then
     fi
 else
     # 非交互式环境（脚本、SSH等）
-    echo "📋 检测到非交互式环境，将自动启动程序"
+    echo "📋 检测到非交互式环境，将创建启动脚本"
     echo ""
-    echo "🚀 正在启动EVM钱包监控程序..."
-    echo "💡 提示：程序将以强制交互模式启动，支持菜单操作"
-    echo "=================================================="
+    echo "✅ 程序安装完成！"
+    echo ""
+    echo "🚀 启动方式："
+    echo "1. 交互式模式: cd $INSTALL_DIR && python3 evm_monitor.py"
+    echo "2. 自动监控模式: cd $INSTALL_DIR && python3 evm_monitor.py --auto-start"
+    echo "3. 守护进程模式: cd $INSTALL_DIR && python3 evm_monitor.py --daemon"
+    echo "4. 快捷启动: $INSTALL_DIR/start.sh"
+    echo ""
+    echo "🔧 立即启动（推荐）："
     
-    # 简短倒计时
-    echo -e "${YELLOW}⏰ 2秒后自动启动...${NC}"
-    sleep 2
+    # 创建一个智能启动脚本
+    cat > "$INSTALL_DIR/auto_launch.sh" << 'AUTO_LAUNCH_EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+# 颜色定义
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${CYAN}🚀 启动EVM钱包监控程序...${NC}"
+echo -e "${YELLOW}💡 提示：使用 Ctrl+C 可随时退出${NC}"
+echo "=================================="
+
+# 尝试重新连接到终端
+if [ -t 0 ] && [ -t 1 ]; then
+    # 已经在交互式终端中
+    python3 evm_monitor.py --force-interactive
+elif [ -c /dev/tty ]; then
+    # 尝试从/dev/tty读取输入
+    python3 evm_monitor.py --force-interactive < /dev/tty > /dev/tty 2>&1
+else
+    # 无法获得交互式终端，启动自动监控模式
+    echo -e "${YELLOW}⚠️  无法获得交互式终端，启动自动监控模式${NC}"
+    echo -e "${CYAN}💡 如需交互式菜单，请在新终端中运行：${NC}"
+    echo -e "${GREEN}   cd $(pwd) && python3 evm_monitor.py${NC}"
+    echo ""
+    python3 evm_monitor.py --auto-start
+fi
+AUTO_LAUNCH_EOF
     
-    # 切换到程序目录
-    cd "$INSTALL_DIR" || exit 1
+    chmod +x "$INSTALL_DIR/auto_launch.sh"
     
-    # 设置环境变量以支持交互式操作
-    export PYTHONIOENCODING=utf-8
-    export PYTHONUNBUFFERED=1
-    export FORCE_COLOR=1
-    
-    # 启动程序，强制交互模式
-    echo "🔄 正在加载程序，请稍候..."
+    echo "   $INSTALL_DIR/auto_launch.sh"
+    echo ""
+    echo "📝 如需查看程序状态："
+    echo "   ps aux | grep evm_monitor"
     echo ""
     
-    # 直接启动程序
-    python3 launcher.py
-    
+    # 提供选择
+    echo -e "${YELLOW}💡 建议：复制上述命令到新的终端窗口中运行，以获得最佳体验${NC}"
+    echo -e "${CYAN}   或者直接运行: cd $INSTALL_DIR && ./auto_launch.sh${NC}"
     echo ""
-    success "程序运行结束"
-    echo ""
-    echo "📝 如需重新启动："
-    echo "   cd $INSTALL_DIR && python3 evm_monitor.py"
-    echo "   或使用: $INSTALL_DIR/start.sh"
+    success "安装脚本执行完成！"
 fi
