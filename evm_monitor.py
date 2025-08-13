@@ -15,6 +15,7 @@ import base64
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import logging
+import signal
 
 # 第三方库导入
 try:
@@ -30,6 +31,24 @@ except ImportError as e:
 
 # 初始化colorama
 colorama.init()
+
+# 全局监控实例与信号处理，确保 Ctrl+C 随时强制退出
+MONITOR_INSTANCE = None
+
+def _global_signal_handler(signum, frame):
+    try:
+        print(f"\n{Fore.YELLOW}👋 收到退出信号，正在退出...{Style.RESET_ALL}")
+        if MONITOR_INSTANCE is not None:
+            try:
+                MONITOR_INSTANCE.stop_monitoring()
+                MONITOR_INSTANCE.save_state()
+                MONITOR_INSTANCE.save_wallets()
+            except Exception:
+                pass
+    finally:
+        import os as _os
+        code = 130 if signum == signal.SIGINT else 143
+        _os._exit(code)
 
 class EVMMonitor:
     def __init__(self):
@@ -3186,14 +3205,6 @@ class EVMMonitor:
 
     def monitor_loop(self):
         """监控循环"""
-        import signal
-        
-        # 设置信号处理器
-        def signal_handler(signum, frame):
-            print(f"\n{Fore.YELLOW}⚠️ 收到中断信号，正在停止监控...{Style.RESET_ALL}")
-            self.monitoring = False
-        
-        signal.signal(signal.SIGINT, signal_handler)
         
         print(f"\n{Fore.CYAN}🚀 开始监控...{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}📝 提示：按 Ctrl+C 可以优雅退出监控{Style.RESET_ALL}")
@@ -4148,6 +4159,9 @@ def run_daemon_mode(monitor, password):
 def main():
     """主函数"""
     try:
+        # 注册全局信号处理，确保 Ctrl+C/TERM 立即退出
+        signal.signal(signal.SIGINT, _global_signal_handler)
+        signal.signal(signal.SIGTERM, _global_signal_handler)
         # 检查是否在交互式环境中
         import sys
         is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
@@ -4163,6 +4177,8 @@ def main():
         
         # 创建监控实例
         monitor = EVMMonitor()
+        global MONITOR_INSTANCE
+        MONITOR_INSTANCE = monitor
         
         # 守护进程模式
         if args.daemon:
