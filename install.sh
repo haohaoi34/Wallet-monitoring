@@ -372,14 +372,7 @@ else
 fi
 
 echo
-success "🎉 安装测试完成！正在自动启动程序..."
-
-# 简短倒计时
-echo -e "${YELLOW}⏰ 2秒后自动启动...${NC}"
-sleep 2
-
-echo -e "${GREEN}🚀 正在启动EVM钱包监控程序...${NC}"
-echo "=================================================="
+success "🎉 安装测试完成！"
 
 # 确保在正确目录
 cd "$INSTALL_DIR" || exit 1
@@ -391,7 +384,7 @@ export PYTHONIOENCODING=utf-8
 # 创建Python启动器 - 最可靠的方法
 cat > "$INSTALL_DIR/launcher.py" << 'LAUNCHER_EOF'
 #!/usr/bin/env python3
-import os, sys, subprocess
+import os, sys
 
 # 设置工作目录
 os.chdir(os.path.expanduser("~/evm_monitor"))
@@ -405,20 +398,24 @@ print("🚀 启动 EVM 钱包监控程序...")
 print("=" * 50)
 
 try:
-    # 使用subprocess启动，避免exec的问题
-    result = subprocess.run([sys.executable, 'evm_monitor.py', '--force-interactive'])
-    sys.exit(result.returncode)
+    # 设置命令行参数
+    sys.argv = ['evm_monitor.py', '--force-interactive']
+    
+    # 直接执行主程序
+    with open('evm_monitor.py', 'r', encoding='utf-8') as f:
+        exec(f.read())
+        
 except KeyboardInterrupt:
     print("\n👋 程序被用户中断")
     sys.exit(0)
 except Exception as e:
     print(f"❌ 启动失败: {e}")
-    print("💡 尝试直接执行...")
-    # 后备方案：直接exec
-    exec(open('evm_monitor.py').read())
+    print(f"错误详情: {type(e).__name__}: {e}")
+    sys.exit(1)
 LAUNCHER_EOF
 
 # 启动程序
+echo
 echo "🔄 程序安装完成，准备启动..."
 
 # 检查是否在交互式环境中
@@ -463,7 +460,10 @@ else
     echo "🚀 正在启动EVM钱包监控程序..."
     echo "💡 提示：程序将以强制交互模式启动，支持菜单操作"
     echo "=================================================="
-    sleep 1
+    
+    # 简短倒计时
+    echo -e "${YELLOW}⏰ 2秒后自动启动...${NC}"
+    sleep 2
     
     # 切换到程序目录
     cd "$INSTALL_DIR" || exit 1
@@ -475,6 +475,7 @@ else
     
     # 启动程序，强制交互模式
     echo "🔄 正在加载程序，请稍候..."
+    echo ""
     
     # 直接启动程序
     python3 launcher.py
