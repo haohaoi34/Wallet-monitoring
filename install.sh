@@ -317,5 +317,15 @@ else
 fi
 
 echo
-success "🎉 安装测试完成！建议立即运行程序进行最终测试"
-info "启动命令: $INSTALL_DIR/start.sh 或 cd $INSTALL_DIR && python3 evm_monitor.py"
+success "🎉 安装测试完成！正在自动启动程序..."
+
+# 等待2秒让用户看到安装完成信息
+sleep 2
+
+echo
+echo -e "${GREEN}🚀 正在自动启动EVM钱包监控程序...${NC}"
+echo "=================================================="
+
+# 自动启动程序
+cd "$INSTALL_DIR"
+exec python3 evm_monitor.py
