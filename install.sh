@@ -31,7 +31,7 @@ trap cleanup EXIT
 
 
 
-echo -e "${BLUE}🚀 EVM钱包监控软件一键安装程序${NC}"
+echo -e "${BLUE}🚀 EVM钱包监控软件一键安装程序 v2.1 (自动启动版)${NC}"
 echo "=================================================="
 
 # 1. 先安装必要工具（解决rsync缺失问题）
@@ -178,7 +178,7 @@ git clone "$REPO_URL" "$TEMP_DIR" 2>/dev/null || {
 # 5. 更新项目文件（保护用户数据）
 info "🔄 更新项目文件..."
 
-# 保护用户数据文件
+# 保护用户数据文件（但不保护安装脚本）
 protected_files=(
     "monitor_state.json"
     "wallets.json" 
@@ -319,13 +319,31 @@ fi
 echo
 success "🎉 安装测试完成！正在自动启动程序..."
 
-# 等待2秒让用户看到安装完成信息
-sleep 2
+# 给用户3秒时间看到完成信息
+echo -e "${YELLOW}⏰ 3秒后自动启动程序（按 Ctrl+C 可取消自动启动）...${NC}"
+sleep 1 && echo -n "3." && sleep 1 && echo -n "2." && sleep 1 && echo "1."
 
 echo
 echo -e "${GREEN}🚀 正在自动启动EVM钱包监控程序...${NC}"
-echo "=================================================="
+echo -e "${GREEN}=================================================${NC}"
+echo
 
-# 自动启动程序
-cd "$INSTALL_DIR"
+# 确保在正确目录启动程序
+cd "$INSTALL_DIR" || {
+    error "无法切换到程序目录: $INSTALL_DIR"
+    exit 1
+}
+
+# 检查程序文件是否存在
+if [ ! -f "evm_monitor.py" ]; then
+    error "主程序文件不存在，请检查安装"
+    exit 1
+fi
+
+# 自动启动程序 - 使用exec替换当前进程
+echo -e "${CYAN}🎯 启动 EVM 钱包监控程序...${NC}"
 exec python3 evm_monitor.py
+
+# 如果exec失败，下面的代码会执行
+error "程序启动失败，请手动运行："
+echo "cd $INSTALL_DIR && python3 evm_monitor.py"
