@@ -1712,7 +1712,8 @@ class EVMMonitor:
         
         # Web3连接
         self.web3_connections: Dict[str, Web3] = {}
-        self.init_web3_connections()
+        # 不在初始化时自动连接网络，由用户手动管理
+        # self.init_web3_connections()
         
         print(f"{Fore.CYAN}🔗 EVM监控软件已初始化{Style.RESET_ALL}")
 
@@ -3852,9 +3853,10 @@ class EVMMonitor:
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔍 测试所有RPC连接")
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📊 查看RPC状态报告")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} ⚠️ 检查RPC数量不足的链条")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -3917,6 +3919,10 @@ class EVMMonitor:
                         if len(result['failed_rpcs']) > 3:
                             print(f"     • ... 还有 {len(result['failed_rpcs']) - 3} 个")
                             
+            elif choice == '4':
+                # 检查RPC数量不足的链条
+                self.check_insufficient_rpc_chains()
+                
             elif choice == '0':
                 return
             else:
@@ -4122,6 +4128,86 @@ class EVMMonitor:
             print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+    
+    def check_insufficient_rpc_chains(self):
+        """检查RPC数量不足（少于3个可用）的链条"""
+        print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 检查RPC数量不足的链条 ⚠️ {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在分析所有网络的RPC配置...{Style.RESET_ALL}")
+        
+        insufficient_chains = []
+        warning_chains = []  # 3-5个RPC的链条
+        
+        for network_key, network_info in self.networks.items():
+            rpc_count = len(network_info['rpc_urls'])
+            available_rpcs = []
+            failed_rpcs = []
+            
+            # 测试每个RPC
+            for rpc_url in network_info['rpc_urls']:
+                if rpc_url in self.blocked_rpcs:
+                    failed_rpcs.append(rpc_url)
+                else:
+                    # 简单测试连接
+                    if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=3):
+                        available_rpcs.append(rpc_url)
+                    else:
+                        failed_rpcs.append(rpc_url)
+            
+            available_count = len(available_rpcs)
+            
+            if available_count < 3:
+                insufficient_chains.append({
+                    'network_key': network_key,
+                    'name': network_info['name'],
+                    'chain_id': network_info['chain_id'],
+                    'total_rpcs': rpc_count,
+                    'available_rpcs': available_count,
+                    'failed_rpcs': len(failed_rpcs),
+                    'currency': network_info['native_currency']
+                })
+            elif available_count <= 5:
+                warning_chains.append({
+                    'network_key': network_key,
+                    'name': network_info['name'],
+                    'available_rpcs': available_count,
+                    'currency': network_info['native_currency']
+                })
+        
+        # 显示结果
+        print(f"\n{Back.RED}{Fore.WHITE} 🚨 RPC数量不足的链条（少于3个可用） 🚨 {Style.RESET_ALL}")
+        
+        if insufficient_chains:
+            print(f"\n{Fore.RED}发现 {len(insufficient_chains)} 个链条RPC数量不足：{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+            
+            for chain in insufficient_chains:
+                status_color = Fore.RED if chain['available_rpcs'] == 0 else Fore.YELLOW
+                print(f"  {status_color}⚠️ {chain['name']:<30}{Style.RESET_ALL} ({chain['currency']:<6}) "
+                      f"- 可用: {Fore.GREEN}{chain['available_rpcs']}{Style.RESET_ALL}/"
+                      f"{chain['total_rpcs']} 个RPC")
+                print(f"     Chain ID: {Fore.CYAN}{chain['chain_id']}{Style.RESET_ALL}")
+                print(f"     Network Key: {Fore.MAGENTA}{chain['network_key']}{Style.RESET_ALL}")
+                print()
+        else:
+            print(f"\n{Fore.GREEN}✅ 所有链条的RPC数量都充足（≥3个可用）{Style.RESET_ALL}")
+        
+        # 显示警告链条
+        if warning_chains:
+            print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ RPC数量偏少的链条（3-5个可用） ⚠️ {Style.RESET_ALL}")
+            for chain in warning_chains:
+                print(f"  {Fore.YELLOW}⚠️{Style.RESET_ALL} {chain['name']} - "
+                      f"可用: {Fore.YELLOW}{chain['available_rpcs']}{Style.RESET_ALL} 个RPC")
+        
+        # 显示总结和建议
+        print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 建议：{Style.RESET_ALL}")
+        print(f"  • 为RPC不足的链条手动添加更多公共节点")
+        print(f"  • 使用菜单选项 10 (添加自定义RPC) 来补充RPC节点")
+        print(f"  • 优先添加免费的公共RPC节点")
+        
+        if insufficient_chains:
+            print(f"\n{Fore.RED}需要补充RPC的链条总数: {len(insufficient_chains)}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}建议每个链条至少保持3-5个可用RPC节点{Style.RESET_ALL}")
 
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
