@@ -2894,13 +2894,21 @@ esac
                     
                     # 收集结果
                     batch_results = {}
-                    for future in as_completed(future_to_network, timeout=timeout + 0.5):
-                        try:
-                            network_key, has_history, elapsed, status = future.result()
-                            batch_results[network_key] = (has_history, elapsed, status)
-                        except Exception as e:
-                            network_key = future_to_network[future]
-                            batch_results[network_key] = (False, timeout, f"异常: {str(e)[:20]}")
+                    try:
+                        for future in as_completed(future_to_network, timeout=timeout + 0.5):
+                            try:
+                                network_key, has_history, elapsed, status = future.result(timeout=5)
+                                batch_results[network_key] = (has_history, elapsed, status)
+                            except Exception as e:
+                                network_key = future_to_network[future]
+                                batch_results[network_key] = (False, timeout, f"异常: {str(e)[:20]}")
+                    except concurrent.futures.TimeoutError:
+                        # 处理未完成的futures
+                        for future, network_key in future_to_network.items():
+                            if not future.done():
+                                future.cancel()
+                                if network_key not in batch_results:
+                                    batch_results[network_key] = (False, timeout, "批次超时")
                     
                     # 显示这一批的结果
                     for nk in batch_networks:
@@ -4055,40 +4063,49 @@ esac
             }
             
             completed_count = 0
-            for future in as_completed(future_to_network):
-                network_key = future_to_network[future]
-                completed_count += 1
-                network_info = self.networks[network_key]
-                
-                try:
-                    result = future.result()
-                    if result and result['working_rpcs']:
-                        # 建立连接到最快的RPC
-                        fastest_rpc = result['fastest_rpc']
-                        if self.establish_single_connection(network_key, fastest_rpc['url']):
-                            successful_connections += 1
-                            status_color = Fore.GREEN
-                            status_icon = "✅"
-                            status_text = f"已连接 ({fastest_rpc['response_time']:.2f}s)"
+            try:
+                for future in as_completed(future_to_network, timeout=120):
+                    network_key = future_to_network[future]
+                    completed_count += 1
+                    network_info = self.networks[network_key]
+                    
+                    try:
+                        result = future.result(timeout=30)
+                        if result and result['working_rpcs']:
+                            # 建立连接到最快的RPC
+                            fastest_rpc = result['fastest_rpc']
+                            if self.establish_single_connection(network_key, fastest_rpc['url']):
+                                successful_connections += 1
+                                status_color = Fore.GREEN
+                                status_icon = "✅"
+                                status_text = f"已连接 ({fastest_rpc['response_time']:.2f}s)"
+                            else:
+                                failed_connections += 1
+                                status_color = Fore.RED
+                                status_icon = "❌"
+                                status_text = "连接失败"
                         else:
                             failed_connections += 1
                             status_color = Fore.RED
                             status_icon = "❌"
-                            status_text = "连接失败"
-                    else:
+                            status_text = "无可用RPC"
+                        
+                        # 实时显示每个网络的连接状态
+                        progress = f"[{completed_count:2d}/{total_networks}]"
+                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
+                        
+                    except (concurrent.futures.TimeoutError, Exception) as e:
                         failed_connections += 1
-                        status_color = Fore.RED
-                        status_icon = "❌"
-                        status_text = "无可用RPC"
-                    
-                    # 实时显示每个网络的连接状态
-                    progress = f"[{completed_count:2d}/{total_networks}]"
-                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
-                    
-                except Exception as e:
-                    failed_connections += 1
-                    progress = f"[{completed_count:2d}/{total_networks}]"
-                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {Fore.RED}❌ {network_info['name']:<35}{Style.RESET_ALL} {Fore.RED}异常: {str(e)[:30]}{Style.RESET_ALL}")
+                        progress = f"[{completed_count:2d}/{total_networks}]"
+                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {Fore.RED}❌ {network_info['name']:<35}{Style.RESET_ALL} {Fore.RED}异常: {str(e)[:30]}{Style.RESET_ALL}")
+            except concurrent.futures.TimeoutError:
+                # 处理未完成的futures
+                for future, network_key in future_to_network.items():
+                    if not future.done():
+                        future.cancel()
+                        failed_connections += 1
+                        network_info = self.networks[network_key]
+                        print(f"  {Fore.CYAN}[--/--]{Style.RESET_ALL} {Fore.YELLOW}⚠️ {network_info['name']:<35}{Style.RESET_ALL} {Fore.YELLOW}测试超时，已取消{Style.RESET_ALL}")
         
         # 步骤2: 显示连接总结
         elapsed_time = time.time() - start_time
@@ -4183,13 +4200,21 @@ esac
                     
                     # 收集结果
                     batch_results = {}
-                    for future in as_completed(future_to_network, timeout=2.0):
-                        try:
-                            network_key, has_history, elapsed, status = future.result()
-                            batch_results[network_key] = (has_history, elapsed, status)
-                        except Exception as e:
-                            network_key = future_to_network[future]
-                            batch_results[network_key] = (False, 1.0, f"异常: {str(e)[:20]}")
+                    try:
+                        for future in as_completed(future_to_network, timeout=2.0):
+                            try:
+                                network_key, has_history, elapsed, status = future.result(timeout=1.5)
+                                batch_results[network_key] = (has_history, elapsed, status)
+                            except Exception as e:
+                                network_key = future_to_network[future]
+                                batch_results[network_key] = (False, 1.0, f"异常: {str(e)[:20]}")
+                    except concurrent.futures.TimeoutError:
+                        # 处理未完成的futures
+                        for future, network_key in future_to_network.items():
+                            if not future.done():
+                                future.cancel()
+                                if network_key not in batch_results:
+                                    batch_results[network_key] = (False, 1.0, "快速扫描超时")
                     
                     # 显示这一批的结果
                     for nk in batch_networks:
