@@ -24,57 +24,6 @@ DOWNLOAD="📥"
 echo -e "${CYAN}${ROCKET} EVM钱包监控软件一键安装程序${NC}"
 echo "=================================================="
 
-# 检查环境
-check_env() {
-    # 检查是否有图形界面
-    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
-        HAS_GUI=true
-        echo -e "${GREEN}${CHECKMARK} 检测到图形界面，将创建桌面快捷方式${NC}"
-    else
-        HAS_GUI=false
-        echo -e "${BLUE}ℹ️ 命令行模式运行${NC}"
-    fi
-}
-
-# 检查Python版本
-check_python() {
-    echo -e "${BLUE}${GEAR} 检查Python环境...${NC}"
-    
-    if command -v python3 >/dev/null 2>&1; then
-        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
-        PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
-        PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
-        
-        if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 7 ]; then
-            echo -e "${GREEN}${CHECKMARK} Python版本检查通过: $PYTHON_VERSION${NC}"
-            PYTHON_CMD="python3"
-        else
-            echo -e "${RED}${CROSSMARK} Python版本过低: $PYTHON_VERSION (需要 >= 3.7)${NC}"
-            install_dependencies
-        fi
-    else
-        echo -e "${YELLOW}${WARNING} 未检测到Python3${NC}"
-        install_dependencies
-    fi
-}
-
-# 检查pip
-check_pip() {
-    echo -e "${BLUE}${GEAR} 检查pip...${NC}"
-    
-    if command -v pip3 >/dev/null 2>&1; then
-        PIP_CMD="pip3"
-    elif command -v pip >/dev/null 2>&1; then
-        PIP_CMD="pip"
-    else
-        echo -e "${YELLOW}${WARNING} 正在安装pip...${NC}"
-        $PYTHON_CMD -m ensurepip --upgrade
-        PIP_CMD="$PYTHON_CMD -m pip"
-    fi
-    
-    echo -e "${GREEN}${CHECKMARK} pip检查完成${NC}"
-}
-
 # 创建项目目录
 create_project_dir() {
     PROJECT_DIR="$HOME/evm_wallet_monitor"
@@ -208,51 +157,6 @@ EOF
     chmod +x start.sh
 }
 
-# 安装系统依赖
-install_dependencies() {
-    echo -e "${YELLOW}${GEAR} 正在安装系统依赖...${NC}"
-    
-    # 检测包管理器
-    if command -v apt-get >/dev/null 2>&1; then
-        # Debian/Ubuntu系统
-        sudo apt-get update -qq
-        sudo apt-get install -y python3 python3-pip python3-venv python3-dev build-essential libssl-dev libffi-dev git
-        if [ "$HAS_GUI" = true ]; then
-            sudo apt-get install -y python3-tk notify-osd libnotify-bin
-        fi
-    elif command -v yum >/dev/null 2>&1; then
-        # CentOS/RHEL系统
-        sudo yum install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel git
-        if [ "$HAS_GUI" = true ]; then
-            sudo yum install -y python3-tkinter notification-daemon
-        fi
-    elif command -v pacman >/dev/null 2>&1; then
-        # Arch Linux系统
-        sudo pacman -Sy --noconfirm python python-pip base-devel openssl libffi git
-        if [ "$HAS_GUI" = true ]; then
-            sudo pacman -S --noconfirm tk notification-daemon
-        fi
-    elif command -v dnf >/dev/null 2>&1; then
-        # Fedora系统
-        sudo dnf install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel git
-        if [ "$HAS_GUI" = true ]; then
-            sudo dnf install -y python3-tkinter notification-daemon
-        fi
-    else
-        echo -e "${YELLOW}${WARNING} 未检测到包管理器，跳过系统依赖安装${NC}"
-        echo -e "${YELLOW}${WARNING} 如果安装失败，请手动安装以下包：${NC}"
-        echo "- python3"
-        echo "- python3-pip"
-        echo "- git"
-        echo "- gcc/build-essential"
-        echo "- openssl"
-        echo "- libffi"
-    fi
-    
-    PYTHON_CMD="python3"
-    echo -e "${GREEN}${CHECKMARK} 依赖安装完成${NC}"
-}
-
 # 安装Python依赖包
 install_python_packages() {
     echo -e "${BLUE}${GEAR} 安装Python依赖包...${NC}"
@@ -268,64 +172,16 @@ install_python_packages() {
     
     for package in "${PACKAGES[@]}"; do
         echo -e "${YELLOW}正在安装 $package...${NC}"
-        if $PIP_CMD install --user "$package"; then
-            echo -e "${GREEN}${CHECKMARK} $package 安装成功${NC}"
-        else
+        if ! pip3 install --user "$package" --break-system-packages >/dev/null 2>&1; then
             echo -e "${RED}${CROSSMARK} $package 安装失败${NC}"
-            echo -e "${YELLOW}尝试使用备用方法...${NC}"
-            $PIP_CMD install --user --break-system-packages "$package" 2>/dev/null || true
         fi
     done
     
     echo -e "${GREEN}${CHECKMARK} 依赖安装完成${NC}"
 }
 
-# 创建Ubuntu集成
-create_integration() {
-    # 创建应用程序启动器
-    APP_DIR="$HOME/.local/share/applications"
-    mkdir -p "$APP_DIR"
-    
-    # 创建图标目录
-    ICON_DIR="$HOME/.local/share/icons/evm-monitor"
-    mkdir -p "$ICON_DIR"
-    
-    # 下载或创建图标（使用系统默认图标）
-    ICON_PATH="/usr/share/icons/Humanity/apps/48/utilities-terminal.svg"
-    if [ -f "$ICON_PATH" ]; then
-        cp "$ICON_PATH" "$ICON_DIR/evm-monitor.svg"
-    fi
-    
-    # 创建桌面条目
-    DESKTOP_FILE="$APP_DIR/evm-monitor.desktop"
-    cat > "$DESKTOP_FILE" << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=EVM钱包监控
-GenericName=Wallet Monitor
-Comment=EVM钱包余额监控和自动转账工具
-Exec=bash $PROJECT_DIR/start.sh
-Icon=$ICON_DIR/evm-monitor.svg
-Terminal=true
-Categories=Utility;Finance;
-Keywords=wallet;monitor;ethereum;blockchain;
-StartupNotify=true
-EOF
-    chmod +x "$DESKTOP_FILE"
-    
-    # 创建桌面快捷方式（如果有GUI）
-    if [ "$HAS_GUI" = true ]; then
-        DESKTOP_DIR="$HOME/Desktop"
-        if [ ! -d "$DESKTOP_DIR" ]; then
-            DESKTOP_DIR="$HOME/桌面"
-        fi
-        if [ -d "$DESKTOP_DIR" ]; then
-            ln -sf "$DESKTOP_FILE" "$DESKTOP_DIR/EVM钱包监控.desktop"
-            echo -e "${GREEN}${CHECKMARK} 桌面快捷方式已创建${NC}"
-        fi
-    fi
-    
+# 创建快捷方式
+create_shortcuts() {
     # 创建命令行快捷方式
     BASHRC="$HOME/.bashrc"
     if [ -f "$BASHRC" ]; then
@@ -338,42 +194,6 @@ EOF
             echo -e "${GREEN}${CHECKMARK} 命令行快捷方式已创建 (使用 'evm-monitor' 命令启动)${NC}"
             echo -e "${YELLOW}提示: 请运行 'source ~/.bashrc' 或重新打开终端使快捷命令生效${NC}"
         fi
-    fi
-    
-    # 创建系统服务
-    SERVICE_DIR="$HOME/.config/systemd/user"
-    mkdir -p "$SERVICE_DIR"
-    
-    cat > "$SERVICE_DIR/evm-monitor.service" << EOF
-[Unit]
-Description=EVM Wallet Monitor Service
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=$PROJECT_DIR
-ExecStart=/usr/bin/python3 $PROJECT_DIR/evm_monitor.py --daemon
-Restart=always
-RestartSec=30
-
-[Install]
-WantedBy=default.target
-EOF
-    
-    # 重新加载systemd用户服务
-    systemctl --user daemon-reload
-    
-    echo -e "${GREEN}${CHECKMARK} 系统服务已创建${NC}"
-    echo -e "${BLUE}提示: 使用以下命令管理服务:${NC}"
-    echo -e "  启动服务:   ${YELLOW}systemctl --user start evm-monitor${NC}"
-    echo -e "  停止服务:   ${YELLOW}systemctl --user stop evm-monitor${NC}"
-    echo -e "  查看状态:   ${YELLOW}systemctl --user status evm-monitor${NC}"
-    echo -e "  开机自启:   ${YELLOW}systemctl --user enable evm-monitor${NC}"
-    echo -e "  取消自启:   ${YELLOW}systemctl --user disable evm-monitor${NC}"
-    
-    # 更新应用程序数据库
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$APP_DIR"
     fi
 }
 
@@ -389,7 +209,7 @@ show_completion() {
     echo -e "  2. 启动程序: ${YELLOW}./start.sh${NC}"
     echo ""
     echo -e "${CYAN}或者直接运行:${NC}"
-    echo -e "  ${YELLOW}$PROJECT_DIR/start.sh${NC}"
+    echo -e "  ${YELLOW}evm-monitor${NC}"
     echo ""
     echo -e "${BLUE}程序特性:${NC}"
     echo "  🔐 安全的私钥加密存储"
@@ -412,22 +232,17 @@ show_completion() {
 
 # 主安装流程
 main() {
-    # 检查环境
-    check_env
-    
     # 创建项目目录
     create_project_dir
     
     # 安装依赖
-    install_dependencies
-    check_pip
     install_python_packages
     
     # 下载程序文件
     download_files
     
-    # 创建快捷方式和服务
-    create_integration
+    # 创建快捷方式
+    create_shortcuts
     
     # 显示完成信息
     show_completion
