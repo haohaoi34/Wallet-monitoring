@@ -179,8 +179,15 @@ echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
 echo "=================================================="
 echo ""
 
+# 创建启动器
+cat > "$PROJECT_DIR/run.sh" << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+exec setsid ./start.sh < /dev/tty > /dev/tty 2>&1
+EOF
+chmod +x "$PROJECT_DIR/run.sh"
+
 # 自动启动程序
 echo -e "${CYAN}正在启动程序...${NC}"
 echo ""
-cd "$PROJECT_DIR"
-exec ./start.sh
+"$PROJECT_DIR/run.sh"
