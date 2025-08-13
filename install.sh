@@ -525,7 +525,6 @@ EOF
         update-desktop-database "$APP_DIR"
     fi
 }
-}
 
 # 显示安装完成信息
 show_completion() {
