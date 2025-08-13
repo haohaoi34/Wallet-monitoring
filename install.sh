@@ -179,18 +179,8 @@ echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
 echo "=================================================="
 echo ""
 
-# 安装完成提示
-echo -e "${CYAN}安装完成！请使用以下命令启动程序：${NC}"
+# 自动启动程序
+echo -e "${CYAN}正在启动程序...${NC}"
 echo ""
-echo -e "  ${YELLOW}cd $PROJECT_DIR && ./start.sh${NC}"
-echo ""
-echo -e "或者使用快捷命令：${NC}"
-echo -e "  ${YELLOW}source ~/.bashrc && evm-monitor${NC}"
-echo ""
-echo -e "${BLUE}程序特性：${NC}"
-echo -e "  🔑 支持批量粘贴私钥（双击回车确认）"
-echo -e "  🔄 自动去重钱包地址"
-echo -e "  💰 支持13个主流区块链网络"
-echo -e "  📊 实时监控和自动转账"
-echo -e "  📝 完整的操作日志"
-echo ""
+cd "$PROJECT_DIR"
+exec ./start.sh
