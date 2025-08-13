@@ -24,23 +24,15 @@ DOWNLOAD="📥"
 echo -e "${CYAN}${ROCKET} EVM钱包监控软件一键安装程序${NC}"
 echo "=================================================="
 
-# 检测Ubuntu系统
-check_ubuntu() {
-    if ! command -v lsb_release >/dev/null 2>&1; then
-        echo -e "${RED}${CROSSMARK} 此程序仅支持Ubuntu系统${NC}"
-        exit 1
-    fi
-    
-    UBUNTU_VERSION=$(lsb_release -rs)
-    echo -e "${GREEN}${CHECKMARK} 检测到Ubuntu ${UBUNTU_VERSION}${NC}"
-    
+# 检查环境
+check_env() {
     # 检查是否有图形界面
     if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
         HAS_GUI=true
-        echo -e "${GREEN}${CHECKMARK} 检测到图形界面${NC}"
+        echo -e "${GREEN}${CHECKMARK} 检测到图形界面，将创建桌面快捷方式${NC}"
     else
         HAS_GUI=false
-        echo -e "${YELLOW}${WARNING} 未检测到图形界面，将以命令行模式运行${NC}"
+        echo -e "${BLUE}ℹ️ 命令行模式运行${NC}"
     fi
 }
 
@@ -216,40 +208,46 @@ EOF
     chmod +x start.sh
 }
 
-# 安装Python和系统依赖
+# 安装系统依赖
 install_dependencies() {
-    echo -e "${YELLOW}${GEAR} 正在安装Python3和系统依赖...${NC}"
+    echo -e "${YELLOW}${GEAR} 正在安装系统依赖...${NC}"
     
-    # 检查是否需要更新包列表
-    if [ -n "$(find /var/lib/apt/lists -maxdepth 0 -mtime +7)" ]; then
-        echo -e "${YELLOW}${GEAR} 更新包列表...${NC}"
+    # 检测包管理器
+    if command -v apt-get >/dev/null 2>&1; then
+        # Debian/Ubuntu系统
         sudo apt-get update -qq
+        sudo apt-get install -y python3 python3-pip python3-venv python3-dev build-essential libssl-dev libffi-dev git
+        if [ "$HAS_GUI" = true ]; then
+            sudo apt-get install -y python3-tk notify-osd libnotify-bin
+        fi
+    elif command -v yum >/dev/null 2>&1; then
+        # CentOS/RHEL系统
+        sudo yum install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel git
+        if [ "$HAS_GUI" = true ]; then
+            sudo yum install -y python3-tkinter notification-daemon
+        fi
+    elif command -v pacman >/dev/null 2>&1; then
+        # Arch Linux系统
+        sudo pacman -Sy --noconfirm python python-pip base-devel openssl libffi git
+        if [ "$HAS_GUI" = true ]; then
+            sudo pacman -S --noconfirm tk notification-daemon
+        fi
+    elif command -v dnf >/dev/null 2>&1; then
+        # Fedora系统
+        sudo dnf install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel git
+        if [ "$HAS_GUI" = true ]; then
+            sudo dnf install -y python3-tkinter notification-daemon
+        fi
+    else
+        echo -e "${YELLOW}${WARNING} 未检测到包管理器，跳过系统依赖安装${NC}"
+        echo -e "${YELLOW}${WARNING} 如果安装失败，请手动安装以下包：${NC}"
+        echo "- python3"
+        echo "- python3-pip"
+        echo "- git"
+        echo "- gcc/build-essential"
+        echo "- openssl"
+        echo "- libffi"
     fi
-    
-    # 基础依赖包
-    DEPS=(
-        "python3"
-        "python3-pip"
-        "python3-venv"
-        "python3-dev"
-        "build-essential"
-        "libssl-dev"
-        "libffi-dev"
-        "git"
-    )
-    
-    # 图形界面相关依赖
-    if [ "$HAS_GUI" = true ]; then
-        DEPS+=(
-            "python3-tk"
-            "notify-osd"
-            "libnotify-bin"
-        )
-    fi
-    
-    # 安装所有依赖
-    echo -e "${YELLOW}${GEAR} 安装系统依赖...${NC}"
-    sudo apt-get install -y "${DEPS[@]}"
     
     PYTHON_CMD="python3"
     echo -e "${GREEN}${CHECKMARK} 依赖安装完成${NC}"
@@ -414,8 +412,8 @@ show_completion() {
 
 # 主安装流程
 main() {
-    # 检查是否为Ubuntu系统
-    check_ubuntu
+    # 检查环境
+    check_env
     
     # 创建项目目录
     create_project_dir
@@ -428,7 +426,7 @@ main() {
     # 下载程序文件
     download_files
     
-    # 创建Ubuntu集成
+    # 创建快捷方式和服务
     create_integration
     
     # 显示完成信息
