@@ -17,6 +17,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import logging
 import signal
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 第三方库导入
 try:
@@ -2285,6 +2287,63 @@ esac
             # 不显示连接失败的错误，减少干扰
             return False
 
+    def check_transaction_history_concurrent(self, address: str, network_key: str, timeout: float = 1.0) -> Tuple[str, bool, float, str]:
+        """并发检查地址在指定网络上是否有交易历史"""
+        start_time = time.time()
+        try:
+            # 获取网络信息
+            network_info = self.networks.get(network_key)
+            if not network_info:
+                return network_key, False, time.time() - start_time, "网络不存在"
+            
+            # 获取可用的RPC列表（排除被屏蔽的）
+            available_rpcs = [rpc for rpc in network_info['rpc_urls'] if rpc not in self.blocked_rpcs]
+            if not available_rpcs:
+                return network_key, False, time.time() - start_time, "无可用RPC"
+            
+            # 选择最多5个RPC进行并发测试
+            test_rpcs = available_rpcs[:5]
+            
+            def test_single_rpc(rpc_url):
+                rpc_start = time.time()
+                try:
+                    w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout}))
+                    if w3.is_connected():
+                        # 验证链ID
+                        chain_id = w3.eth.chain_id
+                        if chain_id == network_info['chain_id']:
+                            # 获取交易计数
+                            nonce = w3.eth.get_transaction_count(address)
+                            rpc_time = time.time() - rpc_start
+                            return True, nonce > 0, rpc_time, rpc_url
+                    return False, False, time.time() - rpc_start, rpc_url
+                except Exception as e:
+                    return False, False, time.time() - rpc_start, rpc_url
+            
+            # 并发测试RPC
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_rpc = {executor.submit(test_single_rpc, rpc): rpc for rpc in test_rpcs}
+                
+                try:
+                    for future in as_completed(future_to_rpc, timeout=timeout):
+                        try:
+                            success, has_history, rpc_time, rpc_url = future.result()
+                            if success:
+                                elapsed = time.time() - start_time
+                                return network_key, has_history, elapsed, f"成功({rpc_time:.2f}s)"
+                        except Exception:
+                            continue
+                except concurrent.futures.TimeoutError:
+                    pass
+            
+            # 如果所有RPC都失败或超时
+            elapsed = time.time() - start_time
+            return network_key, False, elapsed, "所有RPC超时"
+            
+        except Exception as e:
+            elapsed = time.time() - start_time
+            return network_key, False, elapsed, f"错误: {str(e)[:30]}"
+
     def get_balance(self, address: str, network: str) -> Tuple[float, str]:
         """获取地址原生代币余额，返回(余额, 币种符号)"""
         try:
@@ -3228,90 +3287,113 @@ esac
 
     def transfer_erc20_token(self, from_address: str, private_key: str, to_address: str, 
                            token_symbol: str, amount: float, network: str) -> bool:
-        """ERC20代币转账函数"""
+        """ERC20代币转账函数 - 带详细过程显示"""
+        print(f"      {Back.MAGENTA}{Fore.WHITE} 🚀 开始ERC20代币转账流程 🚀 {Style.RESET_ALL}")
+        
         try:
+            # 步骤1: 检查网络和代币支持
+            print(f"      {Fore.CYAN}📡 [1/8] 检查网络和代币支持...{Style.RESET_ALL}", end="", flush=True)
             if network not in self.web3_connections:
-                print(f"{Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
                 return False
             
             if token_symbol not in self.tokens:
-                print(f"{Fore.RED}❌ 不支持的代币: {token_symbol}{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 不支持的代币: {token_symbol}{Style.RESET_ALL}")
                 return False
             
             token_config = self.tokens[token_symbol]
             if network not in token_config['contracts']:
-                print(f"{Fore.RED}❌ 代币 {token_symbol} 在 {network} 上不可用{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 代币 {token_symbol} 在 {network} 上不可用{Style.RESET_ALL}")
                 return False
             
             w3 = self.web3_connections[network]
             contract_address = token_config['contracts'][network]
+            network_name = self.networks[network]['name']
+            print(f" {Fore.GREEN}✅ {token_symbol} 在 {network_name} 可用{Style.RESET_ALL}")
             
-            # 验证地址格式
+            # 步骤2: 验证地址格式
+            print(f"      {Fore.CYAN}🔍 [2/8] 验证地址格式...{Style.RESET_ALL}", end="", flush=True)
             try:
                 to_address = w3.to_checksum_address(to_address)
                 from_address = w3.to_checksum_address(from_address)
                 contract_address = w3.to_checksum_address(contract_address)
             except Exception as e:
-                print(f"{Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
                 return False
             
-            # 检查是否是自己转给自己
             if from_address.lower() == to_address.lower():
-                print(f"{Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
+                print(f" {Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
                 return False
+            print(f" {Fore.GREEN}✅ 地址格式有效{Style.RESET_ALL}")
             
-            # 创建合约实例
+            # 步骤3: 创建合约实例
+            print(f"      {Fore.CYAN}📝 [3/8] 创建合约实例...{Style.RESET_ALL}", end="", flush=True)
             contract = w3.eth.contract(address=contract_address, abi=self.erc20_abi)
+            print(f" {Fore.GREEN}✅ 合约: {contract_address[:10]}...{contract_address[-6:]}{Style.RESET_ALL}")
             
-            # 获取代币精度
+            # 步骤4: 获取代币精度
+            print(f"      {Fore.CYAN}🔢 [4/8] 获取代币精度...{Style.RESET_ALL}", end="", flush=True)
             try:
                 decimals = contract.functions.decimals().call()
             except:
                 decimals = 18
-            
-            # 转换为合约单位
             amount_wei = int(amount * (10 ** decimals))
+            print(f" {Fore.GREEN}✅ 精度: {decimals}, 转换金额: {amount_wei}{Style.RESET_ALL}")
             
-            # 智能Gas估算
+            # 步骤5: 检查Gas费用
+            print(f"      {Fore.CYAN}⛽ [5/8] 检查Gas费用...{Style.RESET_ALL}", end="", flush=True)
             gas_cost, _ = self.estimate_gas_cost(network, 'erc20')
             native_balance, _ = self.get_balance(from_address, network)
             
             if native_balance < gas_cost:
-                print(f"{Fore.RED}❌ 原生代币不足支付Gas费用: 需要 {gas_cost:.6f} ETH{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 原生代币不足支付Gas费用: 需要 {gas_cost:.6f} ETH{Style.RESET_ALL}")
                 return False
+            print(f" {Fore.GREEN}✅ Gas费用充足: {gas_cost:.6f} ETH{Style.RESET_ALL}")
             
-            # 获取当前Gas价格
+            # 步骤6: 获取Gas价格
+            print(f"      {Fore.CYAN}💸 [6/8] 获取Gas价格...{Style.RESET_ALL}", end="", flush=True)
             try:
                 gas_price = w3.eth.gas_price
                 min_gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
                 gas_price = max(gas_price, min_gas_price)
+                gas_price_gwei = w3.from_wei(gas_price, 'gwei')
             except:
                 gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+                gas_price_gwei = self.gas_price_gwei
+            print(f" {Fore.GREEN}✅ {float(gas_price_gwei):.2f} Gwei{Style.RESET_ALL}")
             
-            # 构建交易
+            # 步骤7: 构建和签名交易
+            print(f"      {Fore.CYAN}📝 [7/8] 构建和签名交易...{Style.RESET_ALL}", end="", flush=True)
             nonce = w3.eth.get_transaction_count(from_address)
-            
-            # 构建transfer函数调用数据
             transfer_function = contract.functions.transfer(to_address, amount_wei)
             
             transaction = {
                 'to': contract_address,
-                'value': 0,  # ERC20转账不需要发送ETH
-                'gas': 65000,  # ERC20转账通常需要更多gas
+                'value': 0,
+                'gas': 65000,
                 'gasPrice': gas_price,
                 'nonce': nonce,
                 'data': transfer_function._encode_transaction_data(),
                 'chainId': self.networks[network]['chain_id']
             }
             
-            # 签名交易
             signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+            print(f" {Fore.GREEN}✅ 交易已签名，Nonce: {nonce}{Style.RESET_ALL}")
             
-            # 发送交易
+            # 步骤8: 发送交易
+            print(f"      {Fore.CYAN}📤 [8/8] 发送交易...{Style.RESET_ALL}", end="", flush=True)
+            start_time = time.time()
             tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            send_time = time.time() - start_time
+            print(f" {Fore.GREEN}✅ 交易已发送 ({send_time:.2f}s){Style.RESET_ALL}")
             
-            print(f"{Fore.GREEN}💸 ERC20转账成功: {amount:.6f} {token_symbol} from {from_address[:10]}... to {to_address[:10]}...{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}📋 交易哈希: {tx_hash.hex()}{Style.RESET_ALL}")
+            print(f"      {Back.GREEN}{Fore.WHITE} 🎉 ERC20转账完成！{Style.RESET_ALL}")
+            print(f"      🪙 代币: {Fore.YELLOW}{token_symbol}{Style.RESET_ALL}")
+            print(f"      💰 金额: {Fore.YELLOW}{amount:.6f} {token_symbol}{Style.RESET_ALL}")
+            print(f"      📤 发送方: {Fore.CYAN}{from_address[:10]}...{from_address[-6:]}{Style.RESET_ALL}")
+            print(f"      📥 接收方: {Fore.CYAN}{to_address[:10]}...{to_address[-6:]}{Style.RESET_ALL}")
+            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash.hex()}{Style.RESET_ALL}")
+            print(f"      ⛽ Gas费用: {Fore.YELLOW}{gas_cost:.6f} ETH{Style.RESET_ALL}")
             
             # 更新统计
             self.update_transfer_stats(True, network, token_symbol, amount)
@@ -3364,52 +3446,64 @@ esac
             return False
 
     def transfer_funds(self, from_address: str, private_key: str, to_address: str, amount: float, network: str) -> bool:
-        """转账函数"""
+        """转账函数 - 带详细过程显示"""
+        print(f"      {Back.CYAN}{Fore.WHITE} 🚀 开始原生代币转账流程 🚀 {Style.RESET_ALL}")
+        
         try:
+            # 步骤1: 检查网络连接
+            print(f"      {Fore.CYAN}📡 [1/7] 检查网络连接...{Style.RESET_ALL}", end="", flush=True)
             if network not in self.web3_connections:
-                print(f"{Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
                 return False
-            
             w3 = self.web3_connections[network]
+            network_name = self.networks[network]['name']
+            print(f" {Fore.GREEN}✅ {network_name} 连接正常{Style.RESET_ALL}")
             
-            # 验证地址格式
+            # 步骤2: 验证地址格式
+            print(f"      {Fore.CYAN}🔍 [2/7] 验证地址格式...{Style.RESET_ALL}", end="", flush=True)
             try:
                 to_address = w3.to_checksum_address(to_address)
                 from_address = w3.to_checksum_address(from_address)
             except Exception as e:
-                print(f"{Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
+                print(f" {Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
                 return False
             
             # 检查是否是自己转给自己
             if from_address.lower() == to_address.lower():
-                print(f"{Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
+                print(f" {Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
                 return False
+            print(f" {Fore.GREEN}✅ 地址格式有效{Style.RESET_ALL}")
             
-            # 获取最新gas价格
+            # 步骤3: 获取Gas价格
+            print(f"      {Fore.CYAN}⛽ [3/7] 获取Gas价格...{Style.RESET_ALL}", end="", flush=True)
             try:
                 gas_price = w3.eth.gas_price
-                # 如果网络返回的gas价格太低，使用我们设置的最小gas价格
                 min_gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
                 gas_price = max(gas_price, min_gas_price)
+                gas_price_gwei = w3.from_wei(gas_price, 'gwei')
             except:
                 gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+                gas_price_gwei = self.gas_price_gwei
+            print(f" {Fore.GREEN}✅ {float(gas_price_gwei):.2f} Gwei{Style.RESET_ALL}")
             
-            # 计算gas费用
+            # 步骤4: 计算费用和余额检查
+            print(f"      {Fore.CYAN}💰 [4/7] 检查余额和计算费用...{Style.RESET_ALL}", end="", flush=True)
             gas_cost = self.gas_limit * gas_price
             gas_cost_eth = w3.from_wei(gas_cost, 'ether')
-            
-            # 检查余额是否足够（包含gas费用）
             current_balance, currency = self.get_balance(from_address, network)
+            
             if amount + float(gas_cost_eth) > current_balance:
-                # 调整转账金额，留出gas费用
-                amount = current_balance - float(gas_cost_eth) - 0.0001  # 多留一点余量
+                amount = current_balance - float(gas_cost_eth) - 0.0001
                 if amount <= 0:
-                    print(f"{Fore.YELLOW}⚠️ 余额不足以支付gas费用: {from_address[:10]}...{Style.RESET_ALL}")
+                    print(f" {Fore.RED}❌ 余额不足以支付Gas费用{Style.RESET_ALL}")
                     return False
+                print(f" {Fore.YELLOW}⚠️ 调整金额为 {amount:.6f} {currency}（扣除Gas费用）{Style.RESET_ALL}")
+            else:
+                print(f" {Fore.GREEN}✅ 余额充足，Gas费用: {float(gas_cost_eth):.6f} {currency}{Style.RESET_ALL}")
             
-            # 构建交易
+            # 步骤5: 构建交易
+            print(f"      {Fore.CYAN}📝 [5/7] 构建交易...{Style.RESET_ALL}", end="", flush=True)
             nonce = w3.eth.get_transaction_count(from_address)
-            
             transaction = {
                 'to': to_address,
                 'value': w3.to_wei(amount, 'ether'),
@@ -3418,15 +3512,26 @@ esac
                 'nonce': nonce,
                 'chainId': self.networks[network]['chain_id']
             }
+            print(f" {Fore.GREEN}✅ Nonce: {nonce}{Style.RESET_ALL}")
             
-            # 签名交易
+            # 步骤6: 签名交易
+            print(f"      {Fore.CYAN}🔐 [6/7] 签名交易...{Style.RESET_ALL}", end="", flush=True)
             signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+            print(f" {Fore.GREEN}✅ 交易已签名{Style.RESET_ALL}")
             
-            # 发送交易
+            # 步骤7: 发送交易
+            print(f"      {Fore.CYAN}📤 [7/7] 发送交易...{Style.RESET_ALL}", end="", flush=True)
+            start_time = time.time()
             tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            send_time = time.time() - start_time
+            print(f" {Fore.GREEN}✅ 交易已发送 ({send_time:.2f}s){Style.RESET_ALL}")
             
-            print(f"{Fore.GREEN}💸 转账成功: {amount:.6f} {currency} from {from_address[:10]}... to {to_address[:10]}...{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}📋 交易哈希: {tx_hash.hex()}{Style.RESET_ALL}")
+            print(f"      {Back.GREEN}{Fore.WHITE} 🎉 转账完成！{Style.RESET_ALL}")
+            print(f"      💰 金额: {Fore.YELLOW}{amount:.6f} {currency}{Style.RESET_ALL}")
+            print(f"      📤 发送方: {Fore.CYAN}{from_address[:10]}...{from_address[-6:]}{Style.RESET_ALL}")
+            print(f"      📥 接收方: {Fore.CYAN}{to_address[:10]}...{to_address[-6:]}{Style.RESET_ALL}")
+            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash.hex()}{Style.RESET_ALL}")
+            print(f"      ⛽ Gas费用: {Fore.YELLOW}{float(gas_cost_eth):.6f} {currency}{Style.RESET_ALL}")
             
             # 更新统计
             self.update_transfer_stats(True, network, currency, amount)
@@ -3515,20 +3620,82 @@ esac
             
             network_count = 0
             total_networks = len(self.networks)
+            found_networks = 0
             
-            for network_key in self.networks.keys():
-                network_count += 1
-                network_name = self.networks[network_key]['name']
-                
-                # 实时显示扫描进度
-                print(f"\r  {Fore.CYAN}🔄 扫描网络 ({network_count}/{total_networks}): {network_name[:30]}...{Style.RESET_ALL}", end="", flush=True)
-                
-                if self.check_transaction_history(address, network_key):
-                    address_networks.append(network_key)
-                else:
-                    blocked_networks.append(network_key)
+            # 并发扫描网络 - 分批处理
+            network_keys = list(self.networks.keys())
+            batch_size = 5  # 每批并发5个网络
             
-            print()  # 换行
+            for batch_start in range(0, len(network_keys), batch_size):
+                batch_end = min(batch_start + batch_size, len(network_keys))
+                batch_networks = network_keys[batch_start:batch_end]
+                
+                # 动态调整超时时间
+                available_rpc_count = sum(1 for nk in batch_networks 
+                                        if len([rpc for rpc in self.networks[nk]['rpc_urls'] 
+                                               if rpc not in self.blocked_rpcs]) > 0)
+                timeout = 1.0 if available_rpc_count >= 3 else 2.0
+                
+                print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发扫描批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络, 超时:{timeout}s) {Style.RESET_ALL}")
+                
+                # 并发检查这一批网络
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    future_to_network = {
+                        executor.submit(self.check_transaction_history_concurrent, address, nk, timeout): nk 
+                        for nk in batch_networks
+                    }
+                    
+                    # 收集结果
+                    batch_results = {}
+                    for future in as_completed(future_to_network, timeout=timeout + 0.5):
+                        try:
+                            network_key, has_history, elapsed, status = future.result()
+                            batch_results[network_key] = (has_history, elapsed, status)
+                        except Exception as e:
+                            network_key = future_to_network[future]
+                            batch_results[network_key] = (False, timeout, f"异常: {str(e)[:20]}")
+                    
+                    # 显示这一批的结果
+                    for nk in batch_networks:
+                        network_count += 1
+                        network_name = self.networks[nk]['name']
+                        
+                        if nk in batch_results:
+                            has_history, elapsed, status = batch_results[nk]
+                            
+                            if has_history:
+                                address_networks.append(nk)
+                                found_networks += 1
+                                result_color = Fore.GREEN
+                                result_icon = "✅"
+                                result_text = f"有交易 ({status})"
+                            else:
+                                blocked_networks.append(nk)
+                                result_color = Fore.RED
+                                result_icon = "❌"
+                                result_text = f"无交易 ({status})"
+                        else:
+                            # 超时的网络
+                            blocked_networks.append(nk)
+                            result_color = Fore.YELLOW
+                            result_icon = "⏱️"
+                            result_text = "超时"
+                        
+                        print(f"    {Fore.CYAN}🌐 [{network_count:2d}/{total_networks}] {network_name:<35}{Style.RESET_ALL} {result_color}{result_icon} {result_text}{Style.RESET_ALL}")
+                
+                # 每批显示进度总结
+                print(f"    {Fore.MAGENTA}📊 批次完成: 已扫描 {network_count}/{total_networks} 个网络，发现 {found_networks} 个有交易历史{Style.RESET_ALL}")
+                
+                # 批次间短暂休息
+                if batch_end < len(network_keys):
+                    time.sleep(0.1)
+
+            
+            # 显示该地址的扫描总结
+            print(f"\n  {Back.MAGENTA}{Fore.WHITE} 📋 地址扫描总结 {Style.RESET_ALL}")
+            print(f"    🌐 总网络数: {total_networks}")
+            print(f"    ✅ 有交易历史: {Fore.GREEN}{len(address_networks)}{Style.RESET_ALL} 个")
+            print(f"    ❌ 无交易历史: {Fore.RED}{len(blocked_networks)}{Style.RESET_ALL} 个")
             
             # 更新监控列表
             if address_networks:
@@ -3536,27 +3703,27 @@ esac
                     'networks': address_networks,
                     'last_check': time.time()
                 }
-                print(f"{Fore.GREEN}✅ 监控网络: {len(address_networks)} 个{Style.RESET_ALL}")
+                print(f"    {Fore.GREEN}🎯 该地址将被监控{Style.RESET_ALL}")
                 
-                # 显示监控的网络
-                for net in address_networks[:3]:  # 只显示前3个
+                # 显示监控的网络（显示更多）
+                print(f"    {Fore.GREEN}📋 监控网络列表:{Style.RESET_ALL}")
+                for net in address_networks[:5]:  # 显示前5个
                     network_name = self.networks[net]['name']
-                    print(f"  {Fore.GREEN}✓{Style.RESET_ALL} {network_name}")
-                if len(address_networks) > 3:
-                    print(f"  {Fore.GREEN}... 和其他 {len(address_networks) - 3} 个网络{Style.RESET_ALL}")
+                    print(f"      • {network_name}")
+                if len(address_networks) > 5:
+                    print(f"      • ... 和其他 {len(address_networks) - 5} 个网络")
             else:
-                print(f"{Fore.YELLOW}⚠️ 跳过监控（无交易历史）{Style.RESET_ALL}")
+                print(f"    {Fore.YELLOW}⚠️ 该地址将被跳过（无交易历史）{Style.RESET_ALL}")
         
             # 保存被屏蔽的网络列表
             if blocked_networks:
                 self.blocked_networks[address] = blocked_networks
-                print(f"{Fore.RED}❌ 屏蔽网络: {len(blocked_networks)} 个{Style.RESET_ALL} {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
             
             scanned_count += 1
             
             # 显示整体进度
             progress_percent = (scanned_count / total_addresses) * 100
-            print(f"{Fore.MAGENTA}📈 整体进度: {scanned_count}/{total_addresses} ({progress_percent:.1f}%){Style.RESET_ALL}")
+            print(f"\n{Back.CYAN}{Fore.WHITE} 📈 整体进度: {scanned_count}/{total_addresses} ({progress_percent:.1f}%) {Style.RESET_ALL}")
         
         elapsed = time.time() - start_ts
         print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
