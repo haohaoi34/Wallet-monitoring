@@ -39,8 +39,8 @@ if [ -d "$PROJECT_DIR" ]; then
     fi
     
     # 保存钱包文件
-    if [ -f "$PROJECT_DIR/wallets.enc" ]; then
-        cp "$PROJECT_DIR/wallets.enc" "$BACKUP_DIR/"
+    if [ -f "$PROJECT_DIR/wallets.json" ]; then
+        cp "$PROJECT_DIR/wallets.json" "$BACKUP_DIR/"
         echo -e "${GREEN}✅ 钱包文件已备份${NC}"
     fi
     
@@ -64,7 +64,7 @@ echo -e "${GREEN}✅ 项目目录创建完成: $PROJECT_DIR${NC}"
 if [ -n "$BACKUP_DIR" ]; then
     echo -e "${BLUE}📦 恢复重要文件...${NC}"
     [ -f "$BACKUP_DIR/monitor.log" ] && cp "$BACKUP_DIR/monitor.log" ./ && echo -e "${GREEN}✅ 日志文件已恢复${NC}"
-    [ -f "$BACKUP_DIR/wallets.enc" ] && cp "$BACKUP_DIR/wallets.enc" ./ && echo -e "${GREEN}✅ 钱包文件已恢复${NC}"
+    [ -f "$BACKUP_DIR/wallets.json" ] && cp "$BACKUP_DIR/wallets.json" ./ && echo -e "${GREEN}✅ 钱包文件已恢复${NC}"
     [ -f "$BACKUP_DIR/monitor_state.json" ] && cp "$BACKUP_DIR/monitor_state.json" ./ && echo -e "${GREEN}✅ 监控状态已恢复${NC}"
 fi
 
