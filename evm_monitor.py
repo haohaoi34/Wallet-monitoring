@@ -834,12 +834,34 @@ class EVMMonitor:
         """转账函数"""
         try:
             if network not in self.web3_connections:
+                print(f"{Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
                 return False
             
             w3 = self.web3_connections[network]
             
+            # 验证地址格式
+            try:
+                to_address = w3.to_checksum_address(to_address)
+                from_address = w3.to_checksum_address(from_address)
+            except Exception as e:
+                print(f"{Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
+                return False
+            
+            # 检查是否是自己转给自己
+            if from_address.lower() == to_address.lower():
+                print(f"{Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
+                return False
+            
+            # 获取最新gas价格
+            try:
+                gas_price = w3.eth.gas_price
+                # 如果网络返回的gas价格太低，使用我们设置的最小gas价格
+                min_gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+                gas_price = max(gas_price, min_gas_price)
+            except:
+                gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+            
             # 计算gas费用
-            gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
             gas_cost = self.gas_limit * gas_price
             gas_cost_eth = w3.from_wei(gas_cost, 'ether')
             
@@ -849,7 +871,7 @@ class EVMMonitor:
                 # 调整转账金额，留出gas费用
                 amount = current_balance - float(gas_cost_eth) - 0.0001  # 多留一点余量
                 if amount <= 0:
-                    self.logger.warning(f"余额不足以支付gas费用: {from_address}")
+                    print(f"{Fore.YELLOW}⚠️ 余额不足以支付gas费用: {from_address[:10]}...{Style.RESET_ALL}")
                     return False
             
             # 构建交易
@@ -876,9 +898,15 @@ class EVMMonitor:
             self.logger.info(f"转账成功: {amount} {currency}, {from_address} -> {to_address}, tx: {tx_hash.hex()}")
             return True
             
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}⚠️ 用户取消转账操作{Style.RESET_ALL}")
+            raise  # 重新抛出以便上层函数处理
         except Exception as e:
             print(f"{Fore.RED}❌ 转账失败: {e}{Style.RESET_ALL}")
             self.logger.error(f"转账失败 {from_address} -> {to_address}: {e}")
+            # 详细错误信息
+            if "invalid fields" in str(e).lower():
+                print(f"{Fore.CYAN}💡 提示：地址格式可能有问题，正在检查...{Style.RESET_ALL}")
             return False
 
     def scan_addresses(self):
@@ -908,52 +936,83 @@ class EVMMonitor:
     def monitor_loop(self):
         """监控循环"""
         print(f"\n{Fore.CYAN}🚀 开始监控...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📝 提示：按 Ctrl+C 可以优雅退出监控{Style.RESET_ALL}")
         
-        while self.monitoring:
-            try:
-                for address, address_info in self.monitored_addresses.items():
-                    if not self.monitoring:
-                        break
-                    
-                    private_key = self.wallets.get(address)
-                    if not private_key:
-                        continue
-                    
-                    for network in address_info['networks']:
+        try:
+            while self.monitoring:
+                try:
+                    for address, address_info in self.monitored_addresses.items():
                         if not self.monitoring:
                             break
                         
-                        balance, currency = self.get_balance(address, network)
+                        private_key = self.wallets.get(address)
+                        if not private_key:
+                            continue
                         
-                        if balance > self.min_transfer_amount:
-                            print(f"\n{Fore.YELLOW}💰 发现余额: {balance:.6f} {currency} in {address[:10]}... on {self.networks[network]['name']}{Style.RESET_ALL}")
+                        for network in address_info['networks']:
+                            if not self.monitoring:
+                                break
                             
-                            # 转账到固定目标账户
-                            if self.target_wallet:
-                                if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
-                                    # 更新最后检查时间
-                                    address_info['last_check'] = time.time()
-                                    self.save_state()
-                            else:
-                                print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
-                        else:
-                            # 显示余额状态
-                            if balance > 0:
-                                print(f"{Fore.BLUE}💎 {address[:10]}... on {self.networks[network]['name']}: {balance:.6f} {currency} (低于最小转账金额){Style.RESET_ALL}")
-                
-                # 等待下一次检查
-                for i in range(self.monitor_interval):
-                    if not self.monitoring:
-                        break
-                    time.sleep(1)
+                            try:
+                                balance, currency = self.get_balance(address, network)
+                                
+                                if balance > self.min_transfer_amount:
+                                    print(f"\n{Fore.YELLOW}💰 发现余额: {balance:.6f} {currency} in {address[:10]}... on {self.networks[network]['name']}{Style.RESET_ALL}")
+                                    
+                                    # 转账到固定目标账户
+                                    if self.target_wallet:
+                                        try:
+                                            if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
+                                                # 更新最后检查时间
+                                                address_info['last_check'] = time.time()
+                                                self.save_state()
+                                        except KeyboardInterrupt:
+                                            print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
+                                            self.monitoring = False
+                                            return
+                                    else:
+                                        print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
+                                else:
+                                    # 显示余额状态
+                                    if balance > 0:
+                                        print(f"{Fore.BLUE}💎 {address[:10]}... on {self.networks[network]['name']}: {balance:.6f} {currency} (低于最小转账金额){Style.RESET_ALL}")
+                            except KeyboardInterrupt:
+                                print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+                                self.monitoring = False
+                                return
+                            except Exception as e:
+                                print(f"{Fore.RED}❌ 检查余额失败 {address[:10]}... on {network}: {e}{Style.RESET_ALL}")
+                                continue
                     
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                self.logger.error(f"监控循环错误: {e}")
-                time.sleep(5)
+                    # 等待下一次检查（支持中断）
+                    for i in range(self.monitor_interval):
+                        if not self.monitoring:
+                            break
+                        try:
+                            time.sleep(1)
+                        except KeyboardInterrupt:
+                            print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+                            self.monitoring = False
+                            return
+                        
+                except KeyboardInterrupt:
+                    print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+                    break
+                except Exception as e:
+                    self.logger.error(f"监控循环错误: {e}")
+                    print(f"{Fore.RED}❌ 监控循环出错，5秒后重试: {e}{Style.RESET_ALL}")
+                    try:
+                        time.sleep(5)
+                    except KeyboardInterrupt:
+                        print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+                        break
         
-        print(f"\n{Fore.RED}⏹️ 监控已停止{Style.RESET_ALL}")
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+        finally:
+            self.monitoring = False
+            print(f"\n{Fore.GREEN}✅ 监控已优雅停止{Style.RESET_ALL}")
+            self.save_state()  # 保存状态
 
     def start_monitoring(self):
         """开始监控"""
@@ -990,11 +1049,18 @@ class EVMMonitor:
             print(f"{Fore.YELLOW}⚠️ 监控未在运行{Style.RESET_ALL}")
             return
         
+        print(f"{Fore.CYAN}🔄 正在停止监控...{Style.RESET_ALL}")
         self.monitoring = False
-        if self.monitor_thread and self.monitor_thread.is_alive():
-            self.monitor_thread.join(timeout=5)
         
-        print(f"{Fore.GREEN}✅ 监控已停止{Style.RESET_ALL}")
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            print(f"{Fore.YELLOW}⏳ 等待监控线程结束...{Style.RESET_ALL}")
+            self.monitor_thread.join(timeout=10)  # 增加等待时间
+            
+            if self.monitor_thread.is_alive():
+                print(f"{Fore.YELLOW}⚠️ 监控线程未能正常结束，强制停止{Style.RESET_ALL}")
+        
+        self.save_state()  # 保存状态
+        print(f"{Fore.GREEN}✅ 监控已安全停止{Style.RESET_ALL}")
 
     def import_private_keys_from_file(self, file_path: str) -> int:
         """从文件批量导入私钥"""
@@ -1470,16 +1536,35 @@ def main():
         print(f"{Fore.GREEN}✨ 如果运行在SSH或脚本中，请使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
         
         # 显示菜单
-        monitor.show_menu()
+        try:
+            monitor.show_menu()
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}👋 用户中断程序{Style.RESET_ALL}")
+        finally:
+            # 确保监控停止
+            if monitor.monitoring:
+                print(f"{Fore.CYAN}🔄 正在安全停止监控...{Style.RESET_ALL}")
+                monitor.stop_monitoring()
+            monitor.save_wallets()
+            print(f"{Fore.GREEN}✅ 程序已安全退出{Style.RESET_ALL}")
         
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}👋 程序被中断{Style.RESET_ALL}")
+        # 确保监控停止
+        if 'monitor' in locals() and monitor.monitoring:
+            print(f"{Fore.CYAN}🔄 正在安全停止监控...{Style.RESET_ALL}")
+            monitor.stop_monitoring()
+            monitor.save_wallets()
     except EOFError:
         print(f"\n{Fore.YELLOW}👋 检测到EOF错误，程序退出{Style.RESET_ALL}")
         print(f"{Fore.CYAN}💡 建议使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
     except Exception as e:
         print(f"{Fore.RED}❌ 程序出错: {e}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}💡 如果是EOF错误，请使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
+        # 确保监控停止
+        if 'monitor' in locals() and monitor.monitoring:
+            monitor.stop_monitoring()
+            monitor.save_wallets()
 
 if __name__ == "__main__":
     main()
