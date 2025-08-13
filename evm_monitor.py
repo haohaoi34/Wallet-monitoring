@@ -625,6 +625,17 @@ class EVMMonitor:
             ]
         )
         self.logger = logging.getLogger(__name__)
+    
+    def safe_input(self, prompt: str = "") -> str:
+        """安全的输入函数，处理EOF错误"""
+        try:
+            return input(prompt)
+        except EOFError:
+            print(f"\n{Fore.YELLOW}⚠️  检测到非交互式环境，使用默认值{Style.RESET_ALL}")
+            return ""
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}👋 用户取消操作{Style.RESET_ALL}")
+            return "0"  # 返回退出选项
 
     def init_web3_connections(self):
         """初始化Web3连接，支持多RPC端点故障转移"""
@@ -1041,7 +1052,7 @@ class EVMMonitor:
             print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
             
             try:
-                choice = input(f"\n{Fore.YELLOW}请输入选项数字: {Style.RESET_ALL}").strip()
+                choice = self.safe_input(f"\n{Fore.YELLOW}请输入选项数字: {Style.RESET_ALL}").strip()
                 
                 if choice == '1':
                     self.menu_add_private_key()
@@ -1072,9 +1083,12 @@ class EVMMonitor:
             except KeyboardInterrupt:
                 print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
                 break
+            except EOFError:
+                print(f"\n{Fore.YELLOW}👋 检测到非交互式环境，程序退出{Style.RESET_ALL}")
+                break
             except Exception as e:
                 print(f"{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
-                input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                self.safe_input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
 
     def menu_add_private_key(self):
         """菜单：添加私钥"""
@@ -1088,7 +1102,7 @@ class EVMMonitor:
         
         while True:
             try:
-                line = input().strip()
+                line = self.safe_input().strip()
                 if line:
                     lines.append(line)
                     empty_line_count = 0
@@ -1113,7 +1127,7 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.YELLOW}⚠️  未输入任何私钥{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_show_addresses(self):
         """菜单：显示地址"""
@@ -1137,7 +1151,7 @@ class EVMMonitor:
                 if i % 5 == 0 and i < len(self.wallets):
                     print(f"{Fore.CYAN}─" * 40 + f"{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_start_monitoring(self):
         """菜单：开始监控"""
@@ -1150,7 +1164,7 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.RED}❌ 监控启动失败！{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_stop_monitoring(self):
         """菜单：停止监控"""
@@ -1161,7 +1175,7 @@ class EVMMonitor:
         print(f"\n{Fore.GREEN}✅ 监控已安全停止{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}💾 所有数据已保存{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
 
 
@@ -1176,7 +1190,7 @@ class EVMMonitor:
             print(f"\n⚠️  当前状态: {Fore.RED}未设置目标账户{Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}🔍 请输入新的目标钱包地址：{Style.RESET_ALL}")
-        new_address = input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
+        new_address = self.safe_input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
         
         if new_address:
             if new_address.startswith('0x') and len(new_address) == 42:
@@ -1190,7 +1204,7 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.YELLOW}⚠️  取消设置{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
     def menu_import_keys(self):
         """菜单：批量导入私钥"""
@@ -1198,7 +1212,7 @@ class EVMMonitor:
         print(f"{Back.GREEN}{Fore.BLACK} 📝 支持的文件格式：每行一个私钥 (.txt文件) {Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}📂 请输入私钥文件路径：{Style.RESET_ALL}")
-        file_path = input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
+        file_path = self.safe_input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
         
         if file_path and os.path.exists(file_path):
             print(f"\n{Fore.BLUE}🔄 正在导入私钥...{Style.RESET_ALL}")
@@ -1210,7 +1224,7 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.RED}❌ 错误！文件不存在 或 路径无效{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_show_status(self):
         """菜单：显示监控状态"""
@@ -1245,7 +1259,7 @@ class EVMMonitor:
                 last_check = datetime.fromtimestamp(info['last_check']).strftime('%Y-%m-%d %H:%M:%S')
                 print(f"  💵 {addr[:8]}...{addr[-6:]} | 🌐 {networks} | 🕒 {last_check}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_settings(self):
         """菜单：设置监控参数"""
@@ -1257,25 +1271,25 @@ class EVMMonitor:
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 💰 最小转账金额: {Fore.CYAN}{self.min_transfer_amount}{Style.RESET_ALL} ETH")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⛽ Gas价格: {Fore.CYAN}{self.gas_price_gwei}{Style.RESET_ALL} Gwei")
         
-        choice = input(f"\n{Fore.YELLOW}🔢 请选择要修改的参数 (1-3): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择要修改的参数 (1-3): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
-                new_interval = int(input(f"{Fore.CYAN}⏱️ 请输入新的监控间隔（秒）: {Style.RESET_ALL}"))
+                new_interval = int(self.safe_input(f"{Fore.CYAN}⏱️ 请输入新的监控间隔（秒）: {Style.RESET_ALL}") or "30")
                 if new_interval > 0:
                     self.monitor_interval = new_interval
                     print(f"\n{Fore.GREEN}✅ 成功！监控间隔已设置为 {new_interval} 秒{Style.RESET_ALL}")
                 else:
                     print(f"\n{Fore.RED}❌ 错误！间隔必须大于0{Style.RESET_ALL}")
             elif choice == '2':
-                new_amount = float(input(f"{Fore.CYAN}💰 请输入新的最小转账金额（ETH）: {Style.RESET_ALL}"))
+                new_amount = float(self.safe_input(f"{Fore.CYAN}💰 请输入新的最小转账金额（ETH）: {Style.RESET_ALL}") or "0.001")
                 if new_amount > 0:
                     self.min_transfer_amount = new_amount
                     print(f"\n{Fore.GREEN}✅ 成功！最小转账金额已设置为 {new_amount} ETH{Style.RESET_ALL}")
                 else:
                     print(f"\n{Fore.RED}❌ 错误！金额必须大于0{Style.RESET_ALL}")
             elif choice == '3':
-                new_gas_price = int(input(f"{Fore.CYAN}⛽ 请输入新的Gas价格（Gwei）: {Style.RESET_ALL}"))
+                new_gas_price = int(self.safe_input(f"{Fore.CYAN}⛽ 请输入新的Gas价格（Gwei）: {Style.RESET_ALL}") or "20")
                 if new_gas_price > 0:
                     self.gas_price_gwei = new_gas_price
                     print(f"\n{Fore.GREEN}✅ 成功！Gas价格已设置为 {new_gas_price} Gwei{Style.RESET_ALL}")
@@ -1286,7 +1300,7 @@ class EVMMonitor:
         except ValueError:
             print(f"\n{Fore.RED}❌ 输入格式错误！请输入有效数字{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_network_management(self):
         """菜单：网络连接管理"""
@@ -1323,7 +1337,7 @@ class EVMMonitor:
         
         if failed_networks:
             print(f"\n{Fore.YELLOW}🔄 是否重新连接失败的网络? (y/N): {Style.RESET_ALL}", end="")
-            choice = input().strip().lower()
+            choice = self.safe_input().strip().lower()
             if choice == 'y':
                 print(f"\n{Fore.BLUE}🔄 正在重新连接失败的网络...{Style.RESET_ALL}")
                 self.init_web3_connections()
@@ -1333,7 +1347,7 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.GREEN}🎉 所有网络都已成功连接！{Style.RESET_ALL}")
         
-        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
     def menu_exit(self):
         """菜单：退出程序"""
@@ -1380,11 +1394,16 @@ def run_daemon_mode(monitor, password):
 def main():
     """主函数"""
     try:
+        # 检查是否在交互式环境中
+        import sys
+        is_interactive = sys.stdin.isatty() and sys.stdout.isatty()
+        
         # 解析命令行参数
         import argparse
         parser = argparse.ArgumentParser(description='EVM钱包监控软件')
         parser.add_argument('--daemon', action='store_true', help='以守护进程模式运行')
         parser.add_argument('--password', type=str, help='钱包密码（仅用于守护进程模式）')
+        parser.add_argument('--auto-start', action='store_true', help='自动开始监控（非交互式模式）')
         args = parser.parse_args()
         
         # 创建监控实例
@@ -1393,6 +1412,22 @@ def main():
         # 守护进程模式
         if args.daemon:
             return run_daemon_mode(monitor, args.password)
+        
+        # 非交互式模式（自动开始监控）
+        if not is_interactive or args.auto_start:
+            print(f"{Fore.YELLOW}⚠️  检测到非交互式环境，将自动开始监控{Style.RESET_ALL}")
+            if monitor.wallets and monitor.target_wallet:
+                monitor.start_monitoring()
+                try:
+                    while monitor.monitoring:
+                        time.sleep(60)
+                except KeyboardInterrupt:
+                    print(f"\n{Fore.YELLOW}👋 收到停止信号，程序退出{Style.RESET_ALL}")
+                    monitor.stop_monitoring()
+                return True
+            else:
+                print(f"{Fore.RED}❌ 缺少必要配置（钱包或目标账户），无法自动开始{Style.RESET_ALL}")
+                return False
         
         # 交互模式 - 直接进入菜单
         # 加载钱包
@@ -1410,6 +1445,8 @@ def main():
         
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
+    except EOFError:
+        print(f"\n{Fore.YELLOW}👋 检测到非交互式环境，程序退出{Style.RESET_ALL}")
     except Exception as e:
         print(f"{Fore.RED}❌ 程序出错: {e}{Style.RESET_ALL}")
 
