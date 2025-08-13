@@ -3938,22 +3938,57 @@ class EVMMonitor:
         print(f"\n{Fore.CYAN}✨ ====== ➕ 添加自定义RPC ➕ ====== ✨{Style.RESET_ALL}")
         print(f"{Back.GREEN}{Fore.BLACK} 🌐 为指定网络添加自定义RPC节点 {Style.RESET_ALL}")
         
-        # 显示可用网络列表
-        print(f"\n{Fore.YELLOW}📋 可用网络列表：{Style.RESET_ALL}")
+        # 分类网络：已连接 vs 未连接
+        connected_networks = []
+        disconnected_networks = []
         
         network_list = list(self.networks.items())
-        for i, (network_key, network_info) in enumerate(network_list[:10]):  # 只显示前10个
+        for i, (network_key, network_info) in enumerate(network_list):
             rpc_count = len(network_info['rpc_urls'])
-            print(f"  {Fore.GREEN}{i+1:2d}.{Style.RESET_ALL} {network_info['name']} ({Fore.CYAN}{rpc_count}{Style.RESET_ALL} 个RPC)")
+            network_data = {
+                'index': i + 1,
+                'key': network_key,
+                'info': network_info,
+                'rpc_count': rpc_count
+            }
+            
+            if network_key in self.web3_connections:
+                connected_networks.append(network_data)
+            else:
+                disconnected_networks.append(network_data)
         
-        if len(network_list) > 10:
-            print(f"  ... 还有 {len(network_list) - 10} 个网络")
+        # 显示连接统计
+        print(f"\n{Fore.CYAN}📊 网络连接统计：{Style.RESET_ALL}")
+        print(f"  🟢 {Fore.GREEN}已连接: {len(connected_networks)} 个网络{Style.RESET_ALL}")
+        print(f"  🔴 {Fore.RED}未连接: {len(disconnected_networks)} 个网络{Style.RESET_ALL}")
         
-        print(f"\n{Fore.YELLOW}💡 提示：您可以输入网络编号、网络名称或network_key{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}示例：{Style.RESET_ALL}")
-        print(f"  • 输入编号: 1")
-        print(f"  • 输入名称: ethereum")
-        print(f"  • 直接输入: ethereum")
+        # 显示已连接的网络
+        if connected_networks:
+            print(f"\n{Back.GREEN}{Fore.BLACK} 🟢 已连接的网络 🟢 {Style.RESET_ALL}")
+            for network in connected_networks[:15]:  # 显示前15个
+                status_icon = "🟢"
+                print(f"  {Fore.GREEN}{network['index']:3d}.{Style.RESET_ALL} {status_icon} {network['info']['name']:<35} "
+                      f"({Fore.CYAN}{network['rpc_count']}{Style.RESET_ALL} 个RPC) - {network['info']['native_currency']}")
+            
+            if len(connected_networks) > 15:
+                print(f"    {Fore.GREEN}... 还有 {len(connected_networks) - 15} 个已连接网络{Style.RESET_ALL}")
+        
+        # 显示未连接的网络（重点关注区域）
+        if disconnected_networks:
+            print(f"\n{Back.RED}{Fore.WHITE} 🔴 未连接的网络 - 需要添加RPC 🔴 {Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 这些网络可能需要您手动添加更多RPC节点{Style.RESET_ALL}")
+            
+            for network in disconnected_networks:
+                status_icon = "🔴"
+                print(f"  {Fore.RED}{network['index']:3d}.{Style.RESET_ALL} {status_icon} {network['info']['name']:<35} "
+                      f"({Fore.YELLOW}{network['rpc_count']}{Style.RESET_ALL} 个RPC) - {network['info']['native_currency']}")
+        
+        print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 选择方式：{Style.RESET_ALL}")
+        print(f"  • 输入编号: {Fore.GREEN}1-{len(network_list)}{Style.RESET_ALL}")
+        print(f"  • 输入网络名称: {Fore.GREEN}ethereum{Style.RESET_ALL}")
+        print(f"  • 输入network_key: {Fore.GREEN}ethereum{Style.RESET_ALL}")
+        print(f"  • 建议优先为 {Fore.RED}🔴 未连接{Style.RESET_ALL} 的网络添加RPC")
         
         # 选择网络
         network_input = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择要添加RPC的网络: {Style.RESET_ALL}").strip()
@@ -4129,6 +4164,48 @@ class EVMMonitor:
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
+    def add_custom_rpc(self, network_key: str, rpc_url: str) -> bool:
+        """添加自定义RPC到指定网络"""
+        try:
+            if network_key not in self.networks:
+                print(f"{Fore.RED}❌ 网络不存在: {network_key}{Style.RESET_ALL}")
+                return False
+            
+            # 检查URL是否已存在
+            if rpc_url in self.networks[network_key]['rpc_urls']:
+                print(f"{Fore.YELLOW}⚠️ RPC已存在，跳过添加{Style.RESET_ALL}")
+                return True
+            
+            # 测试RPC连接
+            network_info = self.networks[network_key]
+            print(f"{Fore.CYAN}🔄 正在测试RPC连接...{Style.RESET_ALL}")
+            
+            if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=10):
+                # 添加到RPC列表的开头（优先使用）
+                self.networks[network_key]['rpc_urls'].insert(0, rpc_url)
+                
+                # 尝试重新连接该网络
+                try:
+                    from web3 import Web3
+                    w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
+                    if w3.is_connected():
+                        self.web3_connections[network_key] = w3
+                        print(f"{Fore.GREEN}✅ RPC连接成功并已设为该网络的主要连接{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.YELLOW}⚠️ RPC已添加但连接失败: {e}{Style.RESET_ALL}")
+                
+                # 保存配置（如果需要持久化）
+                self.logger.info(f"已添加自定义RPC: {network_key} -> {rpc_url}")
+                return True
+            else:
+                print(f"{Fore.RED}❌ RPC连接测试失败，请检查URL是否正确{Style.RESET_ALL}")
+                return False
+                
+        except Exception as e:
+            print(f"{Fore.RED}❌ 添加RPC失败: {e}{Style.RESET_ALL}")
+            self.logger.error(f"添加自定义RPC失败: {network_key} -> {rpc_url}: {e}")
+            return False
+    
     def check_insufficient_rpc_chains(self):
         """检查RPC数量不足（少于3个可用）的链条"""
         print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 检查RPC数量不足的链条 ⚠️ {Style.RESET_ALL}")
@@ -4297,7 +4374,7 @@ def main():
         
         # 显示欢迎信息
         print(f"\n{Fore.GREEN}🎉 欢迎使用EVM监控软件！{Style.RESET_ALL}")
-        print(f"已连接网络: {', '.join(monitor.web3_connections.keys())}")
+        print(f"{Fore.CYAN}💡 使用菜单选项 8 (网络连接管理) 来连接区块链网络{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}📝 提示：如果遇到输入问题，请直接按回车键或输入0退出{Style.RESET_ALL}")
         print(f"{Fore.GREEN}✨ 如果运行在SSH或脚本中，请使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
         
