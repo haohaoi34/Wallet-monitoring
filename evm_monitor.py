@@ -1737,16 +1737,21 @@ class EVMMonitor:
     def safe_input(self, prompt: str = "") -> str:
         """安全的输入函数，处理EOF错误"""
         try:
+            # 检查是否强制交互模式
+            force_interactive = getattr(self, '_force_interactive', False)
+            
             # 检查交互式环境
             import sys
             import os
             
-            # 更严格的交互式检测
+            # 更严格的交互式检测，但如果强制交互模式则跳过检测
             is_interactive = (
-                sys.stdin.isatty() and 
-                sys.stdout.isatty() and 
-                os.isatty(0) and 
-                os.isatty(1)
+                force_interactive or (
+                    sys.stdin.isatty() and 
+                    sys.stdout.isatty() and 
+                    os.isatty(0) and 
+                    os.isatty(1)
+                )
             )
             
             if not is_interactive:
@@ -1758,10 +1763,16 @@ class EVMMonitor:
                     print(f"{Fore.YELLOW}⚠️  非交互式环境，使用空值{Style.RESET_ALL}")
                     return ""
             
-            # 交互式环境，正常读取输入
+            # 交互式环境或强制交互模式，正常读取输入
             try:
                 # 刷新输出缓冲区确保提示显示
                 sys.stdout.flush()
+                sys.stderr.flush()
+                
+                # 如果是强制交互模式，提供额外的提示
+                if force_interactive and not sys.stdin.isatty():
+                    print(f"{Fore.CYAN}💡 强制交互模式：请输入您的选择{Style.RESET_ALL}")
+                
                 user_input = input(prompt)
                 return user_input
             except KeyboardInterrupt:
@@ -1778,9 +1789,6 @@ class EVMMonitor:
             if "选项" in prompt or "选择" in prompt:
                 return "0"  # 退出菜单
             return ""
-        except KeyboardInterrupt:
-            print(f"\n{Fore.YELLOW}👋 用户取消操作{Style.RESET_ALL}")
-            return "0"  # 返回退出选项
 
     def init_web3_connections(self):
         """初始化Web3连接，支持多RPC端点故障转移"""
@@ -4955,8 +4963,12 @@ def main():
         if args.daemon:
             return run_daemon_mode(monitor, args.password)
         
-        # 除非明确指定其他模式，否则强制交互式
-        if args.auto_start and not args.force_interactive:
+        # 强制交互模式
+        if args.force_interactive:
+            print(f"{Fore.CYAN}🚀 强制交互式菜单模式 (--force-interactive){Style.RESET_ALL}")
+            # 设置全局标志，强制所有输入函数使用交互模式
+            monitor._force_interactive = True
+        elif args.auto_start:
             print(f"{Fore.YELLOW}⚠️  检测到非交互式环境，将自动开始监控{Style.RESET_ALL}")
             if monitor.wallets and monitor.target_wallet:
                 monitor.start_monitoring()
@@ -4970,9 +4982,9 @@ def main():
             else:
                 print(f"{Fore.RED}❌ 缺少必要配置（钱包或目标账户），无法自动开始{Style.RESET_ALL}")
                 return False
-        
-        # 交互模式（默认模式）
-        print(f"{Fore.CYAN}🚀 进入交互式菜单模式{Style.RESET_ALL}")
+        else:
+            # 交互模式（默认模式）
+            print(f"{Fore.CYAN}🚀 进入交互式菜单模式{Style.RESET_ALL}")
         
         # 加载钱包
         monitor.load_wallets()
