@@ -179,31 +179,39 @@ echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
 echo "=================================================="
 echo ""
 
-# 创建启动器脚本
-cat > /tmp/evm_monitor_launcher.sh << EOF
+# 创建自动启动器
+cat > auto_start.sh << 'EOF'
 #!/bin/bash
-cd "$PROJECT_DIR"
-./start.sh
+cd "$(dirname "$0")"
+exec ./start.sh
 EOF
-chmod +x /tmp/evm_monitor_launcher.sh
+chmod +x auto_start.sh
 
-# 在新的终端会话中启动程序
+# 尝试多种方式启动程序
+echo -e "${CYAN}正在启动程序...${NC}"
+echo ""
+
+# 方法1: 尝试在新的终端会话中启动
 if command -v gnome-terminal >/dev/null 2>&1; then
-    echo -e "${CYAN}正在新窗口中启动程序...${NC}"
-    gnome-terminal -- /tmp/evm_monitor_launcher.sh
+    gnome-terminal -- bash -c "cd '$PROJECT_DIR' && ./auto_start.sh; exec bash"
+    echo -e "${GREEN}✅ 程序已在新窗口中启动${NC}"
 elif command -v xterm >/dev/null 2>&1; then
-    echo -e "${CYAN}正在新窗口中启动程序...${NC}"
-    xterm -e /tmp/evm_monitor_launcher.sh
+    xterm -e "cd '$PROJECT_DIR' && ./auto_start.sh; exec bash" &
+    echo -e "${GREEN}✅ 程序已在新窗口中启动${NC}"
+elif command -v tmux >/dev/null 2>&1; then
+    # 使用tmux创建新会话
+    tmux new-session -d -s evm-monitor "cd '$PROJECT_DIR' && ./auto_start.sh"
+    echo -e "${GREEN}✅ 程序已在tmux会话中启动${NC}"
+    echo -e "${YELLOW}使用以下命令查看: tmux attach -t evm-monitor${NC}"
+elif command -v screen >/dev/null 2>&1; then
+    # 使用screen创建新会话
+    screen -dmS evm-monitor bash -c "cd '$PROJECT_DIR' && ./auto_start.sh"
+    echo -e "${GREEN}✅ 程序已在screen会话中启动${NC}"
+    echo -e "${YELLOW}使用以下命令查看: screen -r evm-monitor${NC}"
 else
-    echo -e "${CYAN}请手动启动程序：${NC}"
-    echo -e "  ${YELLOW}cd $PROJECT_DIR && ./start.sh${NC}"
-    echo -e "或者使用命令：${NC}"
-    echo -e "  ${YELLOW}evm-monitor${NC}"
+    # 直接启动（可能会有输入问题）
+    echo -e "${YELLOW}正在直接启动程序...${NC}"
+    echo -e "${BLUE}如果遇到输入问题，请使用命令: cd $PROJECT_DIR && ./start.sh${NC}"
+    cd "$PROJECT_DIR"
+    exec ./start.sh
 fi
-
-# 清理临时文件
-rm -f /tmp/evm_monitor_launcher.sh
-
-# 刷新当前shell的别名
-echo -e "${YELLOW}提示: 请运行以下命令使快捷方式生效:${NC}"
-echo -e "  ${YELLOW}source ~/.bashrc${NC}"
