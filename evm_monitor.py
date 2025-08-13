@@ -20,15 +20,12 @@ import logging
 try:
     from web3 import Web3
     from eth_account import Account
-    from Crypto.Cipher import AES
-    from Crypto.Random import get_random_bytes
-    from Crypto.Protocol.KDF import PBKDF2
     import colorama
     from colorama import Fore, Style, Back
     import requests
 except ImportError as e:
     print(f"❌ 导入依赖失败: {e}")
-    print("请运行 bootstrap.py 安装依赖")
+    print("请运行 start.sh 安装依赖")
     sys.exit(1)
 
 # 初始化colorama
@@ -226,10 +223,9 @@ class EVMMonitor:
         self.monitored_addresses: Dict[str, Dict] = {}  # address -> {networks: [...], last_check: timestamp}
         self.monitoring = False
         self.monitor_thread = None
-        self.password_hash = None
         
         # 文件路径
-        self.wallet_file = "wallets.enc"
+        self.wallet_file = "wallets.json"
         self.state_file = "monitor_state.json"
         self.log_file = "monitor.log"
         
@@ -307,44 +303,7 @@ class EVMMonitor:
         
         return successful_connections > 0
 
-    def _derive_key(self, password: str, salt: bytes) -> bytes:
-        """从密码派生加密密钥"""
-        return PBKDF2(password, salt, 32, count=100000, hmac_hash_module=hashlib.sha256)
 
-    def _encrypt_data(self, data: str, password: str) -> bytes:
-        """加密数据"""
-        salt = get_random_bytes(16)
-        key = self._derive_key(password, salt)
-        cipher = AES.new(key, AES.MODE_GCM)
-        ciphertext, tag = cipher.encrypt_and_digest(data.encode())
-        return salt + cipher.nonce + tag + ciphertext
-
-    def _decrypt_data(self, encrypted_data: bytes, password: str) -> str:
-        """解密数据"""
-        salt = encrypted_data[:16]
-        nonce = encrypted_data[16:32]
-        tag = encrypted_data[32:48]
-        ciphertext = encrypted_data[48:]
-        
-        key = self._derive_key(password, salt)
-        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
-        data = cipher.decrypt_and_verify(ciphertext, tag)
-        return data.decode()
-
-    def create_password(self, password: str) -> bool:
-        """创建主密码"""
-        try:
-            self.password_hash = hashlib.sha256(password.encode()).hexdigest()
-            return True
-        except Exception as e:
-            self.logger.error(f"创建密码失败: {e}")
-            return False
-
-    def verify_password(self, password: str) -> bool:
-        """验证主密码"""
-        if self.password_hash is None:
-            return False
-        return hashlib.sha256(password.encode()).hexdigest() == self.password_hash
 
     def add_private_key(self, private_key: str) -> Optional[str]:
         """添加私钥并返回对应的地址"""
@@ -358,45 +317,43 @@ class EVMMonitor:
             self.wallets[address] = private_key
             print(f"{Fore.GREEN}✅ 成功添加钱包地址: {address}{Style.RESET_ALL}")
             self.logger.info(f"添加钱包地址: {address}")
+            
+            # 自动保存钱包
+            self.save_wallets()
+            
             return address
         except Exception as e:
             print(f"{Fore.RED}❌ 添加私钥失败: {e}{Style.RESET_ALL}")
             return None
 
-    def save_wallets(self, password: str) -> bool:
-        """保存钱包到加密文件"""
+    def save_wallets(self) -> bool:
+        """保存钱包到JSON文件"""
         try:
-            data = json.dumps({
+            data = {
                 'wallets': self.wallets,
-                'password_hash': self.password_hash,
                 'target_wallet': self.target_wallet
-            })
-            encrypted_data = self._encrypt_data(data, password)
+            }
             
-            with open(self.wallet_file, 'wb') as f:
-                f.write(encrypted_data)
+            with open(self.wallet_file, 'w') as f:
+                json.dump(data, f, indent=2)
             
-            print(f"{Fore.GREEN}✅ 钱包已保存{Style.RESET_ALL}")
+            self.logger.info(f"钱包已保存: {len(self.wallets)} 个地址")
             return True
         except Exception as e:
             print(f"{Fore.RED}❌ 保存钱包失败: {e}{Style.RESET_ALL}")
             return False
 
-    def load_wallets(self, password: str) -> bool:
-        """从加密文件加载钱包"""
+    def load_wallets(self) -> bool:
+        """从JSON文件加载钱包"""
         try:
             if not os.path.exists(self.wallet_file):
                 print(f"{Fore.YELLOW}⚠️ 钱包文件不存在，将创建新的钱包{Style.RESET_ALL}")
                 return True
             
-            with open(self.wallet_file, 'rb') as f:
-                encrypted_data = f.read()
-            
-            decrypted_data = self._decrypt_data(encrypted_data, password)
-            data = json.loads(decrypted_data)
+            with open(self.wallet_file, 'r') as f:
+                data = json.load(f)
             
             self.wallets = data.get('wallets', {})
-            self.password_hash = data.get('password_hash')
             self.target_wallet = data.get('target_wallet', '')
             
             print(f"{Fore.GREEN}✅ 成功加载 {len(self.wallets)} 个钱包{Style.RESET_ALL}")
@@ -841,13 +798,15 @@ class EVMMonitor:
         print(f"\n{Fore.CYAN}👋 正在退出...{Style.RESET_ALL}")
         self.stop_monitoring()
         self.save_state()
+        # 保存钱包
+        self.save_wallets()
         print(f"{Fore.GREEN}✅ 程序已安全退出{Style.RESET_ALL}")
 
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
     try:
         # 加载钱包和状态
-        if not monitor.load_wallets(password):
+        if not monitor.load_wallets():
             monitor.logger.error("加载钱包失败")
             return False
         
@@ -890,24 +849,11 @@ def main():
         
         # 守护进程模式
         if args.daemon:
-            if not args.password:
-                monitor.logger.error("守护进程模式需要提供密码参数")
-                return
             return run_daemon_mode(monitor, args.password)
         
-        # 交互模式
-        while True:
-            if os.path.exists(monitor.wallet_file):
-                password = input(f"{Fore.YELLOW}请输入钱包密码: {Style.RESET_ALL}")
-                if monitor.load_wallets(password):
-                    break
-                else:
-                    print(f"{Fore.RED}❌ 密码错误或文件损坏{Style.RESET_ALL}")
-            else:
-                password = input(f"{Fore.YELLOW}创建新的钱包密码: {Style.RESET_ALL}")
-                if monitor.create_password(password):
-                    monitor.save_wallets(password)
-                    break
+        # 交互模式 - 直接进入菜单
+        # 加载钱包
+        monitor.load_wallets()
         
         # 加载监控状态
         monitor.load_state()
