@@ -29,6 +29,58 @@ error() { echo -e "${RED}❌ $1${NC}"; }
 cleanup() { [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"; }
 trap cleanup EXIT
 
+# 智能文件同步函数
+smart_sync() {
+    local source="$1"
+    local target="$2"
+    local exclude_patterns=("${@:3}")
+    
+    if command -v rsync &> /dev/null; then
+        # 使用rsync进行高效同步
+        local rsync_excludes=()
+        for pattern in "${exclude_patterns[@]}"; do
+            rsync_excludes+=("--exclude=$pattern")
+        done
+        rsync -av "${rsync_excludes[@]}" "$source/" "$target/"
+    else
+        # 使用cp命令替代
+        info "使用cp命令同步文件..."
+        
+        # 创建目标目录
+        mkdir -p "$target"
+        
+        # 复制文件，排除指定模式
+        find "$source" -type f | while read -r file; do
+            local relative_path="${file#$source/}"
+            local should_exclude=false
+            
+            # 检查是否应该排除
+            for pattern in "${exclude_patterns[@]}"; do
+                if [[ "$relative_path" == *"$pattern"* ]]; then
+                    should_exclude=true
+                    break
+                fi
+            done
+            
+            # 如果不需要排除，则复制文件
+            if [ "$should_exclude" = false ]; then
+                local target_file="$target/$relative_path"
+                local target_dir=$(dirname "$target_file")
+                mkdir -p "$target_dir"
+                cp "$file" "$target_file"
+            fi
+        done
+        
+        # 复制目录结构
+        find "$source" -type d | while read -r dir; do
+            local relative_path="${dir#$source/}"
+            if [ -n "$relative_path" ]; then
+                mkdir -p "$target/$relative_path"
+            fi
+        done
+    fi
+}
+
 echo -e "${BLUE}🚀 EVM钱包监控软件一键安装程序${NC}"
 echo "=================================================="
 
@@ -142,23 +194,36 @@ git clone "$REPO_URL" "$TEMP_DIR" 2>/dev/null || {
 
 # 5. 更新项目文件（保护用户数据）
 info "🔄 更新项目文件..."
-rsync -av \
-    --exclude='monitor_state.json' \
-    --exclude='wallets.json' \
-    --exclude='networks.json' \
-    --exclude='logs/' \
-    --exclude='*.log' \
-    --exclude='__pycache__/' \
-    "$TEMP_DIR/" "$INSTALL_DIR/"
+smart_sync "$TEMP_DIR" "$INSTALL_DIR" \
+    "monitor_state.json" \
+    "wallets.json" \
+    "networks.json" \
+    "logs/" \
+    "*.log" \
+    "__pycache__/" \
+    "*.pyc"
 
 # 6. 安装依赖
 info "📦 安装Python依赖..."
 cd "$INSTALL_DIR"
 
-# 检查Python3
+# 检查并安装必要工具
 if ! command -v python3 &> /dev/null; then
     info "安装Python3..."
     sudo apt-get update && sudo apt-get install -y python3 python3-pip
+fi
+
+if ! command -v rsync &> /dev/null; then
+    info "安装rsync工具..."
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y rsync
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y rsync
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y rsync
+    else
+        warning "无法自动安装rsync，将使用cp命令替代"
+    fi
 fi
 
 # 安装必需包
