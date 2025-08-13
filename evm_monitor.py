@@ -1708,6 +1708,10 @@ class EVMMonitor:
             'by_token': {}
         }
         
+        # RPC检测结果缓存，避免重复检测
+        self.rpc_test_cache = {}  # network_key -> {'last_test': timestamp, 'results': {rpc_url: bool}}
+        self.rpc_cache_ttl = 300  # 缓存5分钟
+        
         # 设置日志
         self.setup_logging()
         
@@ -1890,6 +1894,7 @@ class EVMMonitor:
                 'address_full_scan_done': self.address_full_scan_done,
                 'last_full_scan_time': self.last_full_scan_time,
                 'rpc_stats': self.rpc_stats,
+                'rpc_test_cache': self.rpc_test_cache,
                 'last_save': datetime.now().isoformat()
             }
             with open(self.state_file, 'w') as f:
@@ -1956,6 +1961,7 @@ class EVMMonitor:
                         self.address_full_scan_done[addr] = True
                 self.last_full_scan_time = state.get('last_full_scan_time', 0.0)
                 self.rpc_stats = state.get('rpc_stats', {})
+                self.rpc_test_cache = state.get('rpc_test_cache', {})
                 
                 self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
                 self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
@@ -3796,7 +3802,11 @@ class EVMMonitor:
     def menu_network_management(self):
         """菜单：网络连接管理"""
         print(f"\n{Fore.CYAN}✨ ====== 🌐 网络连接管理 🌐 ====== ✨{Style.RESET_ALL}")
-        print(f"{Back.BLUE}{Fore.WHITE} 🔍 正在检查所有网络连接状态... {Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 🔍 检查网络连接状态和RPC健康度... {Style.RESET_ALL}")
+        
+        # 获取RPC状态数据（使用缓存）
+        print(f"\n{Fore.CYAN}📊 获取网络状态数据...{Style.RESET_ALL}")
+        rpc_results = self.get_cached_rpc_results()
         
         # 显示所有网络状态
         connected_networks = []
@@ -3806,6 +3816,11 @@ class EVMMonitor:
         print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
             
         for network_key, network_info in self.networks.items():
+            # 获取RPC健康度信息
+            rpc_info = rpc_results.get(network_key, {})
+            available_rpcs = rpc_info.get('available_count', 0)
+            total_rpcs = rpc_info.get('total_count', len(network_info['rpc_urls']))
+            
             if network_key in self.web3_connections:
                 connected_networks.append((network_key, network_info))
                 status_icon = "🟢"
@@ -3819,12 +3834,20 @@ class EVMMonitor:
             
             currency = network_info['native_currency']
             network_name = network_info['name']
-            print(f"  {status_icon} {color}{network_name:<25}{Style.RESET_ALL} ({currency:<5}) - {color}{status_text}{Style.RESET_ALL}")
+            rpc_status = f"({Fore.CYAN}{available_rpcs}/{total_rpcs}{Style.RESET_ALL} RPC可用)"
+            
+            print(f"  {status_icon} {color}{network_name:<25}{Style.RESET_ALL} ({currency:<5}) - {color}{status_text}{Style.RESET_ALL} {rpc_status}")
         
         print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}📊 连接统计：{Style.RESET_ALL}")
         print(f"  🟢 {Fore.GREEN}已连接: {len(connected_networks)} 个网络{Style.RESET_ALL}")
         print(f"  🔴 {Fore.RED}未连接: {len(failed_networks)} 个网络{Style.RESET_ALL}")
+        
+        # 显示RPC健康度统计
+        if rpc_results:
+            total_rpcs = sum(r['total_count'] for r in rpc_results.values())
+            working_rpcs = sum(r['available_count'] for r in rpc_results.values())
+            print(f"  📡 {Fore.CYAN}RPC健康度: {working_rpcs}/{total_rpcs} ({working_rpcs/total_rpcs*100:.1f}%){Style.RESET_ALL}")
         
         if failed_networks:
             print(f"\n{Fore.YELLOW}🔄 是否重新连接失败的网络? (y/N): {Style.RESET_ALL}", end="")
@@ -3858,23 +3881,43 @@ class EVMMonitor:
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📊 查看RPC状态报告")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
                 # 自动屏蔽失效RPC
                 confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认自动屏蔽失效RPC？(y/N): {Style.RESET_ALL}").strip().lower()
                 if confirm == 'y':
+                    # 先进行全网络RPC检测并更新缓存
+                    print(f"\n{Fore.CYAN}🔄 正在检测所有网络的RPC状态...{Style.RESET_ALL}")
+                    rpc_results = self.get_cached_rpc_results(force_refresh=True)
+                    
                     disabled_count = self.auto_disable_failed_rpcs()
                     print(f"\n{Fore.GREEN}✅ 操作完成！已屏蔽 {disabled_count} 个失效RPC节点{Style.RESET_ALL}")
+                    
+                    # 显示检测统计
+                    print(f"\n{Back.CYAN}{Fore.BLACK} 📊 检测统计 📊 {Style.RESET_ALL}")
+                    total_networks = len(rpc_results)
+                    total_rpcs = sum(r['total_count'] for r in rpc_results.values())
+                    working_rpcs = sum(r['available_count'] for r in rpc_results.values())
+                    
+                    print(f"🌐 检测网络: {Fore.CYAN}{total_networks}{Style.RESET_ALL} 个")
+                    print(f"📡 总RPC数: {Fore.CYAN}{total_rpcs}{Style.RESET_ALL} 个")
+                    print(f"✅ 可用RPC: {Fore.GREEN}{working_rpcs}{Style.RESET_ALL} 个")
+                    print(f"❌ 失效RPC: {Fore.RED}{total_rpcs - working_rpcs}{Style.RESET_ALL} 个")
+                    print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
+                    
+                    print(f"\n{Fore.GREEN}💡 检测结果已缓存，其他功能将复用此数据{Style.RESET_ALL}")
                 else:
                     print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
                     
             elif choice == '2':
                 # 查看RPC状态报告
-                results = self.test_all_rpcs()
+                print(f"\n{Fore.CYAN}📋 获取RPC状态报告...{Style.RESET_ALL}")
+                results = self.get_cached_rpc_results()
                 
                 print(f"\n{Back.CYAN}{Fore.BLACK} 📋 详细RPC状态报告 📋 {Style.RESET_ALL}")
                 
@@ -3883,8 +3926,8 @@ class EVMMonitor:
                 
                 for network_key, result in sorted_results:
                     success_rate = result['success_rate']
-                    working_count = len(result['working_rpcs'])
-                    total_count = working_count + len(result['failed_rpcs'])
+                    working_count = result['available_count']
+                    total_count = result['total_count']
                     
                     if success_rate == 100:
                         status_icon = "🟢"
@@ -3909,6 +3952,10 @@ class EVMMonitor:
             elif choice == '3':
                 # 检查并管理RPC数量不足的链条
                 self.manage_insufficient_rpc_chains()
+                
+            elif choice == '4':
+                # 从ChainList数据批量导入RPC
+                self.import_rpcs_from_chainlist()
                 
             elif choice == '0':
                 return
@@ -4065,6 +4112,13 @@ class EVMMonitor:
                 
                 # 保存配置
                 self.logger.info(f"已添加自定义RPC: {network_key} -> {rpc_url}")
+                
+                # 更新RPC缓存
+                if network_key in self.rpc_test_cache:
+                    self.rpc_test_cache[network_key]['results'][rpc_url] = True
+                    # 更新缓存时间
+                    self.rpc_test_cache[network_key]['last_test'] = time.time()
+                
                 return True
             else:
                 print(f"{Fore.RED}❌ RPC连接测试失败，请检查URL是否正确{Style.RESET_ALL}")
@@ -4075,48 +4129,401 @@ class EVMMonitor:
             self.logger.error(f"添加自定义RPC失败: {network_key} -> {rpc_url}: {e}")
             return False
     
+    def get_cached_rpc_results(self, network_key: str = None, force_refresh: bool = False) -> Dict:
+        """获取缓存的RPC检测结果，避免重复检测"""
+        current_time = time.time()
+        
+        if force_refresh:
+            # 强制刷新，清除缓存
+            if network_key:
+                self.rpc_test_cache.pop(network_key, None)
+            else:
+                self.rpc_test_cache.clear()
+        
+        results = {}
+        networks_to_test = [network_key] if network_key else self.networks.keys()
+        
+        for net_key in networks_to_test:
+            if net_key not in self.networks:
+                continue
+                
+            network_info = self.networks[net_key]
+            
+            # 检查缓存是否有效
+            cache_entry = self.rpc_test_cache.get(net_key)
+            cache_valid = (cache_entry and 
+                          current_time - cache_entry['last_test'] < self.rpc_cache_ttl)
+            
+            if cache_valid and not force_refresh:
+                # 使用缓存数据
+                cached_results = cache_entry['results']
+                working_rpcs = [url for url, status in cached_results.items() if status]
+                failed_rpcs = [url for url, status in cached_results.items() if not status]
+                print(f"{Fore.GREEN}📋 使用缓存数据: {network_info['name']} ({len(working_rpcs)}/{len(cached_results)} 可用){Style.RESET_ALL}")
+            else:
+                # 需要重新测试
+                print(f"{Fore.CYAN}🔄 检测网络 {network_info['name']} 的RPC状态...{Style.RESET_ALL}")
+                
+                working_rpcs = []
+                failed_rpcs = []
+                test_results = {}
+                
+                for rpc_url in network_info['rpc_urls']:
+                    if rpc_url in self.blocked_rpcs:
+                        failed_rpcs.append(rpc_url)
+                        test_results[rpc_url] = False
+                    else:
+                        is_working = self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=3)
+                        if is_working:
+                            working_rpcs.append(rpc_url)
+                        else:
+                            failed_rpcs.append(rpc_url)
+                        test_results[rpc_url] = is_working
+                
+                # 更新缓存
+                self.rpc_test_cache[net_key] = {
+                    'last_test': current_time,
+                    'results': test_results
+                }
+            
+            # 计算统计信息
+            total_count = len(working_rpcs) + len(failed_rpcs)
+            success_rate = (len(working_rpcs) / total_count * 100) if total_count > 0 else 0
+            
+            results[net_key] = {
+                'name': network_info['name'],
+                'working_rpcs': working_rpcs,
+                'failed_rpcs': failed_rpcs,
+                'success_rate': success_rate,
+                'available_count': len(working_rpcs),
+                'total_count': total_count,
+                'chain_id': network_info['chain_id'],
+                'currency': network_info['native_currency']
+            }
+        
+        return results
+    
+    def import_rpcs_from_chainlist(self):
+        """从ChainList数据批量导入RPC"""
+        print(f"\n{Back.GREEN}{Fore.BLACK} 🌐 ChainList RPC批量导入 🌐 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}从ChainList数据自动识别并导入RPC节点{Style.RESET_ALL}")
+        
+        # 1. 文件选择
+        print(f"\n{Fore.YELLOW}📁 步骤1: 选择数据文件{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 输入自定义文件路径")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 从当前目录选择文件")
+        
+        file_choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择方式 (1-2): {Style.RESET_ALL}").strip()
+        
+        file_path = None
+        if file_choice == '1':
+            # 自定义文件路径
+            default_path = "1.txt"
+            file_path = self.safe_input(f"\n{Fore.CYAN}➜ 请输入文件路径 [默认: {default_path}]: {Style.RESET_ALL}").strip()
+            if not file_path:
+                file_path = default_path
+        elif file_choice == '2':
+            # 列出当前目录文件
+            file_path = self._select_file_from_directory()
+        else:
+            print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+            return
+        
+        if not file_path:
+            print(f"\n{Fore.YELLOW}⚠️ 未选择文件，操作取消{Style.RESET_ALL}")
+            return
+        
+        # 2. 读取和解析文件
+        chainlist_data = self._read_chainlist_file(file_path)
+        if not chainlist_data:
+            return
+        
+        # 3. 匹配和导入RPC
+        self._process_chainlist_data(chainlist_data)
+    
+    def _select_file_from_directory(self) -> str:
+        """从当前目录选择文件"""
+        try:
+            import os
+            import glob
+            
+            # 查找文本文件
+            text_files = []
+            for pattern in ['*.txt', '*.json', '*.data']:
+                text_files.extend(glob.glob(pattern))
+            
+            if not text_files:
+                print(f"\n{Fore.YELLOW}⚠️ 当前目录没有找到文本文件{Style.RESET_ALL}")
+                return None
+            
+            print(f"\n{Fore.YELLOW}📋 当前目录的文件：{Style.RESET_ALL}")
+            for i, file in enumerate(text_files, 1):
+                file_size = os.path.getsize(file) // 1024  # KB
+                print(f"  {Fore.GREEN}{i:2d}.{Style.RESET_ALL} {file} ({file_size} KB)")
+            
+            choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择文件编号: {Style.RESET_ALL}").strip()
+            if choice.isdigit():
+                index = int(choice) - 1
+                if 0 <= index < len(text_files):
+                    return text_files[index]
+            
+            print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+            return None
+            
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 读取目录失败: {e}{Style.RESET_ALL}")
+            return None
+    
+    def _read_chainlist_file(self, file_path: str) -> list:
+        """读取ChainList文件"""
+        try:
+            print(f"\n{Fore.CYAN}📖 正在读取文件: {file_path}{Style.RESET_ALL}")
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            
+            if not content:
+                print(f"\n{Fore.RED}❌ 文件为空{Style.RESET_ALL}")
+                return None
+            
+            print(f"{Fore.GREEN}✅ 文件读取成功，大小: {len(content)//1024} KB{Style.RESET_ALL}")
+            
+            # 尝试解析JSON
+            import json
+            try:
+                # 如果是完整的JSON数组
+                if content.strip().startswith('['):
+                    data = json.loads(content)
+                else:
+                    # 如果是单个对象的集合，尝试修复
+                    if content.strip().startswith('{'):
+                        # 添加数组括号并分割对象
+                        content = content.strip()
+                        if not content.endswith(']'):
+                            # 简单修复：假设对象之间用 }, { 分隔
+                            content = '[' + content.replace('}\n{', '},\n{').replace('}\n  {', '},\n  {') + ']'
+                        data = json.loads(content)
+                    else:
+                        print(f"\n{Fore.RED}❌ 无法识别的文件格式{Style.RESET_ALL}")
+                        return None
+                
+                print(f"{Fore.GREEN}✅ JSON解析成功，找到 {len(data)} 条链条记录{Style.RESET_ALL}")
+                return data
+                
+            except json.JSONDecodeError as e:
+                print(f"\n{Fore.RED}❌ JSON格式错误: {e}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}💡 提示：请确保文件是有效的JSON格式{Style.RESET_ALL}")
+                return None
+                
+        except FileNotFoundError:
+            print(f"\n{Fore.RED}❌ 文件不存在: {file_path}{Style.RESET_ALL}")
+            return None
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 读取文件失败: {e}{Style.RESET_ALL}")
+            return None
+    
+    def _process_chainlist_data(self, chainlist_data: list):
+        """处理ChainList数据并导入RPC"""
+        print(f"\n{Fore.CYAN}🔄 正在分析ChainList数据...{Style.RESET_ALL}")
+        
+        matched_networks = {}  # network_key -> [rpc_urls]
+        unmatched_chains = []
+        total_rpcs_found = 0
+        
+        # 创建chain_id到network_key的映射
+        chain_id_map = {}
+        for network_key, network_info in self.networks.items():
+            chain_id_map[network_info['chain_id']] = network_key
+        
+        for chain_data in chainlist_data:
+            try:
+                chain_id = chain_data.get('chainId')
+                chain_name = chain_data.get('name', '')
+                rpc_list = chain_data.get('rpc', [])
+                
+                if not chain_id or not rpc_list:
+                    continue
+                
+                # 提取RPC URLs
+                rpc_urls = []
+                for rpc_entry in rpc_list:
+                    if isinstance(rpc_entry, dict):
+                        url = rpc_entry.get('url', '')
+                    elif isinstance(rpc_entry, str):
+                        url = rpc_entry
+                    else:
+                        continue
+                    
+                    # 验证RPC URL
+                    if url and self._is_valid_rpc_url(url):
+                        rpc_urls.append(url)
+                
+                total_rpcs_found += len(rpc_urls)
+                
+                # 尝试匹配到现有网络
+                if chain_id in chain_id_map:
+                    network_key = chain_id_map[chain_id]
+                    if network_key not in matched_networks:
+                        matched_networks[network_key] = []
+                    matched_networks[network_key].extend(rpc_urls)
+                else:
+                    unmatched_chains.append({
+                        'chainId': chain_id,
+                        'name': chain_name,
+                        'rpc_count': len(rpc_urls)
+                    })
+                    
+            except Exception as e:
+                self.logger.warning(f"解析链条数据失败: {e}")
+                continue
+        
+        print(f"\n{Back.CYAN}{Fore.BLACK} 📊 分析结果 📊 {Style.RESET_ALL}")
+        print(f"📡 总计发现RPC: {Fore.CYAN}{total_rpcs_found}{Style.RESET_ALL} 个")
+        print(f"✅ 匹配的网络: {Fore.GREEN}{len(matched_networks)}{Style.RESET_ALL} 个")
+        print(f"❓ 未匹配的链条: {Fore.YELLOW}{len(unmatched_chains)}{Style.RESET_ALL} 个")
+        
+        if not matched_networks:
+            print(f"\n{Fore.YELLOW}⚠️ 没有找到匹配的网络，操作结束{Style.RESET_ALL}")
+            return
+        
+        # 显示匹配的网络详情
+        print(f"\n{Fore.YELLOW}🎯 匹配的网络详情：{Style.RESET_ALL}")
+        for network_key, rpc_urls in matched_networks.items():
+            network_name = self.networks[network_key]['name']
+            print(f"  • {Fore.CYAN}{network_name}{Style.RESET_ALL}: 发现 {Fore.GREEN}{len(rpc_urls)}{Style.RESET_ALL} 个RPC")
+        
+        # 显示部分未匹配的链条
+        if unmatched_chains:
+            print(f"\n{Fore.YELLOW}❓ 部分未匹配的链条（前10个）：{Style.RESET_ALL}")
+            for chain in unmatched_chains[:10]:
+                print(f"  • ID {chain['chainId']}: {chain['name']} ({chain['rpc_count']} RPC)")
+            if len(unmatched_chains) > 10:
+                print(f"  • ... 还有 {len(unmatched_chains) - 10} 个")
+        
+        # 确认导入
+        print(f"\n{Fore.YELLOW}🚀 准备导入操作：{Style.RESET_ALL}")
+        total_import_rpcs = sum(len(rpcs) for rpcs in matched_networks.values())
+        print(f"  📊 将为 {len(matched_networks)} 个网络导入 {total_import_rpcs} 个RPC")
+        print(f"  🔍 每个RPC都会进行连接测试")
+        print(f"  ❌ 无效的RPC会自动屏蔽")
+        
+        confirm = self.safe_input(f"\n{Fore.YELLOW}➜ 确认开始导入？(y/N): {Style.RESET_ALL}").strip().lower()
+        if confirm != 'y':
+            print(f"\n{Fore.YELLOW}⚠️ 导入操作已取消{Style.RESET_ALL}")
+            return
+        
+        # 开始批量导入
+        self._batch_import_rpcs(matched_networks)
+    
+    def _batch_import_rpcs(self, matched_networks: dict):
+        """批量导入RPC"""
+        print(f"\n{Back.GREEN}{Fore.BLACK} 🚀 开始批量导入RPC 🚀 {Style.RESET_ALL}")
+        
+        total_success = 0
+        total_failed = 0
+        total_skipped = 0
+        import_summary = {}
+        
+        for network_key, rpc_urls in matched_networks.items():
+            network_name = self.networks[network_key]['name']
+            print(f"\n{Fore.CYAN}🔄 处理网络: {network_name}{Style.RESET_ALL}")
+            
+            success_count = 0
+            failed_count = 0
+            skipped_count = 0
+            
+            for i, rpc_url in enumerate(rpc_urls, 1):
+                print(f"  {i}/{len(rpc_urls)} 测试: {rpc_url[:60]}...", end=" ")
+                
+                # 检查是否已存在
+                if rpc_url in self.networks[network_key]['rpc_urls']:
+                    print(f"{Fore.YELLOW}跳过(已存在){Style.RESET_ALL}")
+                    skipped_count += 1
+                    continue
+                
+                # 尝试添加RPC
+                if self.add_custom_rpc(network_key, rpc_url):
+                    print(f"{Fore.GREEN}成功{Style.RESET_ALL}")
+                    success_count += 1
+                else:
+                    print(f"{Fore.RED}失败{Style.RESET_ALL}")
+                    # 自动屏蔽失败的RPC
+                    self.blocked_rpcs[rpc_url] = {
+                        'reason': 'ChainList批量导入时连接失败',
+                        'blocked_time': time.time(),
+                        'network': network_key
+                    }
+                    failed_count += 1
+            
+            import_summary[network_key] = {
+                'name': network_name,
+                'success': success_count,
+                'failed': failed_count,
+                'skipped': skipped_count
+            }
+            
+            total_success += success_count
+            total_failed += failed_count
+            total_skipped += skipped_count
+            
+            print(f"  📊 {network_name}: ✅{success_count} ❌{failed_count} ⏭️{skipped_count}")
+        
+        # 显示导入总结
+        print(f"\n{Back.GREEN}{Fore.BLACK} 📋 导入完成总结 📋 {Style.RESET_ALL}")
+        print(f"✅ 成功导入: {Fore.GREEN}{total_success}{Style.RESET_ALL} 个RPC")
+        print(f"❌ 失败屏蔽: {Fore.RED}{total_failed}{Style.RESET_ALL} 个RPC")
+        print(f"⏭️ 跳过重复: {Fore.YELLOW}{total_skipped}{Style.RESET_ALL} 个RPC")
+        print(f"📊 总处理量: {Fore.CYAN}{total_success + total_failed + total_skipped}{Style.RESET_ALL} 个RPC")
+        
+        # 显示详细结果
+        if import_summary:
+            print(f"\n{Fore.YELLOW}📋 各网络导入详情：{Style.RESET_ALL}")
+            for network_key, summary in import_summary.items():
+                if summary['success'] > 0:
+                    print(f"  🟢 {summary['name']}: +{summary['success']} 个新RPC")
+        
+        # 更新缓存
+        if total_success > 0:
+            print(f"\n{Fore.GREEN}🔄 正在更新RPC状态缓存...{Style.RESET_ALL}")
+            # 清除相关网络的缓存，强制重新检测
+            for network_key in matched_networks.keys():
+                self.rpc_test_cache.pop(network_key, None)
+            print(f"{Fore.GREEN}✅ 缓存已清除，下次检测将使用新的RPC{Style.RESET_ALL}")
+        
+        # 保存状态
+        self.save_state()
+        print(f"\n{Fore.GREEN}🎉 ChainList RPC导入操作完成！{Style.RESET_ALL}")
+    
     def manage_insufficient_rpc_chains(self):
         """检查并管理RPC数量不足的链条，支持直接添加RPC"""
         print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ RPC数量管理 - 检查并添加RPC ⚠️ {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}正在分析所有网络的RPC配置...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔄 获取网络RPC配置分析...{Style.RESET_ALL}")
+        
+        # 使用缓存的检测结果
+        rpc_results = self.get_cached_rpc_results()
         
         insufficient_chains = []
         warning_chains = []  # 3-5个RPC的链条
         
-        for network_key, network_info in self.networks.items():
-            rpc_count = len(network_info['rpc_urls'])
-            available_rpcs = []
-            failed_rpcs = []
-            
-            # 测试每个RPC
-            for rpc_url in network_info['rpc_urls']:
-                if rpc_url in self.blocked_rpcs:
-                    failed_rpcs.append(rpc_url)
-                else:
-                    # 简单测试连接
-                    if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=3):
-                        available_rpcs.append(rpc_url)
-                    else:
-                        failed_rpcs.append(rpc_url)
-            
-            available_count = len(available_rpcs)
+        for network_key, result in rpc_results.items():
+            available_count = result['available_count']
             
             if available_count < 3:
                 insufficient_chains.append({
                     'network_key': network_key,
-                    'name': network_info['name'],
-                    'chain_id': network_info['chain_id'],
-                    'total_rpcs': rpc_count,
+                    'name': result['name'],
+                    'chain_id': result['chain_id'],
+                    'total_rpcs': result['total_count'],
                     'available_rpcs': available_count,
-                    'failed_rpcs': len(failed_rpcs),
-                    'currency': network_info['native_currency']
+                    'failed_rpcs': len(result['failed_rpcs']),
+                    'currency': result['currency']
                 })
             elif available_count <= 5:
                 warning_chains.append({
                     'network_key': network_key,
-                    'name': network_info['name'],
+                    'name': result['name'],
                     'available_rpcs': available_count,
-                    'currency': network_info['native_currency']
+                    'currency': result['currency']
                 })
         
         # 显示结果
