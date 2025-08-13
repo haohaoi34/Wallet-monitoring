@@ -35,17 +35,122 @@ class EVMMonitor:
     def __init__(self):
         # 配置
         self.ALCHEMY_API_KEY = "S0hs4qoXIR1SMD8P7I6Wt"
+        self.ANKR_API_KEY = "f3e8c3210c23fbe769ac9bb8b0a4eced8b67ec0e1e51f0497c92a648f821bb50"
         
-        # 支持的全链网络配置（Alchemy支持的所有EVM兼容链）
+        # ERC20 代币 ABI（标准接口）
+        self.erc20_abi = [
+            {
+                "constant": True,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "constant": False,
+                "inputs": [
+                    {"name": "_to", "type": "address"},
+                    {"name": "_value", "type": "uint256"}
+                ],
+                "name": "transfer",
+                "outputs": [{"name": "", "type": "bool"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{"name": "", "type": "uint8"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "symbol",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            },
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "name",
+                "outputs": [{"name": "", "type": "string"}],
+                "type": "function"
+            }
+        ]
+        
+        # 支持的代币配置
+        self.tokens = {
+            # 主流稳定币
+            'USDT': {
+                'name': 'Tether USD',
+                'symbol': 'USDT',
+                'contracts': {
+                    'ethereum': '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+                    'arbitrum': '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+                    'optimism': '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+                    'polygon': '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+                    'base': '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2'
+                }
+            },
+            'USDC': {
+                'name': 'USD Coin',
+                'symbol': 'USDC',
+                'contracts': {
+                    'ethereum': '0xA0b86a33E6417aFD5BF27c23E2a7B0b9bE6C1e67',
+                    'arbitrum': '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+                    'optimism': '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+                    'polygon': '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+                    'base': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+                }
+            },
+            'DAI': {
+                'name': 'Dai Stablecoin',
+                'symbol': 'DAI',
+                'contracts': {
+                    'ethereum': '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+                    'arbitrum': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+                    'optimism': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+                    'polygon': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063'
+                }
+            },
+            # 自定义代币
+            'CUSTOM_ARB': {
+                'name': 'Custom Arbitrum Token',
+                'symbol': 'CARB',
+                'contracts': {
+                    'arbitrum': '0x1114982539A2Bfb84e8B9e4e320bbC04532a9e44'
+                }
+            },
+            'CUSTOM_BASE': {
+                'name': 'Custom Base Token',
+                'symbol': 'CBASE',
+                'contracts': {
+                    'base': '0xE014d2A4da6E450f21b5050120D291e63c8940FD'
+                }
+            }
+        }
+        
+        # 支持的全链网络配置（Alchemy + 公共RPC）
         self.networks = {
             # ==== 🌐 Layer 1 主网 ====
             'ethereum': {
                 'name': '🔷 Ethereum Mainnet',
                 'chain_id': 1,
                 'rpc_urls': [
-                    f'https://eth-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
                     'https://ethereum.publicnode.com',
-                    'https://rpc.ankr.com/eth'
+                    'https://ethereum.blockpi.network/v1/rpc/public',
+                    'https://rpc.mevblocker.io',
+                    'https://virginia.rpc.blxrbdn.com',
+                    'https://uk.rpc.blxrbdn.com',
+                    'https://singapore.rpc.blxrbdn.com',
+                    'https://eth.drpc.org',
+                    'https://endpoints.omniatech.io/v1/eth/mainnet/public',
+                    # ALCHEMY (备用)
+                    f'https://eth-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/eth/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://etherscan.io'
@@ -55,9 +160,17 @@ class EVMMonitor:
                 'name': '🟡 BNB Smart Chain',
                 'chain_id': 56,
                 'rpc_urls': [
-                    'https://bsc-dataseed1.binance.org',
+                    # 公共RPC (优先)
                     'https://bsc.publicnode.com',
-                    'https://rpc.ankr.com/bsc'
+                    'https://bsc-dataseed1.binance.org',
+                    'https://bsc-dataseed2.binance.org',
+                    'https://bsc-dataseed3.binance.org',
+                    'https://bsc.blockpi.network/v1/rpc/public',
+                    'https://bsc.drpc.org',
+                    'https://endpoints.omniatech.io/v1/bsc/mainnet/public',
+                    'https://bsc-rpc.gateway.pokt.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/bsc/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'BNB',
                 'explorer': 'https://bscscan.com'
@@ -67,9 +180,17 @@ class EVMMonitor:
                 'name': '🏔️ Avalanche C-Chain',
                 'chain_id': 43114,
                 'rpc_urls': [
-                    'https://api.avax.network/ext/bc/C/rpc',
+                    # 公共RPC (优先)
                     'https://avalanche.public-rpc.com',
-                    'https://rpc.ankr.com/avalanche'
+                    'https://api.avax.network/ext/bc/C/rpc',
+                    'https://avalanche.blockpi.network/v1/rpc/public',
+                    'https://avax.meowrpc.com',
+                    'https://avalanche.drpc.org',
+                    'https://endpoints.omniatech.io/v1/avax/mainnet/public',
+                    'https://1rpc.io/avax/c',
+                    'https://avax-rpc.gateway.pokt.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/avalanche/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'AVAX',
                 'explorer': 'https://snowtrace.io'
@@ -79,9 +200,18 @@ class EVMMonitor:
                 'name': '👻 Fantom Opera',
                 'chain_id': 250,
                 'rpc_urls': [
-                    'https://rpc.ftm.tools',
+                    # 公共RPC (优先)
                     'https://fantom.publicnode.com',
-                    'https://rpc.ankr.com/fantom'
+                    'https://rpc.ftm.tools',
+                    'https://fantom.blockpi.network/v1/rpc/public',
+                    'https://rpc.fantom.network',
+                    'https://fantom.drpc.org',
+                    'https://endpoints.omniatech.io/v1/fantom/mainnet/public',
+                    'https://1rpc.io/ftm',
+                    'https://rpc2.fantom.network',
+                    'https://rpc3.fantom.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/fantom/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'FTM',
                 'explorer': 'https://ftmscan.com'
@@ -91,43 +221,38 @@ class EVMMonitor:
                 'name': '🦀 Cronos',
                 'chain_id': 25,
                 'rpc_urls': [
-                    'https://evm.cronos.org',
+                    # 公共RPC (优先)
                     'https://cronos.publicnode.com',
-                    'https://rpc.ankr.com/cronos'
+                    'https://evm.cronos.org',
+                    'https://cronos.blockpi.network/v1/rpc/public',
+                    'https://cronos.drpc.org',
+                    'https://cronos-evm.publicnode.com',
+                    'https://rpc.vvs.finance',
+                    'https://cronos.crypto.org',
+                    'https://evm-cronos.crypto.org',
+                    'https://cronos-rpc.gateway.pokt.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/cronos/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'CRO',
                 'explorer': 'https://cronoscan.com'
-            },
-            
-            'solana': {
-                'name': '☀️ Solana',
-                'chain_id': 792703809,
-                'rpc_urls': [
-                    f'https://solana-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://api.mainnet-beta.solana.com'
-                ],
-                'native_currency': 'SOL',
-                'explorer': 'https://explorer.solana.com'
-            },
-            
-            'aptos': {
-                'name': '🍎 Aptos',
-                'chain_id': 1,
-                'rpc_urls': [
-                    f'https://aptos-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://fullnode.mainnet.aptoslabs.com/v1'
-                ],
-                'native_currency': 'APT',
-                'explorer': 'https://explorer.aptoslabs.com'
             },
             
             'gnosis': {
                 'name': '🦉 Gnosis Chain',
                 'chain_id': 100,
                 'rpc_urls': [
-                    'https://rpc.gnosischain.com',
+                    # 公共RPC (优先)
                     'https://gnosis.publicnode.com',
-                    'https://rpc.ankr.com/gnosis'
+                    'https://rpc.gnosischain.com',
+                    'https://gnosis.blockpi.network/v1/rpc/public',
+                    'https://gnosis.drpc.org',
+                    'https://endpoints.omniatech.io/v1/gnosis/mainnet/public',
+                    'https://1rpc.io/gnosis',
+                    'https://gnosis-mainnet.public.blastapi.io',
+                    'https://rpc.gnosis.gateway.fm',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/gnosis/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'xDAI',
                 'explorer': 'https://gnosisscan.io'
@@ -369,9 +494,18 @@ class EVMMonitor:
                 'name': '🟦 Arbitrum One',
                 'chain_id': 42161,
                 'rpc_urls': [
-                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
+                    'https://arbitrum.publicnode.com',
+                    'https://arbitrum.blockpi.network/v1/rpc/public',
+                    'https://arb1.arbitrum.io/rpc',
                     'https://arbitrum.llamarpc.com',
-                    'https://arbitrum.publicnode.com'
+                    'https://arbitrum.drpc.org',
+                    'https://endpoints.omniatech.io/v1/arbitrum/one/public',
+                    'https://1rpc.io/arb',
+                    # ALCHEMY (备用)
+                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/arbitrum/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://arbiscan.io'
@@ -392,9 +526,18 @@ class EVMMonitor:
                 'name': '🔴 Optimism',
                 'chain_id': 10,
                 'rpc_urls': [
-                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
+                    'https://optimism.publicnode.com',
+                    'https://optimism.blockpi.network/v1/rpc/public',
+                    'https://mainnet.optimism.io',
                     'https://optimism.llamarpc.com',
-                    'https://optimism.publicnode.com'
+                    'https://optimism.drpc.org',
+                    'https://endpoints.omniatech.io/v1/op/mainnet/public',
+                    'https://1rpc.io/op',
+                    # ALCHEMY (备用)
+                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/optimism/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://optimistic.etherscan.io'
@@ -404,9 +547,18 @@ class EVMMonitor:
                 'name': '🟦 Base',
                 'chain_id': 8453,
                 'rpc_urls': [
-                    f'https://base-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
+                    'https://base.publicnode.com',
+                    'https://base.blockpi.network/v1/rpc/public',
+                    'https://mainnet.base.org',
                     'https://base.llamarpc.com',
-                    'https://base.publicnode.com'
+                    'https://base.drpc.org',
+                    'https://endpoints.omniatech.io/v1/base/mainnet/public',
+                    'https://1rpc.io/base',
+                    # ALCHEMY (备用)
+                    f'https://base-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/base/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://basescan.org'
@@ -416,9 +568,18 @@ class EVMMonitor:
                 'name': '⚡ zkSync Era',
                 'chain_id': 324,
                 'rpc_urls': [
-                    f'https://zksync-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
                     'https://mainnet.era.zksync.io',
-                    'https://zksync.llamarpc.com'
+                    'https://zksync.llamarpc.com',
+                    'https://zksync.drpc.org',
+                    'https://zksync-era.blockpi.network/v1/rpc/public',
+                    'https://endpoints.omniatech.io/v1/zksync-era/mainnet/public',
+                    'https://1rpc.io/zksync2-era',
+                    'https://zksync.meowrpc.com',
+                    # ALCHEMY (备用)
+                    f'https://zksync-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/zksync_era/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://explorer.zksync.io'
@@ -476,9 +637,18 @@ class EVMMonitor:
                 'name': '💥 Blast',
                 'chain_id': 81457,
                 'rpc_urls': [
-                    f'https://blast-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
                     'https://rpc.blast.io',
-                    'https://blast.llamarpc.com'
+                    'https://blast.llamarpc.com',
+                    'https://blast.blockpi.network/v1/rpc/public',
+                    'https://blast.drpc.org',
+                    'https://endpoints.omniatech.io/v1/blast/mainnet/public',
+                    'https://1rpc.io/blast',
+                    'https://blast.gasswap.org',
+                    # ALCHEMY (备用)
+                    f'https://blast-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/blast/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://blastscan.io'
@@ -489,9 +659,19 @@ class EVMMonitor:
                 'name': '🧪 Ethereum Sepolia',
                 'chain_id': 11155111,
                 'rpc_urls': [
-                    f'https://eth-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # 公共RPC (优先)
+                    'https://sepolia.publicnode.com',
                     'https://rpc.sepolia.org',
-                    'https://sepolia.publicnode.com'
+                    'https://sepolia.blockpi.network/v1/rpc/public',
+                    'https://ethereum-sepolia.blockpi.network/v1/rpc/public',
+                    'https://sepolia.drpc.org',
+                    'https://endpoints.omniatech.io/v1/eth/sepolia/public',
+                    'https://1rpc.io/sepolia',
+                    'https://rpc-sepolia.rockx.com',
+                    # ALCHEMY (备用)
+                    f'https://eth-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/eth_sepolia/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://sepolia.etherscan.io'
@@ -583,6 +763,842 @@ class EVMMonitor:
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://testnet-zkevm.polygonscan.com'
+            },
+            
+            # ==== 🌐 新增主流Layer 1 ====
+            
+            'polygon': {
+                'name': '🟪 Polygon Mainnet',
+                'chain_id': 137,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://polygon.publicnode.com',
+                    'https://polygon-rpc.com',
+                    'https://polygon.blockpi.network/v1/rpc/public',
+                    'https://polygon.llamarpc.com',
+                    'https://polygon.drpc.org',
+                    'https://endpoints.omniatech.io/v1/matic/mainnet/public',
+                    'https://1rpc.io/matic',
+                    'https://rpc-mainnet.matic.quiknode.pro',
+                    # ALCHEMY (备用)
+                    f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/polygon/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'POL',
+                'explorer': 'https://polygonscan.com'
+            },
+            
+            'linea': {
+                'name': '🟢 Linea',
+                'chain_id': 59144,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://rpc.linea.build',
+                    'https://linea.blockpi.network/v1/rpc/public',
+                    'https://linea.drpc.org',
+                    'https://endpoints.omniatech.io/v1/linea/mainnet/public',
+                    'https://1rpc.io/linea',
+                    'https://linea-mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+                    # ALCHEMY (备用)
+                    f'https://linea-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr (最后备用)
+                    f'https://rpc.ankr.com/linea/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://lineascan.build'
+            },
+            
+            'mode': {
+                'name': '🟣 Mode',
+                'chain_id': 34443,
+                'rpc_urls': [
+                    'https://mainnet.mode.network',
+                    'https://mode.gateway.tenderly.co',
+                    'https://1rpc.io/mode'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.mode.network'
+            },
+            
+            'unichain': {
+                'name': '🦄 Unichain',
+                'chain_id': 1301,
+                'rpc_urls': [
+                    'https://rpc.unichain.org',
+                    'https://unichain-rpc.gateway.tenderly.co'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://uniscan.xyz'
+            },
+            
+            'sonic': {
+                'name': '💙 Sonic Mainnet',
+                'chain_id': 146,
+                'rpc_urls': [
+                    'https://rpc.sonic.mainnet.org',
+                    'https://sonic.gateway.tenderly.co'
+                ],
+                'native_currency': 'S',
+                'explorer': 'https://sonicscan.org'
+            },
+            
+            'berachain': {
+                'name': '🐻 Berachain',
+                'chain_id': 80084,
+                'rpc_urls': [
+                    'https://rpc.berachain.com',
+                    'https://berachain.gateway.tenderly.co'
+                ],
+                'native_currency': 'BERA',
+                'explorer': 'https://berascan.com'
+            },
+            
+            'merlin': {
+                'name': '🧙 Merlin',
+                'chain_id': 4200,
+                'rpc_urls': [
+                    'https://rpc.merlinchain.io',
+                    'https://merlin.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://scan.merlinchain.io'
+            },
+            
+            'taproot': {
+                'name': '🌿 TAPROOT',
+                'chain_id': 8911,
+                'rpc_urls': [
+                    'https://rpc.taproot.network',
+                    'https://taproot.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://scan.taproot.network'
+            },
+            
+            'zetachain': {
+                'name': '⚡ ZetaChain',
+                'chain_id': 7000,
+                'rpc_urls': [
+                    'https://zetachain-evm.blockpi.network/v1/rpc/public',
+                    'https://zetachain-mainnet-archive.allthatnode.com:8545'
+                ],
+                'native_currency': 'ZETA',
+                'explorer': 'https://zetachain.blockscout.com'
+            },
+            
+            'mantle': {
+                'name': '🟫 Mantle',
+                'chain_id': 5000,
+                'rpc_urls': [
+                    'https://rpc.mantle.xyz',
+                    'https://mantle.publicnode.com',
+                    'https://rpc.ankr.com/mantle'
+                ],
+                'native_currency': 'MNT',
+                'explorer': 'https://explorer.mantle.xyz'
+            },
+            
+            'eos_evm': {
+                'name': '🟡 EOS EVM',
+                'chain_id': 17777,
+                'rpc_urls': [
+                    'https://api.evm.eosnetwork.com',
+                    'https://eosevm.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'EOS',
+                'explorer': 'https://explorer.evm.eosnetwork.com'
+            },
+            
+            'kava': {
+                'name': '🔴 Kava EVM',
+                'chain_id': 2222,
+                'rpc_urls': [
+                    'https://evm.kava.io',
+                    'https://evm2.kava.io',
+                    'https://kava-evm.publicnode.com'
+                ],
+                'native_currency': 'KAVA',
+                'explorer': 'https://kavascan.com'
+            },
+            
+            'taiko': {
+                'name': '🟡 Taiko',
+                'chain_id': 167000,
+                'rpc_urls': [
+                    'https://rpc.mainnet.taiko.xyz',
+                    'https://taiko.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://taikoscan.io'
+            },
+            
+            'story': {
+                'name': '📖 Story',
+                'chain_id': 1513,
+                'rpc_urls': [
+                    'https://rpc.story.foundation',
+                    'https://story.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'IP',
+                'explorer': 'https://storyscan.xyz'
+            },
+            
+            'core': {
+                'name': '🟠 Core',
+                'chain_id': 1116,
+                'rpc_urls': [
+                    'https://rpc.coredao.org',
+                    'https://core.public-rpc.com',
+                    'https://rpc.ankr.com/core'
+                ],
+                'native_currency': 'CORE',
+                'explorer': 'https://scan.coredao.org'
+            },
+            
+            'chiliz': {
+                'name': '🌶️ Chiliz',
+                'chain_id': 88888,
+                'rpc_urls': [
+                    'https://rpc.chiliz.com',
+                    'https://chiliz.publicnode.com'
+                ],
+                'native_currency': 'CHZ',
+                'explorer': 'https://scan.chiliz.com'
+            },
+            
+            'filecoin': {
+                'name': '🗃️ Filecoin',
+                'chain_id': 314,
+                'rpc_urls': [
+                    'https://api.node.glif.io',
+                    'https://rpc.ankr.com/filecoin'
+                ],
+                'native_currency': 'FIL',
+                'explorer': 'https://filfox.info'
+            },
+            
+            'b2_network': {
+                'name': '🅱️ B² Network',
+                'chain_id': 223,
+                'rpc_urls': [
+                    'https://rpc.bsquared.network',
+                    'https://b2-mainnet.alt.technology'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://explorer.bsquared.network'
+            },
+            
+            'abstract': {
+                'name': '🎨 Abstract',
+                'chain_id': 11124,
+                'rpc_urls': [
+                    'https://api.abstract.money',
+                    'https://abstract.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.abstract.money'
+            },
+            
+            'vana': {
+                'name': '🌐 VANA',
+                'chain_id': 1480,
+                'rpc_urls': [
+                    'https://rpc.vana.org',
+                    'https://vana.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'VANA',
+                'explorer': 'https://explorer.vana.org'
+            },
+            
+            'apechain': {
+                'name': '🐵 ApeChain',
+                'chain_id': 33139,
+                'rpc_urls': [
+                    'https://rpc.apechain.com',
+                    'https://apechain.gateway.tenderly.co'
+                ],
+                'native_currency': 'APE',
+                'explorer': 'https://apescan.io'
+            },
+            
+            'cronos': {
+                'name': '👑 Cronos',
+                'chain_id': 25,
+                'rpc_urls': [
+                    'https://evm.cronos.org',
+                    'https://cronos.blockpi.network/v1/rpc/public',
+                    'https://rpc.ankr.com/cronos'
+                ],
+                'native_currency': 'CRO',
+                'explorer': 'https://cronoscan.com'
+            },
+            
+            'gnosis': {
+                'name': '🟢 Gnosis',
+                'chain_id': 100,
+                'rpc_urls': [
+                    'https://rpc.gnosischain.com',
+                    'https://gnosis.publicnode.com',
+                    'https://rpc.ankr.com/gnosis'
+                ],
+                'native_currency': 'xDAI',
+                'explorer': 'https://gnosisscan.io'
+            },
+            
+            'ethw': {
+                'name': '⚡ EthereumPoW',
+                'chain_id': 10001,
+                'rpc_urls': [
+                    'https://mainnet.ethereumpow.org',
+                    'https://ethw.gateway.tenderly.co'
+                ],
+                'native_currency': 'ETHW',
+                'explorer': 'https://www.oklink.com/ethw'
+            },
+            
+            'heco': {
+                'name': '🔥 HECO',
+                'chain_id': 128,
+                'rpc_urls': [
+                    'https://http-mainnet.hecochain.com',
+                    'https://http-mainnet-node.huobichain.com'
+                ],
+                'native_currency': 'HT',
+                'explorer': 'https://hecoinfo.com'
+            },
+            
+            'kcc': {
+                'name': '⚡ KCC Mainnet',
+                'chain_id': 321,
+                'rpc_urls': [
+                    'https://rpc-mainnet.kcc.network',
+                    'https://kcc.mytokenpocket.vip'
+                ],
+                'native_currency': 'KCS',
+                'explorer': 'https://explorer.kcc.io'
+            },
+            
+            'zkfair': {
+                'name': '⚖️ zkFair',
+                'chain_id': 42766,
+                'rpc_urls': [
+                    'https://rpc.zkfair.io',
+                    'https://zkfair.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'USDC',
+                'explorer': 'https://scan.zkfair.io'
+            },
+            
+            'bevm': {
+                'name': '🟠 BEVM',
+                'chain_id': 11501,
+                'rpc_urls': [
+                    'https://rpc-mainnet-1.bevm.io',
+                    'https://rpc-mainnet-2.bevm.io'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://scan-mainnet.bevm.io'
+            },
+            
+            'klaytn': {
+                'name': '🟤 Klaytn',
+                'chain_id': 8217,
+                'rpc_urls': [
+                    'https://public-node-api.klaytnapi.com/v1/cypress',
+                    'https://klaytn.publicnode.com',
+                    'https://rpc.ankr.com/klaytn'
+                ],
+                'native_currency': 'KLAY',
+                'explorer': 'https://scope.klaytn.com'
+            },
+            
+            'conflux': {
+                'name': '🔷 Conflux eSpace',
+                'chain_id': 1030,
+                'rpc_urls': [
+                    'https://evm.confluxrpc.com',
+                    'https://conflux-espace.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'CFX',
+                'explorer': 'https://evm.confluxscan.net'
+            },
+            
+            # ==== ⚡ Layer 2 网络 ====
+            
+            'polygon_zkevm': {
+                'name': '🔺 Polygon zkEVM',
+                'chain_id': 1101,
+                'rpc_urls': [
+                    f'https://polygonzkevm-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://zkevm-rpc.com',
+                    'https://rpc.ankr.com/polygon_zkevm'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://zkevm.polygonscan.com'
+            },
+            
+            'x_layer': {
+                'name': '❌ X Layer',
+                'chain_id': 196,
+                'rpc_urls': [
+                    'https://rpc.xlayer.tech',
+                    'https://xlayer.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'OKB',
+                'explorer': 'https://www.oklink.com/xlayer'
+            },
+            
+            'scroll': {
+                'name': '📜 Scroll',
+                'chain_id': 534352,
+                'rpc_urls': [
+                    'https://rpc.scroll.io',
+                    'https://scroll.publicnode.com',
+                    'https://rpc.ankr.com/scroll'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://scrollscan.com'
+            },
+            
+            'opbnb': {
+                'name': '🟡 opBNB',
+                'chain_id': 204,
+                'rpc_urls': [
+                    'https://opbnb-mainnet-rpc.bnbchain.org',
+                    'https://opbnb.publicnode.com'
+                ],
+                'native_currency': 'BNB',
+                'explorer': 'https://opbnbscan.com'
+            },
+            
+            # ==== 🧪 新增测试网 ====
+            
+            'tea_testnet': {
+                'name': '🧪 Tea Testnet',
+                'chain_id': 1337,
+                'rpc_urls': [
+                    'https://rpc.testnet.tea.xyz',
+                    'https://tea-testnet.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'TEA',
+                'explorer': 'https://testnet.teascan.org'
+            },
+            
+            'monad_testnet': {
+                'name': '🧪 Monad Testnet',
+                'chain_id': 41454,
+                'rpc_urls': [
+                    'https://testnet-rpc.monad.xyz',
+                    'https://monad-testnet.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'MON',
+                'explorer': 'https://testnet.monadscan.xyz'
+            },
+            
+            'merlin_testnet': {
+                'name': '🧪 Merlin Testnet',
+                'chain_id': 686868,
+                'rpc_urls': [
+                    'https://testnet-rpc.merlinchain.io',
+                    'https://merlin-testnet.blockpi.network/v1/rpc/public'
+                ],
+                'native_currency': 'BTC',
+                'explorer': 'https://testnet-scan.merlinchain.io'
+            },
+            
+            'bnb_testnet': {
+                'name': '🧪 BNB Smart Chain Testnet',
+                'chain_id': 97,
+                'rpc_urls': [
+                    'https://data-seed-prebsc-1-s1.binance.org:8545',
+                    'https://bsc-testnet.publicnode.com'
+                ],
+                'native_currency': 'tBNB',
+                'explorer': 'https://testnet.bscscan.com'
+            },
+            
+            'unichain_sepolia': {
+                'name': '🧪 Unichain Sepolia Testnet',
+                'chain_id': 1301,
+                'rpc_urls': [
+                    'https://sepolia.unichain.org',
+                    'https://unichain-sepolia.gateway.tenderly.co'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.uniscan.xyz'
+            },
+            
+            # ==== 🌐 新增缺失的重要链条 ====
+            
+            'sei': {
+                'name': '🔮 Sei Network',
+                'chain_id': 1329,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://evm-rpc.sei-apis.com',
+                    'https://sei-evm.nirvanalabs.xyz',
+                    'https://sei.drpc.org',
+                    'https://sei-rpc.polkachu.com',
+                    'https://sei-evm-rpc.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/sei/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'SEI',
+                'explorer': 'https://seistream.app'
+            },
+            
+            'iota_evm': {
+                'name': '🔷 IOTA EVM',
+                'chain_id': 8822,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://json-rpc.evm.iotaledger.net',
+                    'https://iota-evm.gateway.tenderly.co',
+                    'https://iota-evm.publicnode.com',
+                    'https://iota.drpc.org',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/iota_evm/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'IOTA',
+                'explorer': 'https://explorer.evm.iota.org'
+            },
+            
+            'hyperliquid': {
+                'name': '💧 Hyperliquid',
+                'chain_id': 998,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://api.hyperliquid.xyz/evm',
+                    'https://hyperliquid-rpc.publicnode.com',
+                    'https://hyperliquid.drpc.org',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/hyperliquid/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'USDC',
+                'explorer': 'https://app.hyperliquid.xyz'
+            },
+            
+            'crossfi': {
+                'name': '❌ CrossFi',
+                'chain_id': 4157,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://rpc.crossfi.io',
+                    'https://crossfi.blockpi.network/v1/rpc/public',
+                    'https://crossfi.drpc.org',
+                    'https://crossfi-rpc.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/crossfi/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'XFI',
+                'explorer': 'https://scan.crossfi.io'
+            },
+            
+            'oasis_emerald': {
+                'name': '💎 Oasis Emerald',
+                'chain_id': 42262,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://emerald.oasis.dev',
+                    'https://1rpc.io/oasis/emerald',
+                    'https://emerald.oasis.io',
+                    'https://oasis-emerald.drpc.org',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/oasis_emerald/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'ROSE',
+                'explorer': 'https://explorer.emerald.oasis.dev'
+            },
+            
+            'velas': {
+                'name': '🔥 Velas EVM',
+                'chain_id': 106,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://evmexplorer.velas.com/rpc',
+                    'https://velas-evm.publicnode.com',
+                    'https://velas.drpc.org',
+                    'https://explorer.velas.com/rpc',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/velas/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'VLX',
+                'explorer': 'https://evmexplorer.velas.com'
+            },
+            
+            'rootstock': {
+                'name': '🔶 Rootstock (RSK)',
+                'chain_id': 30,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://public-node.rsk.co',
+                    'https://rsk.getblock.io/mainnet',
+                    'https://rsk.drpc.org',
+                    'https://rootstock.publicnode.com',
+                    'https://mycrypto.rsk.co',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/rootstock/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'RBTC',
+                'explorer': 'https://explorer.rsk.co'
+            },
+            
+            'thundercore': {
+                'name': '⚡ ThunderCore',
+                'chain_id': 108,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://mainnet-rpc.thundercore.com',
+                    'https://thundercore.drpc.org',
+                    'https://thundercore.publicnode.com',
+                    'https://mainnet-rpc.thundertoken.net',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/thundercore/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'TT',
+                'explorer': 'https://viewblock.io/thundercore'
+            },
+            
+            'bitgert': {
+                'name': '🔥 Bitgert',
+                'chain_id': 32520,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://mainnet-rpc.brisescan.com',
+                    'https://chainrpc.com',
+                    'https://rpc.icecreamswap.com',
+                    'https://bitgert.drpc.org',
+                    'https://bitgert.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/bitgert/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'BRISE',
+                'explorer': 'https://brisescan.com'
+            },
+            
+            'wanchain': {
+                'name': '🌊 Wanchain',
+                'chain_id': 888,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://gwan-ssl.wandevs.org:56891',
+                    'https://wanchain.drpc.org',
+                    'https://wanchain.publicnode.com',
+                    'https://wanchain-mainnet.gateway.pokt.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/wanchain/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'WAN',
+                'explorer': 'https://wanscan.org'
+            },
+            
+            'tomochain': {
+                'name': '🏮 TomoChain',
+                'chain_id': 88,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://rpc.tomochain.com',
+                    'https://tomo.blockpi.network/v1/rpc/public',
+                    'https://tomochain.drpc.org',
+                    'https://tomochain.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/tomochain/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'TOMO',
+                'explorer': 'https://tomoscan.io'
+            },
+            
+            'fusion': {
+                'name': '⚛️ Fusion',
+                'chain_id': 32659,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://mainnet.fusionnetwork.io',
+                    'https://mainway.freemoon.xyz/gate',
+                    'https://fusion.drpc.org',
+                    'https://fusion.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/fusion/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'FSN',
+                'explorer': 'https://fsnex.com'
+            },
+            
+            'elastos': {
+                'name': '🔗 Elastos EVM',
+                'chain_id': 20,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://api.elastos.io/eth',
+                    'https://escrpc.elaphant.app',
+                    'https://elastos.drpc.org',
+                    'https://elastos.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/elastos/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'ELA',
+                'explorer': 'https://esc.elastos.io'
+            },
+            
+            'cube': {
+                'name': '🧊 Cube Chain',
+                'chain_id': 1818,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://http-mainnet.cube.network',
+                    'https://cube.drpc.org',
+                    'https://cube.publicnode.com',
+                    'https://rpc.cube.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/cube/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'CUBE',
+                'explorer': 'https://cubescan.network'
+            },
+            
+            'energi': {
+                'name': '⚡ Energi',
+                'chain_id': 39797,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://nodeapi.energi.network',
+                    'https://energi.drpc.org',
+                    'https://energi.publicnode.com',
+                    'https://rpc.energi.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/energi/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'NRG',
+                'explorer': 'https://explorer.energi.network'
+            },
+            
+            'godwoken': {
+                'name': '🏛️ Godwoken',
+                'chain_id': 71402,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://v1.mainnet.godwoken.io/rpc',
+                    'https://godwoken.drpc.org',
+                    'https://godwoken.publicnode.com',
+                    'https://mainnet.godwoken.io/rpc',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/godwoken/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'CKB',
+                'explorer': 'https://v1.gwscan.com'
+            },
+            
+            'callisto': {
+                'name': '🌙 Callisto Network',
+                'chain_id': 820,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://clo-geth.0xinfra.com',
+                    'https://callisto.drpc.org',
+                    'https://callisto.publicnode.com',
+                    'https://rpc.callisto.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/callisto/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'CLO',
+                'explorer': 'https://explorer.callisto.network'
+            },
+            
+            'neon_evm': {
+                'name': '🟢 Neon EVM',
+                'chain_id': 245022934,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://neon-proxy-mainnet.solana.p2p.org',
+                    'https://neon-mainnet.everstake.one',
+                    'https://neon.drpc.org',
+                    'https://neon.publicnode.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/neon/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'NEON',
+                'explorer': 'https://neonscan.org'
+            },
+            
+            'xrpl_evm': {
+                'name': '🌊 XRPL EVM Sidechain',
+                'chain_id': 1440002,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://rpc-evm-sidechain.xrpl.org',
+                    'https://xrpl-evm.drpc.org',
+                    'https://xrpl-evm.publicnode.com',
+                    'https://evm-sidechain.xrpl.org',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/xrpl_evm/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'eXRP',
+                'explorer': 'https://evm-sidechain.xrpl.org'
+            },
+            
+            'bitfinity': {
+                'name': '♾️ Bitfinity Network',
+                'chain_id': 355113,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://testnet.bitfinity.network',
+                    'https://bitfinity.drpc.org',
+                    'https://bitfinity.publicnode.com',
+                    'https://rpc.bitfinity.network',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/bitfinity/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'BFT',
+                'explorer': 'https://explorer.bitfinity.network'
+            },
+            
+            'injective_evm': {
+                'name': '💉 Injective EVM',
+                'chain_id': 2192,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://evm-rpc.injective.network',
+                    'https://injective-evm.publicnode.com',
+                    'https://injective.drpc.org',
+                    'https://evm.injective.dev',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/injective_evm/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'INJ',
+                'explorer': 'https://evm.injective.network'
+            },
+            
+            'zilliqa_evm': {
+                'name': '🏔️ Zilliqa EVM',
+                'chain_id': 32769,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://api.zilliqa.com',
+                    'https://zilliqa-evm.drpc.org',
+                    'https://zilliqa.publicnode.com',
+                    'https://evm-api.zilliqa.com',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/zilliqa/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'ZIL',
+                'explorer': 'https://evmx.zilliqa.com'
+            },
+            
+            'mantra_chain': {
+                'name': '🕉️ MANTRA Chain',
+                'chain_id': 3370,
+                'rpc_urls': [
+                    # 公共RPC (优先)
+                    'https://rpc.mantrachain.io',
+                    'https://mantra.drpc.org',
+                    'https://mantra.publicnode.com',
+                    'https://evm-rpc.mantrachain.io',
+                    # Ankr (备用)
+                    f'https://rpc.ankr.com/mantra/{self.ANKR_API_KEY}'
+                ],
+                'native_currency': 'OM',
+                'explorer': 'https://explorer.mantrachain.io'
             }
 
         }
@@ -591,6 +1607,7 @@ class EVMMonitor:
         self.wallets: Dict[str, str] = {}  # address -> private_key
         self.target_wallet = ""  # 固定目标账户
         self.monitored_addresses: Dict[str, Dict] = {}  # address -> {networks: [...], last_check: timestamp}
+        self.blocked_networks: Dict[str, List[str]] = {}  # address -> [被屏蔽的网络列表]
         self.monitoring = False
         self.monitor_thread = None
         
@@ -604,6 +1621,22 @@ class EVMMonitor:
         self.min_transfer_amount = 0.001  # 最小转账金额（ETH）
         self.gas_limit = 21000
         self.gas_price_gwei = 20
+        
+        # Telegram通知配置
+        self.telegram_bot_token = "7555291517:AAHJGZOs4RZ-QmZvHKVk-ws5zBNcFZHNmkU"
+        self.telegram_chat_id = "5963704377"
+        self.telegram_enabled = True
+        
+        # 转账统计
+        self.transfer_stats = {
+            'total_attempts': 0,
+            'successful_transfers': 0,
+            'failed_transfers': 0,
+            'total_value_transferred': 0.0,
+            'last_reset': time.time(),
+            'by_network': {},
+            'by_token': {}
+        }
         
         # 设置日志
         self.setup_logging()
@@ -772,6 +1805,8 @@ class EVMMonitor:
         try:
             state = {
                 'monitored_addresses': self.monitored_addresses,
+                'blocked_networks': self.blocked_networks,
+                'transfer_stats': self.transfer_stats,
                 'last_save': datetime.now().isoformat()
             }
             with open(self.state_file, 'w') as f:
@@ -786,7 +1821,16 @@ class EVMMonitor:
                 with open(self.state_file, 'r') as f:
                     state = json.load(f)
                 self.monitored_addresses = state.get('monitored_addresses', {})
+                self.blocked_networks = state.get('blocked_networks', {})
+                
+                # 加载转账统计，保持兼容性
+                saved_stats = state.get('transfer_stats', {})
+                if saved_stats:
+                    self.transfer_stats.update(saved_stats)
+                
                 self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
+                self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
+                self.logger.info(f"恢复转账统计: 成功{self.transfer_stats['successful_transfers']}次 失败{self.transfer_stats['failed_transfers']}次")
         except Exception as e:
             self.logger.error(f"加载状态失败: {e}")
 
@@ -805,17 +1849,23 @@ class EVMMonitor:
             has_history = tx_count > 0
             
             if has_history:
-                print(f"{Fore.GREEN}✅ {address[:10]}... 在 {self.networks[network]['name']} 有 {tx_count} 笔交易{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.YELLOW}⚠️ {address[:10]}... 在 {self.networks[network]['name']} 无交易历史{Style.RESET_ALL}")
+                network_name = self.networks[network]['name']
+                if '🧪' in network_name:  # 测试网
+                    color = Fore.YELLOW
+                elif '🔷' in network_name or '🔵' in network_name:  # 主网
+                    color = Fore.BLUE
+                else:
+                    color = Fore.GREEN
+                print(f"{Fore.GREEN}✅ {address[:10]}... 在 {color}{network_name}{Style.RESET_ALL} 有 {Fore.CYAN}{tx_count}{Style.RESET_ALL} 笔交易")
+            # 不显示无交易历史的提示，减少屏幕垃圾
             
             return has_history
         except Exception as e:
-            self.logger.error(f"检查交易历史失败 {address} on {network}: {e}")
+            # 不显示连接失败的错误，减少干扰
             return False
 
     def get_balance(self, address: str, network: str) -> Tuple[float, str]:
-        """获取地址余额，返回(余额, 币种符号)"""
+        """获取地址原生代币余额，返回(余额, 币种符号)"""
         try:
             if network not in self.web3_connections:
                 return 0.0, "?"
@@ -829,6 +1879,473 @@ class EVMMonitor:
         except Exception as e:
             self.logger.error(f"获取余额失败 {address} on {network}: {e}")
             return 0.0, "?"
+
+    def get_token_balance(self, address: str, token_symbol: str, network: str) -> Tuple[float, str, str]:
+        """获取ERC20代币余额，返回(余额, 代币符号, 代币合约地址)"""
+        try:
+            if network not in self.web3_connections:
+                return 0.0, "?", "?"
+            
+            if token_symbol not in self.tokens:
+                return 0.0, "?", "?"
+            
+            token_config = self.tokens[token_symbol]
+            if network not in token_config['contracts']:
+                return 0.0, "?", "?"
+            
+            contract_address = token_config['contracts'][network]
+            w3 = self.web3_connections[network]
+            
+            # 创建合约实例
+            contract = w3.eth.contract(
+                address=w3.to_checksum_address(contract_address),
+                abi=self.erc20_abi
+            )
+            
+            # 获取代币余额
+            balance_raw = contract.functions.balanceOf(w3.to_checksum_address(address)).call()
+            
+            # 获取代币精度
+            try:
+                decimals = contract.functions.decimals().call()
+            except:
+                decimals = 18  # 默认精度
+            
+            # 转换为人类可读格式
+            balance = balance_raw / (10 ** decimals)
+            
+            return float(balance), token_config['symbol'], contract_address
+            
+        except Exception as e:
+            self.logger.error(f"获取代币余额失败 {token_symbol} {address} on {network}: {e}")
+            return 0.0, "?", "?"
+
+    def get_all_balances(self, address: str, network: str) -> Dict:
+        """获取地址在指定网络上的所有余额（原生代币 + ERC20代币）"""
+        balances = {}
+        
+        # 获取原生代币余额
+        native_balance, native_currency = self.get_balance(address, network)
+        if native_balance > 0:
+            balances['native'] = {
+                'balance': native_balance,
+                'symbol': native_currency,
+                'type': 'native',
+                'contract': 'native'
+            }
+        
+        # 获取ERC20代币余额
+        for token_symbol in self.tokens:
+            token_balance, token_sym, contract_addr = self.get_token_balance(address, token_symbol, network)
+            if token_balance > 0:
+                balances[token_symbol] = {
+                    'balance': token_balance,
+                    'symbol': token_sym,
+                    'type': 'erc20',
+                    'contract': contract_addr
+                }
+        
+        return balances
+
+    def estimate_gas_cost(self, network: str, token_type: str = 'native') -> Tuple[float, str]:
+        """智能估算Gas费用，返回(gas费用ETH, 币种符号)"""
+        try:
+            if network not in self.web3_connections:
+                return 0.0, "?"
+            
+            w3 = self.web3_connections[network]
+            
+            # 获取当前Gas价格
+            try:
+                gas_price = w3.eth.gas_price
+            except:
+                gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+            
+            # 根据交易类型估算Gas限制
+            if token_type == 'native':
+                gas_limit = 21000  # 原生代币转账
+            else:
+                gas_limit = 65000  # ERC20代币转账（通常需要更多Gas）
+            
+            # 计算总Gas费用
+            gas_cost = gas_limit * gas_price
+            gas_cost_eth = w3.from_wei(gas_cost, 'ether')
+            currency = self.networks[network]['native_currency']
+            
+            return float(gas_cost_eth), currency
+            
+        except Exception as e:
+            self.logger.error(f"估算Gas费用失败 {network}: {e}")
+            return 0.001, "ETH"  # 返回保守估算
+
+    def can_transfer(self, address: str, network: str, token_type: str = 'native', token_balance: float = 0) -> Tuple[bool, str]:
+        """智能判断是否可以转账，返回(是否可转账, 原因)"""
+        try:
+            # 估算Gas费用
+            gas_cost, _ = self.estimate_gas_cost(network, token_type)
+            
+            # 获取原生代币余额（用于支付Gas）
+            native_balance, _ = self.get_balance(address, network)
+            
+            if token_type == 'native':
+                # 原生代币转账：需要余额 > Gas费用 + 最小转账金额
+                if native_balance < gas_cost + self.min_transfer_amount:
+                    return False, f"余额不足支付Gas费用 (需要 {gas_cost:.6f} ETH)"
+                return True, "可以转账"
+            else:
+                # ERC20代币转账：需要有代币余额且原生代币足够支付Gas
+                if token_balance <= 0:
+                    return False, "代币余额为0"
+                if native_balance < gas_cost:
+                    return False, f"原生代币不足支付Gas费用 (需要 {gas_cost:.6f} ETH)"
+                return True, "可以转账"
+                
+        except Exception as e:
+            self.logger.error(f"判断转账可行性失败: {e}")
+            return False, "判断失败"
+
+    def send_telegram_notification(self, message: str) -> bool:
+        """发送Telegram通知"""
+        if not self.telegram_enabled or not self.telegram_bot_token or not self.telegram_chat_id:
+            return False
+        
+        try:
+            import requests
+            url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+            data = {
+                'chat_id': self.telegram_chat_id,
+                'text': message,
+                'parse_mode': 'Markdown'
+            }
+            
+            response = requests.post(url, data=data, timeout=10)
+            if response.status_code == 200:
+                self.logger.info("Telegram通知发送成功")
+                return True
+            else:
+                self.logger.error(f"Telegram通知发送失败: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"发送Telegram通知失败: {e}")
+            return False
+
+    def update_transfer_stats(self, success: bool, network: str, token_symbol: str, amount: float = 0):
+        """更新转账统计"""
+        try:
+            self.transfer_stats['total_attempts'] += 1
+            
+            if success:
+                self.transfer_stats['successful_transfers'] += 1
+                self.transfer_stats['total_value_transferred'] += amount
+            else:
+                self.transfer_stats['failed_transfers'] += 1
+            
+            # 按网络统计
+            if network not in self.transfer_stats['by_network']:
+                self.transfer_stats['by_network'][network] = {'success': 0, 'failed': 0}
+            
+            if success:
+                self.transfer_stats['by_network'][network]['success'] += 1
+            else:
+                self.transfer_stats['by_network'][network]['failed'] += 1
+            
+            # 按代币统计
+            if token_symbol not in self.transfer_stats['by_token']:
+                self.transfer_stats['by_token'][token_symbol] = {'success': 0, 'failed': 0, 'amount': 0.0}
+            
+            if success:
+                self.transfer_stats['by_token'][token_symbol]['success'] += 1
+                self.transfer_stats['by_token'][token_symbol]['amount'] += amount
+            else:
+                self.transfer_stats['by_token'][token_symbol]['failed'] += 1
+                
+        except Exception as e:
+            self.logger.error(f"更新转账统计失败: {e}")
+
+    def get_stats_summary(self) -> str:
+        """获取统计摘要"""
+        try:
+            stats = self.transfer_stats
+            success_rate = (stats['successful_transfers'] / stats['total_attempts'] * 100) if stats['total_attempts'] > 0 else 0
+            
+            summary = f"""
+📊 *转账统计摘要*
+━━━━━━━━━━━━━━━━━━━━
+📈 总尝试次数: {stats['total_attempts']}
+✅ 成功转账: {stats['successful_transfers']}
+❌ 失败转账: {stats['failed_transfers']}
+📊 成功率: {success_rate:.1f}%
+💰 总转账价值: {stats['total_value_transferred']:.6f} ETH等价值
+
+🌐 *网络统计*:
+"""
+            
+            for network, net_stats in stats['by_network'].items():
+                network_name = self.networks.get(network, {}).get('name', network)
+                summary += f"• {network_name}: ✅{net_stats['success']} ❌{net_stats['failed']}\n"
+            
+            summary += "\n🪙 *代币统计*:\n"
+            for token, token_stats in stats['by_token'].items():
+                summary += f"• {token}: ✅{token_stats['success']} ❌{token_stats['failed']}"
+                if token_stats['amount'] > 0:
+                    summary += f" (💰{token_stats['amount']:.6f})"
+                summary += "\n"
+            
+            return summary
+            
+        except Exception as e:
+            self.logger.error(f"获取统计摘要失败: {e}")
+            return "统计数据获取失败"
+
+    def test_rpc_connection(self, rpc_url: str, expected_chain_id: int, timeout: int = 5) -> bool:
+        """测试单个RPC连接"""
+        try:
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout}))
+            
+            # 测试连接
+            if not w3.is_connected():
+                return False
+            
+            # 验证链ID
+            chain_id = w3.eth.chain_id
+            return chain_id == expected_chain_id
+            
+        except Exception:
+            return False
+
+    def test_all_rpcs(self) -> Dict[str, Dict]:
+        """测试所有网络的RPC连接状态"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 开始RPC连接测试 🔍 {Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📡 正在测试所有网络的RPC节点连接状态...{Style.RESET_ALL}\n")
+        
+        results = {}
+        
+        for network_key, network_info in self.networks.items():
+            print(f"{Back.CYAN}{Fore.BLACK} 🌐 测试 {network_info['name']} {Style.RESET_ALL}")
+            
+            working_rpcs = []
+            failed_rpcs = []
+            
+            for i, rpc_url in enumerate(network_info['rpc_urls']):
+                print(f"  {Fore.CYAN}[{i+1}/{len(network_info['rpc_urls'])}]{Style.RESET_ALL} 测试: {rpc_url[:50]}...")
+                
+                if self.test_rpc_connection(rpc_url, network_info['chain_id']):
+                    working_rpcs.append(rpc_url)
+                    print(f"    {Fore.GREEN}✅ 连接成功{Style.RESET_ALL}")
+                else:
+                    failed_rpcs.append(rpc_url)
+                    print(f"    {Fore.RED}❌ 连接失败{Style.RESET_ALL}")
+            
+            results[network_key] = {
+                'name': network_info['name'],
+                'working_rpcs': working_rpcs,
+                'failed_rpcs': failed_rpcs,
+                'success_rate': len(working_rpcs) / len(network_info['rpc_urls']) * 100 if network_info['rpc_urls'] else 0
+            }
+            
+            success_rate = results[network_key]['success_rate']
+            if success_rate == 100:
+                status_color = Fore.GREEN
+                status_icon = "🟢"
+            elif success_rate >= 50:
+                status_color = Fore.YELLOW
+                status_icon = "🟡"
+            else:
+                status_color = Fore.RED
+                status_icon = "🔴"
+            
+            print(f"  {status_icon} {status_color}成功率: {success_rate:.1f}% ({len(working_rpcs)}/{len(network_info['rpc_urls'])}){Style.RESET_ALL}\n")
+        
+        return results
+
+    def auto_disable_failed_rpcs(self) -> int:
+        """自动屏蔽失效的RPC节点"""
+        print(f"\n{Back.RED}{Fore.WHITE} 🛠️ 自动屏蔽失效RPC 🛠️ {Style.RESET_ALL}")
+        
+        disabled_count = 0
+        
+        for network_key, network_info in self.networks.items():
+            working_rpcs = []
+            
+            for rpc_url in network_info['rpc_urls']:
+                if self.test_rpc_connection(rpc_url, network_info['chain_id']):
+                    working_rpcs.append(rpc_url)
+                else:
+                    disabled_count += 1
+                    print(f"{Fore.RED}❌ 屏蔽失效RPC: {network_info['name']} - {rpc_url[:50]}...{Style.RESET_ALL}")
+            
+            if working_rpcs:
+                self.networks[network_key]['rpc_urls'] = working_rpcs
+                print(f"{Fore.GREEN}✅ {network_info['name']}: 保留 {len(working_rpcs)} 个可用RPC{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}⚠️ 警告: {network_info['name']} 没有可用的RPC节点！{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.CYAN}📊 总计屏蔽了 {disabled_count} 个失效RPC节点{Style.RESET_ALL}")
+        return disabled_count
+
+    def add_custom_rpc(self, network_key: str, rpc_url: str) -> bool:
+        """为指定网络添加自定义RPC"""
+        if network_key not in self.networks:
+            print(f"{Fore.RED}❌ 网络 {network_key} 不存在{Style.RESET_ALL}")
+            return False
+        
+        network_info = self.networks[network_key]
+        
+        # 测试RPC连接
+        print(f"{Fore.YELLOW}🔍 测试自定义RPC连接...{Style.RESET_ALL}")
+        if not self.test_rpc_connection(rpc_url, network_info['chain_id']):
+            print(f"{Fore.RED}❌ RPC连接测试失败: {rpc_url}{Style.RESET_ALL}")
+            return False
+        
+        # 检查是否已存在
+        if rpc_url in network_info['rpc_urls']:
+            print(f"{Fore.YELLOW}⚠️ RPC已存在: {rpc_url}{Style.RESET_ALL}")
+            return False
+        
+        # 添加到RPC列表开头（高优先级）
+        self.networks[network_key]['rpc_urls'].insert(0, rpc_url)
+        print(f"{Fore.GREEN}✅ 成功添加自定义RPC到 {network_info['name']}: {rpc_url}{Style.RESET_ALL}")
+        
+        return True
+
+    def transfer_erc20_token(self, from_address: str, private_key: str, to_address: str, 
+                           token_symbol: str, amount: float, network: str) -> bool:
+        """ERC20代币转账函数"""
+        try:
+            if network not in self.web3_connections:
+                print(f"{Fore.RED}❌ 网络 {network} 未连接{Style.RESET_ALL}")
+                return False
+            
+            if token_symbol not in self.tokens:
+                print(f"{Fore.RED}❌ 不支持的代币: {token_symbol}{Style.RESET_ALL}")
+                return False
+            
+            token_config = self.tokens[token_symbol]
+            if network not in token_config['contracts']:
+                print(f"{Fore.RED}❌ 代币 {token_symbol} 在 {network} 上不可用{Style.RESET_ALL}")
+                return False
+            
+            w3 = self.web3_connections[network]
+            contract_address = token_config['contracts'][network]
+            
+            # 验证地址格式
+            try:
+                to_address = w3.to_checksum_address(to_address)
+                from_address = w3.to_checksum_address(from_address)
+                contract_address = w3.to_checksum_address(contract_address)
+            except Exception as e:
+                print(f"{Fore.RED}❌ 地址格式错误: {e}{Style.RESET_ALL}")
+                return False
+            
+            # 检查是否是自己转给自己
+            if from_address.lower() == to_address.lower():
+                print(f"{Fore.YELLOW}⚠️ 跳过自己转给自己的交易{Style.RESET_ALL}")
+                return False
+            
+            # 创建合约实例
+            contract = w3.eth.contract(address=contract_address, abi=self.erc20_abi)
+            
+            # 获取代币精度
+            try:
+                decimals = contract.functions.decimals().call()
+            except:
+                decimals = 18
+            
+            # 转换为合约单位
+            amount_wei = int(amount * (10 ** decimals))
+            
+            # 智能Gas估算
+            gas_cost, _ = self.estimate_gas_cost(network, 'erc20')
+            native_balance, _ = self.get_balance(from_address, network)
+            
+            if native_balance < gas_cost:
+                print(f"{Fore.RED}❌ 原生代币不足支付Gas费用: 需要 {gas_cost:.6f} ETH{Style.RESET_ALL}")
+                return False
+            
+            # 获取当前Gas价格
+            try:
+                gas_price = w3.eth.gas_price
+                min_gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+                gas_price = max(gas_price, min_gas_price)
+            except:
+                gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+            
+            # 构建交易
+            nonce = w3.eth.get_transaction_count(from_address)
+            
+            # 构建transfer函数调用数据
+            transfer_function = contract.functions.transfer(to_address, amount_wei)
+            
+            transaction = {
+                'to': contract_address,
+                'value': 0,  # ERC20转账不需要发送ETH
+                'gas': 65000,  # ERC20转账通常需要更多gas
+                'gasPrice': gas_price,
+                'nonce': nonce,
+                'data': transfer_function._encode_transaction_data(),
+                'chainId': self.networks[network]['chain_id']
+            }
+            
+            # 签名交易
+            signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+            
+            # 发送交易
+            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            
+            print(f"{Fore.GREEN}💸 ERC20转账成功: {amount:.6f} {token_symbol} from {from_address[:10]}... to {to_address[:10]}...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}📋 交易哈希: {tx_hash.hex()}{Style.RESET_ALL}")
+            
+            # 更新统计
+            self.update_transfer_stats(True, network, token_symbol, amount)
+            
+            # 发送Telegram通知
+            network_name = self.networks[network]['name']
+            notification_msg = f"""
+🎉 *ERC20转账成功!*
+
+🪙 代币: {token_symbol}
+💰 金额: {amount:.6f}
+🌐 网络: {network_name}
+📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
+📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
+📋 交易哈希: `{tx_hash.hex()}`
+
+{self.get_stats_summary()}
+"""
+            self.send_telegram_notification(notification_msg)
+            
+            self.logger.info(f"ERC20转账成功: {amount} {token_symbol}, {from_address} -> {to_address}, tx: {tx_hash.hex()}")
+            return True
+            
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}⚠️ 用户取消ERC20转账操作{Style.RESET_ALL}")
+            raise
+        except Exception as e:
+            print(f"{Fore.RED}❌ ERC20转账失败: {e}{Style.RESET_ALL}")
+            
+            # 更新统计
+            self.update_transfer_stats(False, network, token_symbol, 0)
+            
+            # 发送失败通知
+            network_name = self.networks[network]['name']
+            failure_msg = f"""
+❌ *ERC20转账失败!*
+
+🪙 代币: {token_symbol}
+💰 金额: {amount:.6f}
+🌐 网络: {network_name}
+📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
+📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
+❌ 错误: {str(e)[:100]}
+
+{self.get_stats_summary()}
+"""
+            self.send_telegram_notification(failure_msg)
+            
+            self.logger.error(f"ERC20转账失败 {token_symbol} {from_address} -> {to_address}: {e}")
+            return False
 
     def transfer_funds(self, from_address: str, private_key: str, to_address: str, amount: float, network: str) -> bool:
         """转账函数"""
@@ -895,6 +2412,25 @@ class EVMMonitor:
             print(f"{Fore.GREEN}💸 转账成功: {amount:.6f} {currency} from {from_address[:10]}... to {to_address[:10]}...{Style.RESET_ALL}")
             print(f"{Fore.CYAN}📋 交易哈希: {tx_hash.hex()}{Style.RESET_ALL}")
             
+            # 更新统计
+            self.update_transfer_stats(True, network, currency, amount)
+            
+            # 发送Telegram通知
+            network_name = self.networks[network]['name']
+            notification_msg = f"""
+🎉 *原生代币转账成功!*
+
+💎 代币: {currency}
+💰 金额: {amount:.6f}
+🌐 网络: {network_name}
+📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
+📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
+📋 交易哈希: `{tx_hash.hex()}`
+
+{self.get_stats_summary()}
+"""
+            self.send_telegram_notification(notification_msg)
+            
             self.logger.info(f"转账成功: {amount} {currency}, {from_address} -> {to_address}, tx: {tx_hash.hex()}")
             return True
             
@@ -903,6 +2439,27 @@ class EVMMonitor:
             raise  # 重新抛出以便上层函数处理
         except Exception as e:
             print(f"{Fore.RED}❌ 转账失败: {e}{Style.RESET_ALL}")
+            
+            # 更新统计
+            currency = self.networks[network]['native_currency']
+            self.update_transfer_stats(False, network, currency, 0)
+            
+            # 发送失败通知
+            network_name = self.networks[network]['name']
+            failure_msg = f"""
+❌ *原生代币转账失败!*
+
+💎 代币: {currency}
+💰 金额: {amount:.6f}
+🌐 网络: {network_name}
+📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
+📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
+❌ 错误: {str(e)[:100]}
+
+{self.get_stats_summary()}
+"""
+            self.send_telegram_notification(failure_msg)
+            
             self.logger.error(f"转账失败 {from_address} -> {to_address}: {e}")
             # 详细错误信息
             if "invalid fields" in str(e).lower():
@@ -914,27 +2471,54 @@ class EVMMonitor:
         print(f"\n{Fore.CYAN}🔍 开始扫描地址交易历史...{Style.RESET_ALL}")
         
         for address in self.wallets.keys():
-            print(f"\n检查地址: {address}")
+            print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 检查地址 {Style.RESET_ALL} {Fore.CYAN}{address}{Style.RESET_ALL}")
             address_networks = []
+            blocked_networks = []
             
             for network_key in self.networks.keys():
                 if self.check_transaction_history(address, network_key):
                     address_networks.append(network_key)
+                else:
+                    blocked_networks.append(network_key)
             
+            # 更新监控列表
             if address_networks:
                 self.monitored_addresses[address] = {
                     'networks': address_networks,
                     'last_check': time.time()
                 }
-                print(f"{Fore.GREEN}✅ 添加到监控列表: {len(address_networks)} 个网络{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}✅ 监控网络: {len(address_networks)} 个{Style.RESET_ALL}")
+                
+                # 显示监控的网络
+                for net in address_networks[:5]:  # 只显示前5个
+                    network_name = self.networks[net]['name']
+                    print(f"  {Fore.GREEN}✓{Style.RESET_ALL} {network_name}")
+                if len(address_networks) > 5:
+                    print(f"  {Fore.GREEN}... 和其他 {len(address_networks) - 5} 个网络{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}⚠️ 跳过监控（无交易历史）{Style.RESET_ALL}")
+            
+            # 保存被屏蔽的网络列表
+            if blocked_networks:
+                self.blocked_networks[address] = blocked_networks
+                print(f"{Fore.RED}❌ 屏蔽网络: {len(blocked_networks)} 个{Style.RESET_ALL} {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
         
-        print(f"\n{Fore.GREEN}✅ 扫描完成，将监控 {len(self.monitored_addresses)} 个地址{Style.RESET_ALL}")
+        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
+        print(f"{Fore.GREEN}✅ 监控地址: {len(self.monitored_addresses)} 个{Style.RESET_ALL}")
+        print(f"{Fore.RED}❌ 屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个{Style.RESET_ALL}")
         self.save_state()
 
     def monitor_loop(self):
         """监控循环"""
+        import signal
+        
+        # 设置信号处理器
+        def signal_handler(signum, frame):
+            print(f"\n{Fore.YELLOW}⚠️ 收到中断信号，正在停止监控...{Style.RESET_ALL}")
+            self.monitoring = False
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        
         print(f"\n{Fore.CYAN}🚀 开始监控...{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}📝 提示：按 Ctrl+C 可以优雅退出监控{Style.RESET_ALL}")
         
@@ -954,28 +2538,70 @@ class EVMMonitor:
                                 break
                             
                             try:
-                                balance, currency = self.get_balance(address, network)
+                                # 🚀 全链全代币监控 - 获取所有余额
+                                all_balances = self.get_all_balances(address, network)
                                 
-                                if balance > self.min_transfer_amount:
-                                    print(f"\n{Fore.YELLOW}💰 发现余额: {balance:.6f} {currency} in {address[:10]}... on {self.networks[network]['name']}{Style.RESET_ALL}")
+                                if not all_balances:
+                                    continue
+                                
+                                # 网络名称颜色化
+                                network_name = self.networks[network]['name']
+                                if '🧪' in network_name:  # 测试网
+                                    network_color = f"{Back.YELLOW}{Fore.BLACK}{network_name}{Style.RESET_ALL}"
+                                elif '🔷' in network_name or '🔵' in network_name:  # 主网
+                                    network_color = f"{Back.BLUE}{Fore.WHITE}{network_name}{Style.RESET_ALL}"
+                                else:  # 其他网络
+                                    network_color = f"{Back.GREEN}{Fore.BLACK}{network_name}{Style.RESET_ALL}"
+                                
+                                # 处理每个代币余额
+                                for token_key, token_info in all_balances.items():
+                                    if not self.monitoring:
+                                        break
                                     
-                                    # 转账到固定目标账户
-                                    if self.target_wallet:
-                                        try:
-                                            if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
-                                                # 更新最后检查时间
-                                                address_info['last_check'] = time.time()
-                                                self.save_state()
-                                        except KeyboardInterrupt:
-                                            print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
-                                            self.monitoring = False
-                                            return
-                                    else:
-                                        print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
-                                else:
-                                    # 显示余额状态
-                                    if balance > 0:
-                                        print(f"{Fore.BLUE}💎 {address[:10]}... on {self.networks[network]['name']}: {balance:.6f} {currency} (低于最小转账金额){Style.RESET_ALL}")
+                                    balance = token_info['balance']
+                                    symbol = token_info['symbol']
+                                    token_type = token_info['type']
+                                    
+                                    # 智能判断是否可以转账
+                                    can_transfer, reason = self.can_transfer(address, network, token_type, balance)
+                                    
+                                    if token_type == 'native' and balance > self.min_transfer_amount and can_transfer:
+                                        # 原生代币转账
+                                        print(f"\n{Back.RED}{Fore.WHITE} 💰 原生代币 💰 {Style.RESET_ALL} {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
+                                        
+                                        if self.target_wallet:
+                                            try:
+                                                if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
+                                                    address_info['last_check'] = time.time()
+                                                    self.save_state()
+                                            except KeyboardInterrupt:
+                                                print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
+                                                self.monitoring = False
+                                                return
+                                        else:
+                                            print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
+                                    
+                                    elif token_type == 'erc20' and balance > 0 and can_transfer:
+                                        # ERC20代币转账
+                                        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🪙 ERC20代币 🪙 {Style.RESET_ALL} {Fore.GREEN}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
+                                        
+                                        if self.target_wallet:
+                                            try:
+                                                if self.transfer_erc20_token(address, private_key, self.target_wallet, token_key, balance, network):
+                                                    address_info['last_check'] = time.time()
+                                                    self.save_state()
+                                            except KeyboardInterrupt:
+                                                print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
+                                                self.monitoring = False
+                                                return
+                                        else:
+                                            print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
+                                    
+                                    elif balance > 0 and not can_transfer:
+                                        # 有余额但不能转账
+                                        token_icon = "💎" if token_type == 'native' else "🪙"
+                                        print(f"{Fore.MAGENTA}{token_icon} {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}: {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} {Fore.RED}({reason}){Style.RESET_ALL}")
+                                
                             except KeyboardInterrupt:
                                 print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
                                 self.monitoring = False
@@ -985,18 +2611,15 @@ class EVMMonitor:
                                 continue
                     
                     # 等待下一次检查（支持中断）
+                    print(f"\n{Fore.CYAN}🕒 等待 {self.monitor_interval} 秒后进行下一轮检查... (按Ctrl+C退出){Style.RESET_ALL}")
                     for i in range(self.monitor_interval):
                         if not self.monitoring:
                             break
-                        try:
-                            time.sleep(1)
-                        except KeyboardInterrupt:
-                            print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
-                            self.monitoring = False
-                            return
+                        time.sleep(1)
                         
                 except KeyboardInterrupt:
                     print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+                    self.monitoring = False
                     break
                 except Exception as e:
                     self.logger.error(f"监控循环错误: {e}")
@@ -1127,6 +2750,8 @@ class EVMMonitor:
             print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情")
             print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置")
             print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
+            print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测")
+            print(f"{Fore.GREEN}10.{Style.RESET_ALL} ➕ 添加自定义RPC")
             
             print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
             print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
@@ -1158,6 +2783,10 @@ class EVMMonitor:
                     self.menu_settings()
                 elif choice == '8':
                     self.menu_network_management()
+                elif choice == '9':
+                    self.menu_rpc_testing()
+                elif choice == '10':
+                    self.menu_add_custom_rpc()
                 elif choice == '0':
                     self.menu_exit()
                     break
@@ -1325,6 +2954,9 @@ class EVMMonitor:
         print(f"  🔑 总钱包数量: {Fore.GREEN}{len(self.wallets)}{Style.RESET_ALL} 个")
         print(f"  🔍 监控地址: {Fore.GREEN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
         print(f"  🌐 网络连接: {Fore.GREEN}{len(self.web3_connections)}{Style.RESET_ALL} 个")
+        blocked_count = sum(len(nets) for nets in self.blocked_networks.values())
+        if blocked_count > 0:
+            print(f"  🚫 屏蔽网络: {Fore.RED}{blocked_count}{Style.RESET_ALL} 个 {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
         
         # 监控状态
         status_color = Fore.GREEN if self.monitoring else Fore.RED
@@ -1342,12 +2974,66 @@ class EVMMonitor:
         print(f"  ⏱️ 监控间隔: {Fore.GREEN}{self.monitor_interval}{Style.RESET_ALL} 秒")
         print(f"  💰 最小转账: {Fore.GREEN}{self.min_transfer_amount}{Style.RESET_ALL} ETH")
         
+        # 支持的代币信息
+        print(f"\n{Fore.YELLOW}🪙 支持的代币：{Style.RESET_ALL}")
+        print(f"  {Fore.BLUE}💎 原生代币{Style.RESET_ALL}: ETH, BNB, MATIC, AVAX 等")
+        print(f"  {Fore.GREEN}🪙 ERC20代币{Style.RESET_ALL}: {Fore.CYAN}{len(self.tokens)}{Style.RESET_ALL} 种")
+        
+        # 显示代币详情
+        for token_symbol, token_config in self.tokens.items():
+            networks_count = len(token_config['contracts'])
+            print(f"    • {Fore.YELLOW}{token_symbol}{Style.RESET_ALL} ({token_config['name']}) - {Fore.CYAN}{networks_count}{Style.RESET_ALL} 个网络")
+            
+        # 智能Gas功能
+        print(f"\n{Fore.YELLOW}⚡ 智能功能：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}✅{Style.RESET_ALL} 🧠 智能Gas估算")
+        print(f"  {Fore.GREEN}✅{Style.RESET_ALL} 🔍 全链代币扫描")
+        print(f"  {Fore.GREEN}✅{Style.RESET_ALL} 💰 自动转账判断")
+        print(f"  {Fore.GREEN}✅{Style.RESET_ALL} 🚫 无效网络屏蔽")
+        print(f"  {Fore.GREEN}✅{Style.RESET_ALL} 📱 Telegram实时通知")
+        
+        # Telegram通知配置
+        print(f"\n{Fore.YELLOW}📱 Telegram通知：{Style.RESET_ALL}")
+        tg_status = f"{Fore.GREEN}已启用{Style.RESET_ALL}" if self.telegram_enabled else f"{Fore.RED}已禁用{Style.RESET_ALL}"
+        print(f"  📡 状态: {tg_status}")
+        if self.telegram_enabled:
+            print(f"  🤖 Bot ID: {self.telegram_bot_token.split(':')[0]}")
+            print(f"  💬 Chat ID: {self.telegram_chat_id}")
+        
+        # 转账统计
+        stats = self.transfer_stats
+        success_rate = (stats['successful_transfers'] / stats['total_attempts'] * 100) if stats['total_attempts'] > 0 else 0
+        print(f"\n{Fore.YELLOW}📊 转账统计：{Style.RESET_ALL}")
+        print(f"  📈 总尝试: {Fore.CYAN}{stats['total_attempts']}{Style.RESET_ALL} 次")
+        print(f"  ✅ 成功: {Fore.GREEN}{stats['successful_transfers']}{Style.RESET_ALL} 次")
+        print(f"  ❌ 失败: {Fore.RED}{stats['failed_transfers']}{Style.RESET_ALL} 次")
+        print(f"  📊 成功率: {Fore.YELLOW}{success_rate:.1f}%{Style.RESET_ALL}")
+        print(f"  💰 总价值: {Fore.GREEN}{stats['total_value_transferred']:.6f}{Style.RESET_ALL} ETH等价值")
+        
+        if stats['by_network']:
+            print(f"\n{Fore.YELLOW}🌐 网络统计：{Style.RESET_ALL}")
+            for network, net_stats in list(stats['by_network'].items())[:5]:  # 只显示前5个
+                network_name = self.networks.get(network, {}).get('name', network)[:20]
+                print(f"  • {network_name}: {Fore.GREEN}✅{net_stats['success']}{Style.RESET_ALL} {Fore.RED}❌{net_stats['failed']}{Style.RESET_ALL}")
+            
+        if stats['by_token']:
+            print(f"\n{Fore.YELLOW}🪙 代币统计：{Style.RESET_ALL}")
+            for token, token_stats in list(stats['by_token'].items())[:5]:  # 只显示前5个
+                print(f"  • {token}: {Fore.GREEN}✅{token_stats['success']}{Style.RESET_ALL} {Fore.RED}❌{token_stats['failed']}{Style.RESET_ALL}")
+                if token_stats['amount'] > 0:
+                    print(f"    💰 总额: {token_stats['amount']:.6f}")
+        
         if self.monitored_addresses:
-            print(f"\n{Fore.YELLOW}监控地址详情:{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}🔍 监控地址详情:{Style.RESET_ALL}")
             for addr, info in self.monitored_addresses.items():
                 networks = ', '.join(info['networks'])
                 last_check = datetime.fromtimestamp(info['last_check']).strftime('%Y-%m-%d %H:%M:%S')
-                print(f"  💵 {addr[:8]}...{addr[-6:]} | 🌐 {networks} | 🕒 {last_check}")
+                print(f"  {Fore.GREEN}✅{Style.RESET_ALL} {Fore.CYAN}{addr[:8]}...{addr[-6:]}{Style.RESET_ALL} | 🌐 {Fore.YELLOW}{len(info['networks'])}{Style.RESET_ALL} 个网络 | 🕒 {last_check}")
+        
+        if self.blocked_networks:
+            print(f"\n{Fore.YELLOW}🚫 屏蔽网络详情:{Style.RESET_ALL}")
+            for addr, networks in self.blocked_networks.items():
+                print(f"  {Fore.RED}❌{Style.RESET_ALL} {Fore.CYAN}{addr[:8]}...{addr[-6:]}{Style.RESET_ALL} | 🚫 {Fore.RED}{len(networks)}{Style.RESET_ALL} 个网络 {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
@@ -1447,6 +3133,189 @@ class EVMMonitor:
         # 保存钱包
         self.save_wallets()
         print(f"{Fore.GREEN}✅ 程序已安全退出{Style.RESET_ALL}")
+
+    def menu_rpc_testing(self):
+        """菜单：RPC节点检测"""
+        print(f"\n{Fore.CYAN}✨ ====== 🔍 RPC节点检测管理 🔍 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 📡 检测所有网络的RPC节点连接状态 {Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔍 测试所有RPC连接")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📊 查看RPC状态报告")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
+        
+        try:
+            if choice == '1':
+                # 测试所有RPC连接
+                results = self.test_all_rpcs()
+                
+                # 显示汇总报告
+                print(f"\n{Back.GREEN}{Fore.BLACK} 📊 RPC检测汇总报告 📊 {Style.RESET_ALL}")
+                
+                total_networks = len(results)
+                total_rpcs = sum(len(r['working_rpcs']) + len(r['failed_rpcs']) for r in results.values())
+                working_rpcs = sum(len(r['working_rpcs']) for r in results.values())
+                
+                print(f"🌐 总网络数: {Fore.CYAN}{total_networks}{Style.RESET_ALL}")
+                print(f"📡 总RPC数: {Fore.CYAN}{total_rpcs}{Style.RESET_ALL}")
+                print(f"✅ 可用RPC: {Fore.GREEN}{working_rpcs}{Style.RESET_ALL}")
+                print(f"❌ 失效RPC: {Fore.RED}{total_rpcs - working_rpcs}{Style.RESET_ALL}")
+                print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
+                
+            elif choice == '2':
+                # 自动屏蔽失效RPC
+                confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认自动屏蔽失效RPC？(y/N): {Style.RESET_ALL}").strip().lower()
+                if confirm == 'y':
+                    disabled_count = self.auto_disable_failed_rpcs()
+                    print(f"\n{Fore.GREEN}✅ 操作完成！已屏蔽 {disabled_count} 个失效RPC节点{Style.RESET_ALL}")
+                else:
+                    print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+                    
+            elif choice == '3':
+                # 查看RPC状态报告
+                results = self.test_all_rpcs()
+                
+                print(f"\n{Back.CYAN}{Fore.BLACK} 📋 详细RPC状态报告 📋 {Style.RESET_ALL}")
+                
+                # 按成功率排序
+                sorted_results = sorted(results.items(), key=lambda x: x[1]['success_rate'], reverse=True)
+                
+                for network_key, result in sorted_results:
+                    success_rate = result['success_rate']
+                    working_count = len(result['working_rpcs'])
+                    total_count = working_count + len(result['failed_rpcs'])
+                    
+                    if success_rate == 100:
+                        status_icon = "🟢"
+                        status_color = Fore.GREEN
+                    elif success_rate >= 50:
+                        status_icon = "🟡"
+                        status_color = Fore.YELLOW
+                    else:
+                        status_icon = "🔴"
+                        status_color = Fore.RED
+                    
+                    print(f"\n{status_icon} {Fore.CYAN}{result['name']}{Style.RESET_ALL}")
+                    print(f"   成功率: {status_color}{success_rate:.1f}%{Style.RESET_ALL} ({working_count}/{total_count})")
+                    
+                    if result['failed_rpcs']:
+                        print(f"   {Fore.RED}失效RPC:{Style.RESET_ALL}")
+                        for failed_rpc in result['failed_rpcs'][:3]:  # 只显示前3个
+                            print(f"     • {failed_rpc[:60]}...")
+                        if len(result['failed_rpcs']) > 3:
+                            print(f"     • ... 还有 {len(result['failed_rpcs']) - 3} 个")
+                            
+            elif choice == '0':
+                return
+            else:
+                print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+
+    def menu_add_custom_rpc(self):
+        """菜单：添加自定义RPC"""
+        print(f"\n{Fore.CYAN}✨ ====== ➕ 添加自定义RPC ➕ ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.GREEN}{Fore.BLACK} 🌐 为指定网络添加自定义RPC节点 {Style.RESET_ALL}")
+        
+        # 显示可用网络列表
+        print(f"\n{Fore.YELLOW}📋 可用网络列表：{Style.RESET_ALL}")
+        
+        network_list = list(self.networks.items())
+        for i, (network_key, network_info) in enumerate(network_list[:10]):  # 只显示前10个
+            rpc_count = len(network_info['rpc_urls'])
+            print(f"  {Fore.GREEN}{i+1:2d}.{Style.RESET_ALL} {network_info['name']} ({Fore.CYAN}{rpc_count}{Style.RESET_ALL} 个RPC)")
+        
+        if len(network_list) > 10:
+            print(f"  ... 还有 {len(network_list) - 10} 个网络")
+        
+        print(f"\n{Fore.YELLOW}💡 提示：您可以输入网络编号、网络名称或network_key{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}示例：{Style.RESET_ALL}")
+        print(f"  • 输入编号: 1")
+        print(f"  • 输入名称: ethereum")
+        print(f"  • 直接输入: ethereum")
+        
+        # 选择网络
+        network_input = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择要添加RPC的网络: {Style.RESET_ALL}").strip()
+        
+        if not network_input:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 解析网络选择
+        selected_network = None
+        
+        # 尝试数字索引
+        try:
+            index = int(network_input) - 1
+            if 0 <= index < len(network_list):
+                selected_network = network_list[index][0]
+        except ValueError:
+            pass
+        
+        # 尝试网络key匹配
+        if not selected_network:
+            network_input_lower = network_input.lower()
+            for network_key in self.networks:
+                if network_key.lower() == network_input_lower:
+                    selected_network = network_key
+                    break
+        
+        # 尝试网络名称匹配
+        if not selected_network:
+            for network_key, network_info in self.networks.items():
+                if network_input_lower in network_info['name'].lower():
+                    selected_network = network_key
+                    break
+        
+        if not selected_network:
+            print(f"\n{Fore.RED}❌ 未找到匹配的网络: {network_input}{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        network_info = self.networks[selected_network]
+        print(f"\n{Fore.GREEN}✅ 已选择网络: {network_info['name']}{Style.RESET_ALL}")
+        print(f"   当前RPC数量: {Fore.CYAN}{len(network_info['rpc_urls'])}{Style.RESET_ALL} 个")
+        print(f"   链ID: {Fore.YELLOW}{network_info['chain_id']}{Style.RESET_ALL}")
+        
+        # 输入RPC URL
+        print(f"\n{Fore.YELLOW}🔗 请输入要添加的RPC URL：{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}示例：{Style.RESET_ALL}")
+        print(f"  • https://eth.llamarpc.com")
+        print(f"  • https://rpc.flashbots.net")
+        print(f"  • https://ethereum.publicnode.com")
+        
+        rpc_url = self.safe_input(f"\n{Fore.CYAN}➜ RPC URL: {Style.RESET_ALL}").strip()
+        
+        if not rpc_url:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 验证URL格式
+        if not rpc_url.startswith(('http://', 'https://')):
+            print(f"\n{Fore.RED}❌ 无效的RPC URL格式{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 添加RPC
+        print(f"\n{Fore.CYAN}🔄 正在添加自定义RPC...{Style.RESET_ALL}")
+        
+        if self.add_custom_rpc(selected_network, rpc_url):
+            print(f"\n{Fore.GREEN}🎉 自定义RPC添加成功！{Style.RESET_ALL}")
+            print(f"   网络: {network_info['name']}")
+            print(f"   RPC: {rpc_url}")
+            print(f"   新RPC数量: {Fore.CYAN}{len(self.networks[selected_network]['rpc_urls'])}{Style.RESET_ALL} 个")
+        else:
+            print(f"\n{Fore.RED}❌ 自定义RPC添加失败{Style.RESET_ALL}")
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
