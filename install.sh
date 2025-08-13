@@ -24,26 +24,24 @@ DOWNLOAD="📥"
 echo -e "${CYAN}${ROCKET} EVM钱包监控软件一键安装程序${NC}"
 echo "=================================================="
 
-# 检测操作系统
-detect_os() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        OS="linux"
-        if command -v apt-get >/dev/null 2>&1; then
-            DISTRO="ubuntu"
-        elif command -v yum >/dev/null 2>&1; then
-            DISTRO="centos"
-        else
-            DISTRO="unknown"
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        OS="macos"
-        DISTRO="macos"
-    else
-        OS="unknown"
-        DISTRO="unknown"
+# 检测Ubuntu系统
+check_ubuntu() {
+    if ! command -v lsb_release >/dev/null 2>&1; then
+        echo -e "${RED}${CROSSMARK} 此程序仅支持Ubuntu系统${NC}"
+        exit 1
     fi
     
-    echo -e "${GREEN}${CHECKMARK} 检测到操作系统: $OS ($DISTRO)${NC}"
+    UBUNTU_VERSION=$(lsb_release -rs)
+    echo -e "${GREEN}${CHECKMARK} 检测到Ubuntu ${UBUNTU_VERSION}${NC}"
+    
+    # 检查是否有图形界面
+    if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+        HAS_GUI=true
+        echo -e "${GREEN}${CHECKMARK} 检测到图形界面${NC}"
+    else
+        HAS_GUI=false
+        echo -e "${YELLOW}${WARNING} 未检测到图形界面，将以命令行模式运行${NC}"
+    fi
 }
 
 # 检查Python版本
@@ -68,34 +66,91 @@ check_python() {
     fi
 }
 
-# 安装Python
-install_python() {
-    echo -e "${YELLOW}${GEAR} 正在安装Python3...${NC}"
+# 安装Ubuntu系统依赖
+install_ubuntu_deps() {
+    echo -e "${BLUE}${GEAR} 检查系统依赖...${NC}"
     
-    case $DISTRO in
-        ubuntu)
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-pip python3-venv
-            ;;
-        centos)
-            sudo yum install -y python3 python3-pip
-            ;;
-        macos)
-            if command -v brew >/dev/null 2>&1; then
-                brew install python3
-            else
-                echo -e "${RED}${CROSSMARK} 请先安装Homebrew或手动安装Python3${NC}"
-                exit 1
-            fi
-            ;;
-        *)
-            echo -e "${RED}${CROSSMARK} 不支持的操作系统，请手动安装Python3${NC}"
-            exit 1
-            ;;
-    esac
+    # 检查是否需要更新包列表
+    if [ -n "$(find /var/lib/apt/lists -maxdepth 0 -mtime +7)" ]; then
+        echo -e "${YELLOW}${GEAR} 更新包列表...${NC}"
+        sudo apt-get update -qq
+    fi
+    
+    # 基础依赖包
+    DEPS=(
+        "python3"
+        "python3-pip"
+        "python3-venv"
+        "python3-dev"
+        "build-essential"
+        "libssl-dev"
+        "libffi-dev"
+        "git"
+    )
+    
+    # 图形界面相关依赖
+    if [ "$HAS_GUI" = true ]; then
+        DEPS+=(
+            "python3-tk"
+            "notify-osd"
+            "libnotify-bin"
+        )
+    fi
+    
+    # 检查并安装缺失的依赖
+    MISSING_DEPS=()
+    for dep in "${DEPS[@]}"; do
+        if ! dpkg -l | grep -q "^ii  $dep "; then
+            MISSING_DEPS+=("$dep")
+        fi
+    done
+    
+    if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
+        echo -e "${YELLOW}${GEAR} 安装缺失的系统依赖...${NC}"
+        sudo apt-get install -y "${MISSING_DEPS[@]}"
+        echo -e "${GREEN}${CHECKMARK} 系统依赖安装完成${NC}"
+    else
+        echo -e "${GREEN}${CHECKMARK} 所有系统依赖已满足${NC}"
+    fi
+}
+
+# 安装Python和系统依赖
+install_dependencies() {
+    echo -e "${YELLOW}${GEAR} 正在安装Python3和系统依赖...${NC}"
+    
+    # 检查是否需要更新包列表
+    if [ -n "$(find /var/lib/apt/lists -maxdepth 0 -mtime +7)" ]; then
+        echo -e "${YELLOW}${GEAR} 更新包列表...${NC}"
+        sudo apt-get update -qq
+    fi
+    
+    # 基础依赖包
+    DEPS=(
+        "python3"
+        "python3-pip"
+        "python3-venv"
+        "python3-dev"
+        "build-essential"
+        "libssl-dev"
+        "libffi-dev"
+        "git"
+    )
+    
+    # 图形界面相关依赖
+    if [ "$HAS_GUI" = true ]; then
+        DEPS+=(
+            "python3-tk"
+            "notify-osd"
+            "libnotify-bin"
+        )
+    fi
+    
+    # 安装所有依赖
+    echo -e "${YELLOW}${GEAR} 安装系统依赖...${NC}"
+    sudo apt-get install -y "${DEPS[@]}"
     
     PYTHON_CMD="python3"
-    echo -e "${GREEN}${CHECKMARK} Python3安装完成${NC}"
+    echo -e "${GREEN}${CHECKMARK} 依赖安装完成${NC}"
 }
 
 # 检查pip
@@ -275,24 +330,201 @@ install_dependencies() {
     echo -e "${GREEN}${CHECKMARK} 依赖安装完成${NC}"
 }
 
-# 创建桌面快捷方式
-create_shortcut() {
-    if [[ "$OS" == "linux" ]]; then
-        DESKTOP_FILE="$HOME/Desktop/EVM钱包监控.desktop"
+# 创建Ubuntu集成
+create_ubuntu_integration() {
+    if [[ "$OS" == "linux" && "$DISTRO" == "ubuntu" ]]; then
+        # 创建应用程序启动器
+        APP_DIR="$HOME/.local/share/applications"
+        mkdir -p "$APP_DIR"
+        
+        # 创建图标目录
+        ICON_DIR="$HOME/.local/share/icons/evm-monitor"
+        mkdir -p "$ICON_DIR"
+        
+        # 下载或创建图标（这里使用系统默认图标）
+        ICON_PATH="/usr/share/icons/Humanity/apps/48/utilities-terminal.svg"
+        if [ -f "$ICON_PATH" ]; then
+            cp "$ICON_PATH" "$ICON_DIR/evm-monitor.svg"
+        fi
+        
+        # 创建桌面条目
+        DESKTOP_FILE="$APP_DIR/evm-monitor.desktop"
         cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
 Version=1.0
+Type=Application
 Name=EVM钱包监控
+GenericName=Wallet Monitor
 Comment=EVM钱包余额监控和自动转账工具
 Exec=bash $PROJECT_DIR/start.sh
-Icon=utilities-terminal
+Icon=$ICON_DIR/evm-monitor.svg
 Terminal=true
-Type=Application
-Categories=Utility;
+Categories=Utility;Finance;
+Keywords=wallet;monitor;ethereum;blockchain;
+StartupNotify=true
 EOF
         chmod +x "$DESKTOP_FILE"
-        echo -e "${GREEN}${CHECKMARK} 桌面快捷方式已创建${NC}"
+        
+        # 创建桌面快捷方式（如果有GUI）
+        if [ "$HAS_GUI" = true ]; then
+            DESKTOP_DIR="$HOME/Desktop"
+            if [ ! -d "$DESKTOP_DIR" ]; then
+                DESKTOP_DIR="$HOME/桌面"
+            fi
+            if [ -d "$DESKTOP_DIR" ]; then
+                ln -sf "$DESKTOP_FILE" "$DESKTOP_DIR/EVM钱包监控.desktop"
+                echo -e "${GREEN}${CHECKMARK} 桌面快捷方式已创建${NC}"
+            fi
+        fi
+        
+        # 创建命令行快捷方式
+        BASHRC="$HOME/.bashrc"
+        if [ -f "$BASHRC" ]; then
+            if ! grep -q "alias evm-monitor=" "$BASHRC"; then
+                cat >> "$BASHRC" << EOF
+
+# EVM钱包监控快捷命令
+alias evm-monitor='cd $PROJECT_DIR && ./start.sh'
+EOF
+                echo -e "${GREEN}${CHECKMARK} 命令行快捷方式已创建 (使用 'evm-monitor' 命令启动)${NC}"
+                echo -e "${YELLOW}提示: 请运行 'source ~/.bashrc' 或重新打开终端使快捷命令生效${NC}"
+            fi
+        fi
+        
+        # 创建系统服务（可选后台运行）
+        SERVICE_DIR="$HOME/.config/systemd/user"
+        mkdir -p "$SERVICE_DIR"
+        
+        cat > "$SERVICE_DIR/evm-monitor.service" << EOF
+[Unit]
+Description=EVM Wallet Monitor Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+ExecStart=/usr/bin/python3 $PROJECT_DIR/evm_monitor.py --daemon
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+EOF
+        
+        # 重新加载systemd用户服务
+        systemctl --user daemon-reload
+        
+        echo -e "${GREEN}${CHECKMARK} 系统服务已创建${NC}"
+        echo -e "${BLUE}提示: 使用以下命令管理服务:${NC}"
+        echo -e "  启动服务:   ${YELLOW}systemctl --user start evm-monitor${NC}"
+        echo -e "  停止服务:   ${YELLOW}systemctl --user stop evm-monitor${NC}"
+        echo -e "  查看状态:   ${YELLOW}systemctl --user status evm-monitor${NC}"
+        echo -e "  开机自启:   ${YELLOW}systemctl --user enable evm-monitor${NC}"
+        echo -e "  取消自启:   ${YELLOW}systemctl --user disable evm-monitor${NC}"
+        
+        # 更新应用程序数据库
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$APP_DIR"
+        fi
     fi
+}
+
+# 创建Ubuntu集成
+create_integration() {
+    # 创建应用程序启动器
+    APP_DIR="$HOME/.local/share/applications"
+    mkdir -p "$APP_DIR"
+    
+    # 创建图标目录
+    ICON_DIR="$HOME/.local/share/icons/evm-monitor"
+    mkdir -p "$ICON_DIR"
+    
+    # 下载或创建图标（使用系统默认图标）
+    ICON_PATH="/usr/share/icons/Humanity/apps/48/utilities-terminal.svg"
+    if [ -f "$ICON_PATH" ]; then
+        cp "$ICON_PATH" "$ICON_DIR/evm-monitor.svg"
+    fi
+    
+    # 创建桌面条目
+    DESKTOP_FILE="$APP_DIR/evm-monitor.desktop"
+    cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=EVM钱包监控
+GenericName=Wallet Monitor
+Comment=EVM钱包余额监控和自动转账工具
+Exec=bash $PROJECT_DIR/start.sh
+Icon=$ICON_DIR/evm-monitor.svg
+Terminal=true
+Categories=Utility;Finance;
+Keywords=wallet;monitor;ethereum;blockchain;
+StartupNotify=true
+EOF
+    chmod +x "$DESKTOP_FILE"
+    
+    # 创建桌面快捷方式（如果有GUI）
+    if [ "$HAS_GUI" = true ]; then
+        DESKTOP_DIR="$HOME/Desktop"
+        if [ ! -d "$DESKTOP_DIR" ]; then
+            DESKTOP_DIR="$HOME/桌面"
+        fi
+        if [ -d "$DESKTOP_DIR" ]; then
+            ln -sf "$DESKTOP_FILE" "$DESKTOP_DIR/EVM钱包监控.desktop"
+            echo -e "${GREEN}${CHECKMARK} 桌面快捷方式已创建${NC}"
+        fi
+    fi
+    
+    # 创建命令行快捷方式
+    BASHRC="$HOME/.bashrc"
+    if [ -f "$BASHRC" ]; then
+        if ! grep -q "alias evm-monitor=" "$BASHRC"; then
+            cat >> "$BASHRC" << EOF
+
+# EVM钱包监控快捷命令
+alias evm-monitor='cd $PROJECT_DIR && ./start.sh'
+EOF
+            echo -e "${GREEN}${CHECKMARK} 命令行快捷方式已创建 (使用 'evm-monitor' 命令启动)${NC}"
+            echo -e "${YELLOW}提示: 请运行 'source ~/.bashrc' 或重新打开终端使快捷命令生效${NC}"
+        fi
+    fi
+    
+    # 创建系统服务
+    SERVICE_DIR="$HOME/.config/systemd/user"
+    mkdir -p "$SERVICE_DIR"
+    
+    cat > "$SERVICE_DIR/evm-monitor.service" << EOF
+[Unit]
+Description=EVM Wallet Monitor Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$PROJECT_DIR
+ExecStart=/usr/bin/python3 $PROJECT_DIR/evm_monitor.py --daemon
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+EOF
+    
+    # 重新加载systemd用户服务
+    systemctl --user daemon-reload
+    
+    echo -e "${GREEN}${CHECKMARK} 系统服务已创建${NC}"
+    echo -e "${BLUE}提示: 使用以下命令管理服务:${NC}"
+    echo -e "  启动服务:   ${YELLOW}systemctl --user start evm-monitor${NC}"
+    echo -e "  停止服务:   ${YELLOW}systemctl --user stop evm-monitor${NC}"
+    echo -e "  查看状态:   ${YELLOW}systemctl --user status evm-monitor${NC}"
+    echo -e "  开机自启:   ${YELLOW}systemctl --user enable evm-monitor${NC}"
+    echo -e "  取消自启:   ${YELLOW}systemctl --user disable evm-monitor${NC}"
+    
+    # 更新应用程序数据库
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$APP_DIR"
+    fi
+}
 }
 
 # 显示安装完成信息
@@ -330,13 +562,23 @@ show_completion() {
 
 # 主安装流程
 main() {
-    detect_os
-    check_python
-    check_pip
+    # 检查是否为Ubuntu系统
+    check_ubuntu
+    
+    # 创建项目目录
     create_project_dir
-    download_files
+    
+    # 安装依赖
     install_dependencies
-    create_shortcut
+    check_pip
+    
+    # 下载程序文件
+    download_files
+    
+    # 创建Ubuntu集成
+    create_integration
+    
+    # 显示完成信息
     show_completion
 }
 
