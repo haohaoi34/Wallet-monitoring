@@ -667,9 +667,35 @@ class EVMMonitor:
     def menu_add_private_key(self):
         """菜单：添加私钥"""
         print(f"\n{Fore.CYAN}📝 添加钱包私钥{Style.RESET_ALL}")
-        private_key = input("请输入私钥: ").strip()
-        if private_key:
-            self.add_private_key(private_key)
+        print(f"{Fore.YELLOW}支持单个私钥或批量粘贴多个私钥（每行一个）{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}输入完成后双击回车确认{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}请输入私钥:${Style.RESET_ALL}")
+        
+        lines = []
+        empty_line_count = 0
+        
+        while True:
+            try:
+                line = input().strip()
+                if line:
+                    lines.append(line)
+                    empty_line_count = 0
+                else:
+                    empty_line_count += 1
+                    if empty_line_count >= 2:  # 双击回车
+                        break
+            except EOFError:
+                break
+        
+        if lines:
+            success_count = 0
+            for private_key in lines:
+                if self.add_private_key(private_key):
+                    success_count += 1
+            
+            print(f"\n{Fore.GREEN}✅ 批量导入完成: 成功添加 {success_count}/{len(lines)} 个钱包{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}⚠️ 未输入任何私钥{Style.RESET_ALL}")
 
     def menu_show_addresses(self):
         """菜单：显示地址"""
