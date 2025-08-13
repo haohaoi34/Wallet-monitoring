@@ -1780,7 +1780,10 @@ class EVMMonitor:
                 return "0"
                 
         except EOFError:
-            print(f"\n{Fore.YELLOW}⚠️  EOF错误，自动退出{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}⚠️  EOF错误，程序无法读取输入{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 这通常发生在通过管道运行程序时{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 建议：在新的终端窗口中运行程序{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}   cd ~/evm_monitor && python3 evm_monitor.py{Style.RESET_ALL}")
             if "选项" in prompt or "选择" in prompt:
                 return "0"  # 退出菜单
             return ""
