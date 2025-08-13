@@ -38,15 +38,51 @@ import sys
 import subprocess
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from web3 import Web3, HTTPProvider
-from eth_account import Account
-from alchemy import Alchemy, Network
-import aiohttp
-from telegram import Bot
+# 检查必要的依赖
+try:
+    from web3 import Web3, HTTPProvider
+except ImportError:
+    print("⚠️  web3库未安装，请运行: pip install web3")
+    sys.exit(1)
+
+try:
+    from eth_account import Account
+except ImportError:
+    print("⚠️  eth_account库未安装，请运行: pip install eth_account")
+    sys.exit(1)
+
+try:
+    from alchemy import Alchemy, Network
+    ALCHEMY_AVAILABLE = True
+except ImportError:
+    print("⚠️  alchemy-sdk库未安装，将使用公共RPC")
+    print("📦 如需使用Alchemy功能，请运行: pip install alchemy-sdk")
+    ALCHEMY_AVAILABLE = False
+
+try:
+    import aiohttp
+except ImportError:
+    print("⚠️  aiohttp库未安装，请运行: pip install aiohttp")
+    sys.exit(1)
+
+try:
+    from telegram import Bot
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    print("⚠️  python-telegram-bot库未安装，Telegram通知功能将不可用")
+    print("📦 如需使用Telegram通知，请运行: pip install python-telegram-bot")
+    TELEGRAM_AVAILABLE = False
+
 from logging.handlers import RotatingFileHandler
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+except ImportError:
+    print("⚠️  cryptography库未安装，请运行: pip install cryptography")
+    sys.exit(1)
+
 import threading
 import re
 
@@ -798,31 +834,45 @@ rate_limiter = IPRateLimiter()
 
 class WalletMonitor:
     def __init__(self):
-        # 基础配置
-        self.private_keys = []
-        self.addresses = []
-        self.addr_to_key = {}
-        self.addr_type = {}
-        self.active_addr_to_chains = {}
-        self.evm_clients = []
-        
-        # 线程安全的状态变量
-        self._state_lock = threading.Lock()  # 保护共享状态的锁
-        self._alchemy_error_count = 0
-        self._use_public_rpc = False
-        self._rpc_switch_time = 0
-        self._client_error_counts = {}  # 每个客户端的错误计数
-        
-        # 监控状态
-        self.monitoring_active = False
-        
-        # 缓存和性能优化
-        self.cache_manager = cache_manager
-        self.rpc_load_balancer = rpc_load_balancer
-        self.rate_limiter = rate_limiter
-        
-        logger.info("🚀 钱包监控器初始化完成")
-        logger.info("📊 性能优化模块已启用: 缓存、负载均衡、速率限制")
+        try:
+            # 基础配置
+            self.private_keys = []
+            self.addresses = []
+            self.addr_to_key = {}
+            self.addr_type = {}
+            self.active_addr_to_chains = {}
+            self.evm_clients = []
+            
+            # 线程安全的状态变量
+            self._state_lock = threading.Lock()  # 保护共享状态的锁
+            self._alchemy_error_count = 0
+            self._use_public_rpc = not ALCHEMY_AVAILABLE  # 如果Alchemy不可用，默认使用公共RPC
+            self._rpc_switch_time = 0
+            self._client_error_counts = {}  # 每个客户端的错误计数
+            
+            # 监控状态
+            self.monitoring_active = False
+            
+            # 缓存和性能优化
+            self.cache_manager = cache_manager
+            self.rpc_load_balancer = rpc_load_balancer
+            self.rate_limiter = rate_limiter
+            
+            # 创建必要的目录
+            os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
+            os.makedirs(os.path.dirname(config.STATE_FILE), exist_ok=True)
+            
+            logger.info("🚀 钱包监控器初始化完成")
+            logger.info("📊 性能优化模块已启用: 缓存、负载均衡、速率限制")
+            
+            if not ALCHEMY_AVAILABLE:
+                logger.warning("⚠️ Alchemy功能未启用，将使用公共RPC")
+            if not TELEGRAM_AVAILABLE:
+                logger.warning("⚠️ Telegram功能未启用，将使用控制台通知")
+                
+        except Exception as e:
+            logger.error(f"❌ 初始化失败: {str(e)}")
+            raise
     
     @property
     def alchemy_error_count(self):
@@ -913,11 +963,13 @@ class WalletMonitor:
                 if w3 and w3.is_connected():
                     # 初始化Alchemy客户端（如果可用且使用Alchemy RPC）
                     alchemy_client = None
-                    if not self.use_public_rpc and chain["network"]:
+                    if not self.use_public_rpc and chain["network"] and ALCHEMY_AVAILABLE:
                         try:
                             alchemy_client = Alchemy(api_key=config.ALCHEMY_API_KEY, network=chain["network"])
                         except Exception as e:
                             logger.warning(f"初始化 {chain['name']} 的Alchemy客户端失败: {str(e)}")
+                            # 如果Alchemy初始化失败，切换到公共RPC
+                            self.use_public_rpc = True
                     
                     clients.append({
                         "name": chain["name"],
@@ -1037,7 +1089,12 @@ class WalletMonitor:
 
     async def send_telegram_message(self, message: str):
         """发送Telegram消息"""
+        if not TELEGRAM_AVAILABLE:
+            logger.warning("Telegram功能未启用，跳过消息发送")
+            return
+            
         if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
+            logger.warning("Telegram配置未完成，跳过消息发送")
             return
             
         try:
@@ -1047,6 +1104,9 @@ class WalletMonitor:
                 logger.info(f"📱 Telegram通知发送成功")
         except Exception as e:
             logger.error(f"❌ Telegram通知失败: {str(e)}")
+            # 如果发送失败，尝试切换到备用通知方式（例如打印到控制台）
+            print(f"\n{Fore.YELLOW}📱 通知消息:{Style.RESET_ALL}")
+            print(message)
 
     async def check_native_balance(self, client: dict, address: str) -> tuple:
         """检查原生代币余额 - 集成缓存管理"""
@@ -1668,21 +1728,44 @@ class WalletMonitor:
         self.monitoring_active = True
         
         try:
+            # 初始化RPC连接
+            if not self.evm_clients:
+                logger.info("正在初始化RPC连接...")
+                if not self.initialize_evm_clients():
+                    raise Exception("RPC初始化失败")
+            
+            # 检查地址状态
+            if not hasattr(self, 'active_addr_to_chains') or not self.active_addr_to_chains:
+                logger.info("正在检查地址活跃状态...")
+                await self.filter_addresses_with_history()
+                if not self.active_addr_to_chains:
+                    raise Exception("没有活跃地址可监控")
+            
+            # 主监控循环
             while self.monitoring_active:
-                await self.run_monitoring_round()
-                self.save_state()
-                logger.info(f"😴 休眠 {config.SLEEP_INTERVAL} 秒")
-                await asyncio.sleep(config.SLEEP_INTERVAL)
+                try:
+                    await self.run_monitoring_round()
+                    self.save_state()
+                    logger.info(f"😴 休眠 {config.SLEEP_INTERVAL} 秒")
+                    await asyncio.sleep(config.SLEEP_INTERVAL)
+                except asyncio.CancelledError:
+                    logger.info("⏹️ 监控任务被取消")
+                    break
+                except Exception as e:
+                    logger.error(f"❌ 监控轮次异常: {str(e)}")
+                    # 等待一段时间后继续
+                    await asyncio.sleep(5)
+                    continue
                 
         except KeyboardInterrupt:
             logger.info("⏹️ 用户停止监控")
-            self.monitoring_active = False
-            self.save_state()
         except Exception as e:
             logger.error(f"❌ 监控异常: {str(e)}")
+            raise
+        finally:
             self.monitoring_active = False
             self.save_state()
-            raise
+            logger.info("💾 状态已保存")
 
     async def pre_check_address(self, address: str) -> dict:
         """
@@ -2704,50 +2787,53 @@ class WalletMonitor:
 
     async def handle_rpc_error(self, client: dict, error: Exception, operation: str = "unknown"):
         """处理RPC错误并尝试故障转移 - 智能错误分类和链特定处理"""
-        client_name = client['name']
-        error_type = self._classify_error(error)
-        
-        logger.warning(f"[{client_name}] RPC操作失败 ({operation}): {str(error)} [类型: {error_type}]")
-        
-        # 根据错误类型决定处理策略
-        if error_type in ['network_timeout', 'connection_error']:
-            # 网络问题：立即尝试切换
-            should_switch_immediately = True
-        elif error_type in ['rate_limit', 'api_limit']:
-            # 限制问题：等待一段时间或切换
-            should_switch_immediately = True
-        elif error_type in ['invalid_request', 'invalid_params']:
-            # 请求问题：不切换RPC，可能是代码问题
-            should_switch_immediately = False
-        else:
-            # 其他错误：使用计数策略
-            should_switch_immediately = False
-        
-        # 链特定错误处理
-        chain_type = "evm"
-        client_error_count = self.increment_client_error_count(f"{client_name}_{chain_type}")
-        client['last_error_time'] = time.time()
-        client['last_error_type'] = error_type
-        
-        # 智能RPC切换逻辑
-        if should_switch_immediately or client_error_count >= 3:
-            # 检查是否应该全局切换到公共RPC
-            if self._should_switch_to_public_rpc(client, error_type):
-                logger.info(f"[{client_name}] 切换到公共RPC模式")
-                with self._state_lock:
-                    self._use_public_rpc = True
-                return await self._switch_to_public_rpc(client)
+        try:
+            client_name = client['name']
+            error_type = self._classify_error(error)
             
-            # 尝试切换到备用RPC
-            if await self.try_switch_rpc(client):
-                logger.info(f"[{client_name}] 成功切换到备用RPC")
-                self.reset_client_error_count(f"{client_name}_{chain_type}")
-                return True
-            else:
-                logger.error(f"[{client_name}] 所有RPC都无法连接")
-                return False
-        
-        return False
+            logger.warning(f"[{client_name}] RPC操作失败 ({operation}): {str(error)} [类型: {error_type}]")
+            
+            # 根据错误类型决定处理策略
+            should_switch_immediately = error_type in [
+                'network_timeout', 'connection_error',  # 网络问题：立即切换
+                'rate_limit', 'api_limit'              # 限制问题：立即切换
+            ]
+            
+            # 链特定错误处理
+            chain_type = "evm"
+            client_error_count = self.increment_client_error_count(f"{client_name}_{chain_type}")
+            client['last_error_time'] = time.time()
+            client['last_error_type'] = error_type
+            
+            # 智能RPC切换逻辑
+            if should_switch_immediately or client_error_count >= 3:
+                # 检查是否应该全局切换到公共RPC
+                if self._should_switch_to_public_rpc(client, error_type):
+                    logger.info(f"[{client_name}] 切换到公共RPC模式")
+                    with self._state_lock:
+                        self._use_public_rpc = True
+                    return await self._switch_to_public_rpc(client)
+                
+                # 尝试切换到备用RPC
+                if await self.try_switch_rpc(client):
+                    logger.info(f"[{client_name}] 成功切换到备用RPC")
+                    self.reset_client_error_count(f"{client_name}_{chain_type}")
+                    return True
+                else:
+                    logger.error(f"[{client_name}] 所有RPC都无法连接")
+                    return False
+            
+            # 如果是请求或参数错误，记录详细信息以便调试
+            if error_type in ['invalid_request', 'invalid_params']:
+                logger.error(f"[{client_name}] 请求错误详情: {str(error)}")
+                logger.error(f"操作: {operation}")
+                logger.error(f"客户端状态: {client.get('rpc_type', 'unknown')}, 错误计数: {client_error_count}")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"处理RPC错误时发生异常: {str(e)}")
+            return False
     
     def _classify_error(self, error: Exception) -> str:
         """错误分类 - 帮助确定最佳处理策略"""
