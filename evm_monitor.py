@@ -1625,6 +1625,58 @@ class EVMMonitor:
         self.telegram_chat_id = "5963704377"
         self.telegram_enabled = True
         
+        # Telegram降噪与重试配置
+        self.telegram_max_retries = 3
+        self.telegram_base_backoff = 1.0  # 秒
+        self.telegram_noise_cooldown = 30.0  # 相同内容在该窗口内仅发送一次
+        self._telegram_last_sent: Dict[str, float] = {}
+        
+        # 安全配置
+        self.redact_patterns = [
+            r"0x[a-fA-F0-9]{64}",  # 可能的私钥/签名
+            r"[a-fA-F0-9]{64}",    # 64位十六进制字符串（私钥等）
+        ]
+
+        # RPC评分与排序配置
+        # 维护每网络的RPC统计，用于动态排序
+        # 格式：self.rpc_stats[network_key][rpc_url] = {
+        #   'success': int, 'fail': int, 'latencies': [float], 'last_fail': ts
+        # }
+        self.rpc_stats: Dict[str, Dict[str, Dict]] = {}
+        self.rpc_score_window = 50  # 仅保留最近N次
+        self.rpc_slow_threshold = 2.0  # 秒，计入慢请求
+        self.rpc_p95_weight = 0.6
+        self.rpc_success_weight = 0.4
+
+        # 可运行时更新的私有RPC特征列表
+        self.private_rpc_indicators: List[str] = [
+            'alchemy.com', 'ankr.com', 'infura.io', 'moralis.io',
+            'quicknode.com', 'getblock.io', 'nodereal.io'
+        ]
+
+        # 代币扫描与元数据缓存优化
+        # 缓存每个网络-合约的元数据，避免重复链上读取
+        # key: f"{network}:{contract_address.lower()}" -> { 'symbol': str, 'decimals': int }
+        self.token_metadata_cache: Dict[str, Dict] = {}
+        
+        # 用户主动添加的代币符号（大写），用于优先扫描
+        self.user_added_tokens: set = set()
+        
+        # 最近活跃代币记录：address -> network -> token_symbol -> last_seen_timestamp
+        self.active_tokens: Dict[str, Dict[str, Dict[str, float]]] = {}
+        
+        # 活跃代币保留时长（小时），超过时长将不再参与优先扫描
+        self.active_token_ttl_hours = 24
+        
+        # 按地址记录是否已经完成第一次全量扫描
+        self.address_full_scan_done: Dict[str, bool] = {}
+        self.last_full_scan_time = 0.0
+        
+        # 数据备份配置
+        self.backup_max_files = 5  # 保留最近N个备份
+        self.backup_interval_hours = 6  # 每N小时备份一次
+        self.last_backup_time = 0.0
+
         # 转账统计
         self.transfer_stats = {
             'total_attempts': 0,
@@ -1811,12 +1863,50 @@ class EVMMonitor:
                 'transfer_stats': self.transfer_stats,
                 'rpc_latency_history': self.rpc_latency_history,
                 'blocked_rpcs': self.blocked_rpcs,
+                'token_metadata_cache': self.token_metadata_cache,
+                'active_tokens': self.active_tokens,
+                'user_added_tokens': list(self.user_added_tokens),
+                'address_full_scan_done': self.address_full_scan_done,
+                'last_full_scan_time': self.last_full_scan_time,
+                'rpc_stats': self.rpc_stats,
                 'last_save': datetime.now().isoformat()
             }
             with open(self.state_file, 'w') as f:
                 json.dump(state, f, indent=2)
+            
+            # 检查是否需要备份
+            self._maybe_backup_state()
         except Exception as e:
             self.logger.error(f"保存状态失败: {e}")
+
+    def _maybe_backup_state(self):
+        """如果需要则创建状态文件备份"""
+        try:
+            now_ts = time.time()
+            if now_ts - self.last_backup_time > self.backup_interval_hours * 3600:
+                backup_name = f"{self.state_file}.{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                import shutil
+                if os.path.exists(self.state_file):
+                    shutil.copy2(self.state_file, backup_name)
+                    self.last_backup_time = now_ts
+                    # 清理旧备份
+                    self._cleanup_old_backups()
+        except Exception as e:
+            self.logger.warning(f"备份状态失败: {e}")
+
+    def _cleanup_old_backups(self):
+        """清理过多的备份文件"""
+        try:
+            import glob
+            pattern = f"{self.state_file}.*"
+            backups = sorted(glob.glob(pattern), reverse=True)
+            for old_backup in backups[self.backup_max_files:]:
+                try:
+                    os.remove(old_backup)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def load_state(self):
         """加载监控状态"""
@@ -1835,6 +1925,16 @@ class EVMMonitor:
                 # 加载RPC延迟历史和屏蔽数据
                 self.rpc_latency_history = state.get('rpc_latency_history', {})
                 self.blocked_rpcs = state.get('blocked_rpcs', {})
+                self.token_metadata_cache = state.get('token_metadata_cache', {})
+                self.active_tokens = state.get('active_tokens', {})
+                self.user_added_tokens = set(state.get('user_added_tokens', []))
+                self.address_full_scan_done = state.get('address_full_scan_done', {})
+                # 兼容性：如果存在旧的full_scan_done，迁移到新格式
+                if 'full_scan_done' in state and state['full_scan_done']:
+                    for addr in self.monitored_addresses.keys():
+                        self.address_full_scan_done[addr] = True
+                self.last_full_scan_time = state.get('last_full_scan_time', 0.0)
+                self.rpc_stats = state.get('rpc_stats', {})
                 
                 self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
                 self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
@@ -1908,31 +2008,52 @@ class EVMMonitor:
             w3 = self.web3_connections[network]
             
             # 创建合约实例
+            checksum_contract = w3.to_checksum_address(contract_address)
             contract = w3.eth.contract(
-                address=w3.to_checksum_address(contract_address),
+                address=checksum_contract,
                 abi=self.erc20_abi
             )
             
             # 获取代币余额
             balance_raw = contract.functions.balanceOf(w3.to_checksum_address(address)).call()
             
-            # 获取代币精度
-            try:
-                decimals = contract.functions.decimals().call()
-            except:
-                decimals = 18  # 默认精度
+            # 获取代币元数据（缓存）
+            cache_key = f"{network}:{checksum_contract.lower()}"
+            cached = self.token_metadata_cache.get(cache_key)
+            if cached and 'decimals' in cached and isinstance(cached['decimals'], int):
+                decimals = cached['decimals']
+                symbol_out = cached.get('symbol', token_config['symbol'])
+            else:
+                # 获取代币精度
+                try:
+                    decimals = contract.functions.decimals().call()
+                except Exception:
+                    decimals = 18  # 默认精度
+                # 获取代币符号（优先链上，回退配置）
+                try:
+                    onchain_symbol = contract.functions.symbol().call()
+                    symbol_out = onchain_symbol if isinstance(onchain_symbol, str) and onchain_symbol else token_config['symbol']
+                except Exception:
+                    symbol_out = token_config['symbol']
+                # 写入缓存
+                self.token_metadata_cache[cache_key] = {'decimals': int(decimals), 'symbol': symbol_out}
             
             # 转换为人类可读格式
             balance = balance_raw / (10 ** decimals)
-            
-            return float(balance), token_config['symbol'], contract_address
+            # 记录活跃代币
+            if balance > 0:
+                self._record_active_token(address, network, token_symbol)
+            return float(balance), symbol_out, contract_address
             
         except Exception as e:
             self.logger.error(f"获取代币余额失败 {token_symbol} {address} on {network}: {e}")
             return 0.0, "?", "?"
 
     def get_all_balances(self, address: str, network: str) -> Dict:
-        """获取地址在指定网络上的所有余额（原生代币 + ERC20代币）"""
+        """获取地址在指定网络上的所有余额（原生代币 + ERC20代币）
+        首次扫描：全量遍历 self.tokens
+        后续扫描：仅扫描用户主动添加或最近活跃的代币（命中优先清单），降低链上调用压力
+        """
         balances = {}
         
         # 获取原生代币余额
@@ -1945,8 +2066,29 @@ class EVMMonitor:
                 'contract': 'native'
             }
         
-        # 获取ERC20代币余额
-        for token_symbol in self.tokens:
+        # 构建本轮需要扫描的代币列表
+        token_symbols_to_scan: List[str] = []
+        if not self.address_full_scan_done.get(address, False):
+            # 首轮全量
+            token_symbols_to_scan = list(self.tokens.keys())
+        else:
+            # 后续仅扫描：用户主动添加 + 最近活跃（地址/网络维度）
+            recent_active = self._get_recent_active_tokens(address, network)
+            # 去重并保持顺序：用户添加的优先，其次活跃
+            seen = set()
+            for sym in list(self.user_added_tokens) + recent_active:
+                up = sym.upper()
+                if up in self.tokens and up not in seen:
+                    token_symbols_to_scan.append(up)
+                    seen.add(up)
+            # 若为空，退化为全量的一小部分（例如稳定币/热门代币），避免完全不查
+            if not token_symbols_to_scan:
+                for fallback in ['USDT','USDC','DAI']:
+                    if fallback in self.tokens:
+                        token_symbols_to_scan.append(fallback)
+        
+        # 扫描ERC20余额
+        for token_symbol in token_symbols_to_scan:
             token_balance, token_sym, contract_addr = self.get_token_balance(address, token_symbol, network)
             if token_balance > 0:
                 balances[token_symbol] = {
@@ -1955,6 +2097,11 @@ class EVMMonitor:
                     'type': 'erc20',
                     'contract': contract_addr
                 }
+        
+        # 统计逻辑：若是首轮扫描，标记该地址已完成并记时间
+        if not self.address_full_scan_done.get(address, False):
+            self.address_full_scan_done[address] = True
+            self.last_full_scan_time = time.time()
         
         return balances
 
@@ -1969,7 +2116,8 @@ class EVMMonitor:
             # 获取当前Gas价格
             try:
                 gas_price = w3.eth.gas_price
-            except:
+            except Exception as e:
+                self.logger.warning(f"获取Gas价格失败 {network}: {e}，使用默认值")
                 gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
             
             # 根据交易类型估算Gas限制
@@ -2022,20 +2170,50 @@ class EVMMonitor:
         
         try:
             import requests
+            # 降噪：在窗口期内去重
+            key = str(hash(message))
+            now_ts = time.time()
+            last_ts = self._telegram_last_sent.get(key, 0.0)
+            if now_ts - last_ts < self.telegram_noise_cooldown:
+                return True
+            # 过滤高风险字段
+            redacted = message
+            import re
+            for pat in self.redact_patterns:
+                redacted = re.sub(pat, "[REDACTED]", redacted)
+            # 限制长度
+            if len(redacted) > 3500:
+                redacted = redacted[:3500] + "\n…(truncated)"
+            # 简单Markdown转义
+            def escape_md(s: str) -> str:
+                return s.replace("_", r"\_").replace("*", r"\*").replace("[", r"\[").replace("`", r"\`")
+            redacted = escape_md(redacted)
             url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
             data = {
                 'chat_id': self.telegram_chat_id,
-                'text': message,
+                'text': redacted,
                 'parse_mode': 'Markdown'
             }
-            
-            response = requests.post(url, data=data, timeout=10)
-            if response.status_code == 200:
-                self.logger.info("Telegram通知发送成功")
-                return True
-            else:
-                self.logger.error(f"Telegram通知发送失败: {response.status_code}")
-                return False
+            # 带退避重试
+            backoff = self.telegram_base_backoff
+            for attempt in range(self.telegram_max_retries):
+                try:
+                    response = requests.post(url, data=data, timeout=10)
+                    if response.status_code == 200:
+                        self._telegram_last_sent[key] = now_ts
+                        self.logger.info("Telegram通知发送成功")
+                        return True
+                    # 429/5xx做退避
+                    if response.status_code in (429, 500, 502, 503, 504):
+                        time.sleep(backoff)
+                        backoff *= 2
+                        continue
+                    self.logger.error(f"Telegram通知发送失败: {response.status_code}")
+                    return False
+                except Exception:
+                    time.sleep(backoff)
+                    backoff *= 2
+            return False
                 
         except Exception as e:
             self.logger.error(f"发送Telegram通知失败: {e}")
@@ -2137,17 +2315,21 @@ class EVMMonitor:
             
             # 测试连接
             if not w3.is_connected():
-                return False, time.time() - start_time, self.get_rpc_type(rpc_url)
+                elapsed = time.time() - start_time
+                return False, elapsed, self.get_rpc_type(rpc_url)
             
             # 验证链ID
             chain_id = w3.eth.chain_id
             success = chain_id == expected_chain_id
             response_time = time.time() - start_time
-            
+            # 记录RPC评分
+            self._record_rpc_stat(expected_chain_id, rpc_url, success, response_time)
             return success, response_time, self.get_rpc_type(rpc_url)
             
         except Exception:
-            return False, time.time() - start_time, self.get_rpc_type(rpc_url)
+            elapsed = time.time() - start_time
+            self._record_rpc_stat(expected_chain_id, rpc_url, False, elapsed)
+            return False, elapsed, self.get_rpc_type(rpc_url)
 
     def get_rpc_type(self, rpc_url: str) -> str:
         """识别RPC类型"""
@@ -2159,18 +2341,20 @@ class EVMMonitor:
             return '公共节点'
     
     def is_public_rpc(self, rpc_url: str) -> bool:
-        """判断是否为公共RPC节点"""
-        # 私有/付费节点标识
-        private_indicators = [
-            'alchemy.com', 'ankr.com', 'infura.io', 'moralis.io',
-            'quicknode.com', 'getblock.io', 'nodereal.io'
-        ]
-        
-        for indicator in private_indicators:
+        """判断是否为公共RPC节点（可运行时更新的特征列表）"""
+        for indicator in self.private_rpc_indicators:
             if indicator in rpc_url.lower():
                 return False
-        
         return True
+
+    def update_private_rpc_indicators(self, indicators: List[str]) -> None:
+        """运行时更新私有RPC特征列表"""
+        cleaned = []
+        for s in indicators:
+            if isinstance(s, str) and s.strip():
+                cleaned.append(s.strip().lower())
+        if cleaned:
+            self.private_rpc_indicators = cleaned
 
     def get_token_info(self, token_address: str, network_key: str) -> Optional[Dict]:
         """获取代币信息（名称、符号、精度）"""
@@ -2242,6 +2426,8 @@ class EVMMonitor:
                 if network not in self.tokens[symbol]['contracts']:
                     self.tokens[symbol]['contracts'][network] = address
                     print(f"{Fore.GREEN}✅ 已将 {symbol} 添加到 {self.networks[network]['name']}{Style.RESET_ALL}")
+                    # 标记为用户主动添加
+                    self.user_added_tokens.add(symbol)
                     return True
                 else:
                     print(f"{Fore.YELLOW}⚠️ {symbol} 在 {self.networks[network]['name']} 上已存在{Style.RESET_ALL}")
@@ -2255,12 +2441,74 @@ class EVMMonitor:
                         network: address
                     }
                 }
+                # 标记为用户主动添加
+                self.user_added_tokens.add(symbol)
                 print(f"{Fore.GREEN}✅ 已添加新代币 {symbol} ({token_info['name']}){Style.RESET_ALL}")
                 return True
                 
         except Exception as e:
             print(f"{Fore.RED}❌ 添加自定义代币失败: {e}{Style.RESET_ALL}")
             return False
+
+    def _record_active_token(self, address: str, network: str, token_symbol: str) -> None:
+        """记录某地址在网络上的活跃代币（最近余额>0）"""
+        try:
+            now_ts = time.time()
+            if address not in self.active_tokens:
+                self.active_tokens[address] = {}
+            if network not in self.active_tokens[address]:
+                self.active_tokens[address][network] = {}
+            self.active_tokens[address][network][token_symbol] = now_ts
+        except Exception:
+            pass
+
+    def _get_recent_active_tokens(self, address: str, network: str) -> List[str]:
+        """获取某地址-网络下最近活跃的代币（在TTL内）"""
+        try:
+            ttl_seconds = self.active_token_ttl_hours * 3600
+            now_ts = time.time()
+            result: List[str] = []
+            if address in self.active_tokens and network in self.active_tokens[address]:
+                entries = self.active_tokens[address][network]
+                # 清理过期数据
+                to_delete = []
+                for token_symbol, last_seen in entries.items():
+                    if now_ts - last_seen <= ttl_seconds:
+                        result.append(token_symbol)
+                    else:
+                        to_delete.append(token_symbol)
+                for sym in to_delete:
+                    del entries[sym]
+            return result
+        except Exception:
+            return []
+
+    def _classify_web3_error(self, error: Exception) -> Tuple[str, str]:
+        """分类Web3错误并返回(错误类型, 用户友好提示)"""
+        error_str = str(error).lower()
+        error_type = type(error).__name__
+        
+        # 网络连接错误
+        if any(keyword in error_str for keyword in ['connection', 'timeout', 'network', 'unreachable']):
+            return "network", "网络连接问题，请检查网络设置或尝试其他RPC节点"
+        
+        # Gas相关错误
+        if any(keyword in error_str for keyword in ['gas', 'insufficient', 'out of gas']):
+            return "gas", "Gas费用不足或Gas限制过低，请增加Gas费用"
+        
+        # 合约调用错误
+        if any(keyword in error_str for keyword in ['revert', 'execution reverted', 'contract']):
+            return "contract", "智能合约执行失败，可能代币合约有问题或余额不足"
+        
+        # 地址格式错误
+        if any(keyword in error_str for keyword in ['invalid', 'address', 'checksum']):
+            return "address", "地址格式错误，请检查地址是否正确"
+        
+        # RPC相关错误
+        if any(keyword in error_str for keyword in ['rpc', 'json', 'method not found']):
+            return "rpc", "RPC节点错误，尝试切换到其他节点"
+        
+        return "unknown", f"未知错误类型 ({error_type})，请查看详细日志"
 
     def record_rpc_latency(self, rpc_url: str, latency: float) -> bool:
         """记录RPC延迟并检查是否需要屏蔽"""
@@ -2285,6 +2533,52 @@ class EVMMonitor:
                 return True
         
         return False
+
+    def _record_rpc_stat(self, expected_chain_id: int, rpc_url: str, success: bool, latency: float) -> None:
+        """记录RPC成功/失败与延迟，用于打分排序"""
+        try:
+            # 找到network_key
+            network_key = None
+            for nk, info in self.networks.items():
+                if info.get('chain_id') == expected_chain_id and rpc_url in info.get('rpc_urls', []):
+                    network_key = nk
+                    break
+            if network_key is None:
+                return
+            if network_key not in self.rpc_stats:
+                self.rpc_stats[network_key] = {}
+            stats = self.rpc_stats[network_key].setdefault(rpc_url, {'success': 0, 'fail': 0, 'latencies': [], 'last_fail': 0.0})
+            if success:
+                stats['success'] += 1
+            else:
+                stats['fail'] += 1
+                stats['last_fail'] = time.time()
+            stats['latencies'].append(float(latency))
+            if len(stats['latencies']) > self.rpc_score_window:
+                stats['latencies'] = stats['latencies'][-self.rpc_score_window:]
+        except Exception:
+            pass
+
+    def _score_rpc(self, network_key: str, rpc_url: str) -> float:
+        """根据成功率和P95延迟给RPC打分，分数越高越优"""
+        try:
+            s = self.rpc_stats.get(network_key, {}).get(rpc_url)
+            if not s:
+                return 0.0
+            total = s['success'] + s['fail']
+            success_rate = (s['success'] / total) if total > 0 else 0.0
+            latencies = sorted(s['latencies'])
+            if latencies:
+                idx = max(0, int(len(latencies) * 0.95) - 1)
+                p95 = latencies[idx]
+            else:
+                p95 = self.max_rpc_latency
+            # 归一化延迟（越小越好），映射到0..1
+            lat_norm = max(0.0, 1.0 - min(p95 / (self.max_rpc_latency * 2), 1.0))
+            score = self.rpc_success_weight * success_rate + self.rpc_p95_weight * lat_norm
+            return score
+        except Exception:
+            return 0.0
 
     def block_rpc(self, rpc_url: str, reason: str):
         """屏蔽指定的RPC节点"""
@@ -2398,25 +2692,22 @@ class EVMMonitor:
             else:
                 private_rpcs.append(rpc_url)
         
-        # 并发测试公共节点
+        # 并发测试公共节点（基于当前打分排序，优先测试高分）
         if public_rpcs:
+            sorted_public = sorted(public_rpcs, key=lambda u: self._score_rpc(network_key, u), reverse=True)
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_rpc = {
                     executor.submit(test_single_rpc, rpc_url): rpc_url 
-                    for rpc_url in public_rpcs
+                    for rpc_url in sorted_public
                 }
-                
                 for future in concurrent.futures.as_completed(future_to_rpc):
                     rpc_url = future_to_rpc[future]
                     try:
                         success, response_time, rpc_type = future.result()
-                        
-                        # 记录延迟并检查是否需要屏蔽
                         if success:
                             blocked = self.record_rpc_latency(rpc_url, response_time)
                             if blocked:
-                                continue  # 跳过已屏蔽的RPC
-                        
+                                continue
                         rpc_detail = {
                             'url': rpc_url,
                             'success': success,
@@ -2424,19 +2715,16 @@ class EVMMonitor:
                             'type': rpc_type,
                             'is_public': True
                         }
-                        
                         results['rpc_details'].append(rpc_detail)
-                        
                         if success:
                             results['working_rpcs'].append(rpc_url)
                         else:
                             results['failed_rpcs'].append(rpc_url)
-                            
-                    except Exception as e:
+                    except Exception:
                         results['failed_rpcs'].append(rpc_url)
         
-        # 串行测试私有节点（避免频繁请求被限制）
-        for rpc_url in private_rpcs:
+        # 串行测试私有节点（避免频繁请求被限制），同样按打分排序
+        for rpc_url in sorted(private_rpcs, key=lambda u: self._score_rpc(network_key, u), reverse=True):
             try:
                 success, response_time, rpc_type = test_single_rpc(rpc_url)
                 
@@ -2855,7 +3143,7 @@ class EVMMonitor:
     def scan_addresses(self):
         """扫描所有地址，检查交易历史并建立监控列表"""
         print(f"\n{Fore.CYAN}🔍 开始扫描地址交易历史...{Style.RESET_ALL}")
-        
+        start_ts = time.time()
         for address in self.wallets.keys():
             print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 检查地址 {Style.RESET_ALL} {Fore.CYAN}{address}{Style.RESET_ALL}")
             address_networks = []
@@ -2889,9 +3177,11 @@ class EVMMonitor:
                 self.blocked_networks[address] = blocked_networks
                 print(f"{Fore.RED}❌ 屏蔽网络: {len(blocked_networks)} 个{Style.RESET_ALL} {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
         
+        elapsed = time.time() - start_ts
         print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
         print(f"{Fore.GREEN}✅ 监控地址: {len(self.monitored_addresses)} 个{Style.RESET_ALL}")
         print(f"{Fore.RED}❌ 屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}⏱️ 用时: {elapsed:.2f}s{Style.RESET_ALL}")
         self.save_state()
 
     def monitor_loop(self):
@@ -2993,7 +3283,14 @@ class EVMMonitor:
                                 self.monitoring = False
                                 return
                             except Exception as e:
-                                print(f"{Fore.RED}❌ 检查余额失败 {address[:10]}... on {network}: {e}{Style.RESET_ALL}")
+                                error_type, user_hint = self._classify_web3_error(e)
+                                print(f"{Fore.RED}❌ 检查余额失败 {address[:10]}... on {network}{Style.RESET_ALL}")
+                                print(f"{Fore.YELLOW}💡 {user_hint}{Style.RESET_ALL}")
+                                if error_type in ["network", "rpc"]:
+                                    # 网络/RPC错误时记录但继续
+                                    self.logger.warning(f"网络错误 {network}: {e}")
+                                else:
+                                    self.logger.error(f"余额检查错误 {address} {network}: {e}")
                                 continue
                     
                     # 等待下一次检查（支持中断）
@@ -3022,10 +3319,18 @@ class EVMMonitor:
         
         except KeyboardInterrupt:
             print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
+        except Exception as e:
+            self.logger.error(f"监控循环严重错误: {e}")
+            print(f"{Fore.RED}❌ 监控循环遇到严重错误，已记录日志{Style.RESET_ALL}")
         finally:
             self.monitoring = False
             print(f"\n{Fore.GREEN}✅ 监控已优雅停止{Style.RESET_ALL}")
-            self.save_state()  # 保存状态
+            # 异常退出时确保保存状态
+            try:
+                self.save_state()
+                print(f"{Fore.CYAN}💾 状态已保存{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}❌ 保存状态失败: {e}{Style.RESET_ALL}")
 
     def start_monitoring(self):
         """开始监控"""
