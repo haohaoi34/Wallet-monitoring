@@ -34,9 +34,10 @@ create_project_dir() {
     fi
     
     mkdir -p "$PROJECT_DIR"
-    cd "$PROJECT_DIR"
-    
     echo -e "${GREEN}${CHECKMARK} 项目目录创建完成: $PROJECT_DIR${NC}"
+    
+    # 导出项目目录变量，使其在子shell中可用
+    export PROJECT_DIR
 }
 
 # 下载程序文件
@@ -197,43 +198,26 @@ EOF
     fi
 }
 
-# 显示安装完成信息
+# 显示安装完成信息并启动程序
 show_completion() {
     echo ""
     echo "=================================================="
     echo -e "${GREEN}${CHECKMARK} EVM钱包监控软件安装完成！${NC}"
     echo "=================================================="
     echo ""
-    echo -e "${CYAN}使用方法:${NC}"
-    echo -e "  1. 进入项目目录: ${YELLOW}cd $PROJECT_DIR${NC}"
-    echo -e "  2. 启动程序: ${YELLOW}./start.sh${NC}"
-    echo ""
-    echo -e "${CYAN}或者直接运行:${NC}"
-    echo -e "  ${YELLOW}evm-monitor${NC}"
-    echo ""
-    echo -e "${BLUE}程序特性:${NC}"
-    echo "  🔐 安全的私钥加密存储"
-    echo "  🌐 支持多链监控 (ETH, BSC, Polygon, Arbitrum等)"
-    echo "  💸 自动余额监控和转账"
-    echo "  📝 完整的日志记录"
-    echo "  🔄 状态恢复功能"
-    echo "  🎮 友好的交互界面"
+    echo -e "${CYAN}正在启动程序...${NC}"
     echo ""
     
-    # 询问是否立即启动
-    read -p "是否现在启动程序? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${CYAN}正在启动程序...${NC}"
-        cd "$PROJECT_DIR"
-        ./start.sh
-    fi
+    # 直接启动程序
+    cd "$PROJECT_DIR"
+    ./start.sh
 }
 
 # 主安装流程
 main() {
-    # 创建项目目录
+    # 创建项目目录并进入
     create_project_dir
+    cd "$PROJECT_DIR"
     
     # 安装依赖
     install_python_packages
@@ -244,7 +228,7 @@ main() {
     # 创建快捷方式
     create_shortcuts
     
-    # 显示完成信息
+    # 显示完成信息并启动程序
     show_completion
 }
 
