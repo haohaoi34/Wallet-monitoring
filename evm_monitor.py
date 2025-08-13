@@ -527,7 +527,9 @@ class EVMMonitor:
                     'https://rpc.berachain.com',
                     'https://berachain.drpc.org',
                     'https://bera-mainnet.nodeinfra.com',
-                    'https://berachain.publicnode.com'
+                    'https://berachain.publicnode.com',
+                    # Alchemy (付费)
+                    f'https://berachain-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}'
                 ],
                 'native_currency': 'BERA',
                 'explorer': 'https://berascan.com'
@@ -539,7 +541,9 @@ class EVMMonitor:
                 'rpc_urls': [
                     'https://mainnet-rpc.brisescan.com',
                     'https://chainrpc.com',
-                    'https://rpc.icecreamswap.com'
+                    'https://rpc.icecreamswap.com',
+                    # Ankr (付费)
+                    f'https://rpc.ankr.com/bitgert/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'BRISE',
                 'explorer': 'https://brisescan.com'
@@ -768,7 +772,9 @@ class EVMMonitor:
                 'rpc_urls': [
                     'https://rpc.tomochain.com',
                     'https://tomo.blockpi.network/v1/rpc/public',
-                    'https://rpc.ankr.com/tomochain'
+                    'https://rpc.ankr.com/tomochain',
+                    # Alchemy (付费) - 需要验证是否支持
+                    f'https://tomochain-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}'
                 ],
                 'native_currency': 'TOMO',
                 'explorer': 'https://tomoscan.io'
@@ -1075,7 +1081,9 @@ class EVMMonitor:
                 'name': '🍎 Newton',
                 'chain_id': 1012,
                 'rpc_urls': [
-                    'https://rpc1.newchain.newtonproject.org'
+                    'https://rpc1.newchain.newtonproject.org',
+                    # Alchemy (付费)
+                    f'https://newton-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}'
                 ],
                 'native_currency': 'NEW',
                 'explorer': 'https://explorer.newtonproject.org'
@@ -1494,7 +1502,9 @@ class EVMMonitor:
                 'name': '🎵 Sonic Labs',
                 'chain_id': 146,
                 'rpc_urls': [
-                    'https://rpc.sonic.mainnet.org'
+                    'https://rpc.sonic.mainnet.org',
+                    # Ankr (付费)
+                    f'https://rpc.ankr.com/sonic/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'S',
                 'explorer': 'https://sonicscan.org'
@@ -1628,7 +1638,9 @@ class EVMMonitor:
                 'name': '🎵 Sonic',
                 'chain_id': 64165,
                 'rpc_urls': [
-                    'https://rpc.sonic.fantom.network'
+                    'https://rpc.sonic.fantom.network',
+                    # Alchemy (付费)
+                    f'https://sonic-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}'
                 ],
                 'native_currency': 'S',
                 'explorer': 'https://sonicscan.org'
@@ -2298,7 +2310,9 @@ class EVMMonitor:
                     'https://bartio.rpc.berachain.com',
                     'https://bera-testnet.nodeinfra.com',
                     'https://bartio.rpc.b-harvest.io',
-                    'https://bera-testnet-rpc.publicnode.com'
+                    'https://bera-testnet-rpc.publicnode.com',
+                    # Alchemy (付费)
+                    f'https://berachain-bartio.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}'
                 ],
                 'native_currency': 'BERA',
                 'explorer': 'https://bartio.beratrail.io'
