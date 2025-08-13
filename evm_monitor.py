@@ -1623,6 +1623,17 @@ class EVMMonitor:
         self.monitoring = False
         self.monitor_thread = None
         
+        # 守护进程和稳定性相关
+        self.restart_count = 0  # 重启次数
+        self.last_restart_time = 0  # 最后重启时间
+        self.max_restarts = 10  # 最大重启次数
+        self.restart_interval = 300  # 重启间隔（秒）
+        self.memory_cleanup_interval = 3600  # 内存清理间隔（秒）
+        self.last_memory_cleanup = time.time()  # 最后内存清理时间
+        self.error_count = 0  # 错误计数
+        self.max_errors = 50  # 最大错误数，超过后触发清理
+        self.daemon_mode = False  # 是否为守护进程模式
+        
         # 文件路径
         self.wallet_file = "wallets.json"
         self.state_file = "monitor_state.json"
@@ -1734,6 +1745,244 @@ class EVMMonitor:
         )
         self.logger = logging.getLogger(__name__)
     
+    def cleanup_memory(self):
+        """清理内存和缓存"""
+        try:
+            import gc
+            
+            # 清理过期的RPC测试缓存
+            current_time = time.time()
+            cache_ttl = 1800  # 30分钟
+            
+            for network_key in list(self.rpc_test_cache.keys()):
+                cache_data = self.rpc_test_cache[network_key]
+                if current_time - cache_data.get('last_test', 0) > cache_ttl:
+                    del self.rpc_test_cache[network_key]
+            
+            # 清理过期的代币元数据缓存
+            token_cache_ttl = 7200  # 2小时
+            for cache_key in list(self.token_metadata_cache.keys()):
+                # 简单的TTL实现，如果缓存太大就清理一半
+                if len(self.token_metadata_cache) > 1000:
+                    # 清理一半最旧的缓存
+                    keys_to_remove = list(self.token_metadata_cache.keys())[:500]
+                    for key in keys_to_remove:
+                        del self.token_metadata_cache[key]
+                    break
+            
+            # 清理活跃代币追踪器中的过期数据
+            active_token_ttl = 86400  # 24小时
+            for address_network in list(self.active_token_tracker.keys()):
+                tracker_data = self.active_token_tracker[address_network]
+                for token in list(tracker_data.keys()):
+                    if current_time - tracker_data[token] > active_token_ttl:
+                        del tracker_data[token]
+                
+                # 如果某个地址-网络组合下没有活跃代币了，删除整个条目
+                if not tracker_data:
+                    del self.active_token_tracker[address_network]
+            
+            # 清理过期的被拉黑RPC（超过24小时自动解封）
+            blocked_rpc_ttl = 86400  # 24小时
+            rpcs_to_unblock = []
+            for rpc_url, rpc_info in self.blocked_rpcs.items():
+                if current_time - rpc_info.get('blocked_time', 0) > blocked_rpc_ttl:
+                    rpcs_to_unblock.append(rpc_url)
+            
+            for rpc_url in rpcs_to_unblock:
+                del self.blocked_rpcs[rpc_url]
+                self.logger.info(f"自动解封过期RPC: {rpc_url}")
+            
+            if rpcs_to_unblock:
+                print(f"{Fore.GREEN}🔄 自动解封 {len(rpcs_to_unblock)} 个过期的被拉黑RPC{Style.RESET_ALL}")
+            
+            # 强制垃圾回收
+            collected = gc.collect()
+            
+            self.last_memory_cleanup = current_time
+            self.logger.info(f"内存清理完成，回收了 {collected} 个对象")
+            
+            # 重置错误计数
+            self.error_count = 0
+            
+        except Exception as e:
+            self.logger.error(f"内存清理失败: {e}")
+    
+    def handle_error(self, error: Exception, context: str = ""):
+        """统一的错误处理"""
+        self.error_count += 1
+        error_msg = f"错误[{self.error_count}] {context}: {error}"
+        self.logger.error(error_msg)
+        
+        # 如果错误数量过多，触发内存清理
+        if self.error_count >= self.max_errors:
+            print(f"{Fore.YELLOW}⚠️ 错误数量过多({self.error_count})，执行内存清理...{Style.RESET_ALL}")
+            self.cleanup_memory()
+        
+        # 如果是严重错误且在守护进程模式，考虑重启
+        if self.daemon_mode and self.error_count >= self.max_errors * 2:
+            self.request_restart("错误数量过多")
+    
+    def request_restart(self, reason: str):
+        """请求重启程序"""
+        current_time = time.time()
+        
+        # 检查重启间隔
+        if current_time - self.last_restart_time < self.restart_interval:
+            self.logger.warning(f"重启请求被拒绝，间隔太短: {reason}")
+            return False
+        
+        # 检查重启次数
+        if self.restart_count >= self.max_restarts:
+            self.logger.error(f"达到最大重启次数({self.max_restarts})，程序退出: {reason}")
+            print(f"{Fore.RED}❌ 程序重启次数过多，自动退出{Style.RESET_ALL}")
+            return False
+        
+        self.restart_count += 1
+        self.last_restart_time = current_time
+        
+        self.logger.info(f"程序重启请求[{self.restart_count}/{self.max_restarts}]: {reason}")
+        print(f"{Fore.YELLOW}🔄 程序将重启({self.restart_count}/{self.max_restarts}): {reason}{Style.RESET_ALL}")
+        
+        # 保存状态
+        try:
+            self.save_state()
+            self.save_wallets()
+        except Exception as e:
+            self.logger.error(f"重启前保存状态失败: {e}")
+        
+        return True
+    
+    def start_daemon_mode(self):
+        """启动守护进程模式"""
+        self.daemon_mode = True
+        print(f"{Fore.CYAN}🛡️ 启动守护进程模式{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 守护进程特性：{Style.RESET_ALL}")
+        print(f"   • 自动错误恢复和重启机制")
+        print(f"   • 定期内存清理({self.memory_cleanup_interval//60}分钟)")
+        print(f"   • 最大重启次数: {self.max_restarts}")
+        print(f"   • 错误阈值: {self.max_errors}")
+        
+        # 初始化守护进程相关状态
+        self.error_count = 0
+        self.restart_count = 0
+        self.last_restart_time = time.time()
+        self.last_memory_cleanup = time.time()
+        
+        # 执行一次初始内存清理
+        self.cleanup_memory()
+        
+        # 启动监控
+        return self.start_monitoring()
+    
+    def create_daemon_wrapper(self):
+        """创建守护进程包装器脚本"""
+        wrapper_script = """#!/bin/bash
+# EVM监控守护进程包装器
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+LOG_FILE="daemon.log"
+PID_FILE="daemon.pid"
+
+# 颜色定义
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+NC='\\033[0m'
+
+case "$1" in
+    start)
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if ps -p $PID > /dev/null 2>&1; then
+                echo -e "${YELLOW}守护进程已在运行 (PID: $PID)${NC}"
+                exit 1
+            else
+                rm -f "$PID_FILE"
+            fi
+        fi
+        
+        echo -e "${GREEN}启动EVM监控守护进程...${NC}"
+        nohup python3 evm_monitor.py --daemon > "$LOG_FILE" 2>&1 &
+        echo $! > "$PID_FILE"
+        echo -e "${GREEN}守护进程已启动 (PID: $!)${NC}"
+        echo -e "${YELLOW}日志文件: $LOG_FILE${NC}"
+        ;;
+    stop)
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if ps -p $PID > /dev/null 2>&1; then
+                echo -e "${YELLOW}停止守护进程 (PID: $PID)...${NC}"
+                kill $PID
+                rm -f "$PID_FILE"
+                echo -e "${GREEN}守护进程已停止${NC}"
+            else
+                echo -e "${RED}守护进程未运行${NC}"
+                rm -f "$PID_FILE"
+            fi
+        else
+            echo -e "${RED}守护进程未运行${NC}"
+        fi
+        ;;
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+    status)
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if ps -p $PID > /dev/null 2>&1; then
+                echo -e "${GREEN}守护进程正在运行 (PID: $PID)${NC}"
+                echo -e "${YELLOW}日志文件: $LOG_FILE${NC}"
+                echo -e "${YELLOW}最后10行日志:${NC}"
+                tail -10 "$LOG_FILE" 2>/dev/null || echo "无法读取日志文件"
+            else
+                echo -e "${RED}守护进程未运行${NC}"
+                rm -f "$PID_FILE"
+            fi
+        else
+            echo -e "${RED}守护进程未运行${NC}"
+        fi
+        ;;
+    log)
+        if [ -f "$LOG_FILE" ]; then
+            tail -f "$LOG_FILE"
+        else
+            echo -e "${RED}日志文件不存在${NC}"
+        fi
+        ;;
+    *)
+        echo "用法: $0 {start|stop|restart|status|log}"
+        echo "  start   - 启动守护进程"
+        echo "  stop    - 停止守护进程"
+        echo "  restart - 重启守护进程"
+        echo "  status  - 查看守护进程状态"
+        echo "  log     - 查看实时日志"
+        exit 1
+        ;;
+esac
+"""
+        
+        try:
+            with open("daemon.sh", "w", encoding="utf-8") as f:
+                f.write(wrapper_script)
+            
+            import os
+            os.chmod("daemon.sh", 0o755)
+            
+            print(f"{Fore.GREEN}✅ 守护进程包装器已创建: daemon.sh{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}使用方法：{Style.RESET_ALL}")
+            print(f"  ./daemon.sh start   - 启动守护进程")
+            print(f"  ./daemon.sh stop    - 停止守护进程")
+            print(f"  ./daemon.sh status  - 查看状态")
+            print(f"  ./daemon.sh log     - 查看日志")
+            
+        except Exception as e:
+            print(f"{Fore.RED}❌ 创建守护进程包装器失败: {e}{Style.RESET_ALL}")
+
     def safe_input(self, prompt: str = "") -> str:
         """安全的输入函数，处理EOF错误"""
         try:
@@ -2348,10 +2597,26 @@ class EVMMonitor:
             self.logger.error(f"获取统计摘要失败: {e}")
             return "统计数据获取失败"
 
-    def test_rpc_connection(self, rpc_url: str, expected_chain_id: int, timeout: int = 5) -> bool:
+    def test_rpc_connection(self, rpc_url: str, expected_chain_id: int, timeout: int = 5, quick_test: bool = False) -> bool:
         """测试单个RPC连接，支持HTTP(S)和WebSocket"""
+        import signal
+        import time
+        
+        # 如果是快速测试（用于ChainList批量导入），使用1秒超时
+        if quick_test:
+            timeout = 1
+            
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f"RPC连接超时 ({timeout}秒)")
+        
         try:
             from web3 import Web3
+            
+            # 设置超时信号
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout)
+            
+            start_time = time.time()
             
             # 根据URL类型选择提供者
             if rpc_url.startswith(('ws://', 'wss://')):
@@ -2367,10 +2632,19 @@ class EVMMonitor:
             
             # 验证链ID
             chain_id = w3.eth.chain_id
+            elapsed = time.time() - start_time
+            
+            # 如果是快速测试且超过1秒，也视为失败
+            if quick_test and elapsed > 1.0:
+                return False
+                
             return chain_id == expected_chain_id
             
-        except Exception:
+        except (TimeoutError, Exception):
             return False
+        finally:
+            # 取消超时信号
+            signal.alarm(0)
 
     def test_rpc_concurrent(self, rpc_url: str, expected_chain_id: int, timeout: int = 3) -> tuple:
         """并发测试单个RPC连接，返回(是否成功, 响应时间, RPC类型)"""
@@ -3346,15 +3620,24 @@ class EVMMonitor:
                                 error_type, user_hint = self._classify_web3_error(e)
                                 print(f"{Fore.RED}❌ 检查余额失败 {address[:10]}... on {network}{Style.RESET_ALL}")
                                 print(f"{Fore.YELLOW}💡 {user_hint}{Style.RESET_ALL}")
+                                
+                                # 使用统一错误处理
+                                self.handle_error(e, f"余额检查 {address[:10]} {network}")
+                                
                                 if error_type in ["network", "rpc"]:
                                     # 网络/RPC错误时记录但继续
-                                    self.logger.warning(f"网络错误 {network}: {e}")
+                                    continue
                                 else:
-                                    self.logger.error(f"余额检查错误 {address} {network}: {e}")
-                                continue
+                                    continue
                     
                     # 等待下一次检查（支持中断）
                     print(f"\n{Fore.CYAN}🕒 等待 {self.monitor_interval} 秒后进行下一轮检查... (按Ctrl+C退出){Style.RESET_ALL}")
+                
+                    # 检查是否需要进行内存清理
+                    current_time = time.time()
+                    if current_time - self.last_memory_cleanup > self.memory_cleanup_interval:
+                        print(f"{Fore.CYAN}🧹 执行定期内存清理...{Style.RESET_ALL}")
+                        self.cleanup_memory()
                 
                     # 检查被屏蔽的RPC是否可以恢复
                     self.check_blocked_rpcs_recovery()
@@ -3369,8 +3652,15 @@ class EVMMonitor:
                     self.monitoring = False
                     break
                 except Exception as e:
-                    self.logger.error(f"监控循环错误: {e}")
+                    # 使用统一错误处理
+                    self.handle_error(e, "监控循环")
                     print(f"{Fore.RED}❌ 监控循环出错，5秒后重试: {e}{Style.RESET_ALL}")
+                    
+                    # 如果在守护进程模式且错误过多，考虑重启
+                    if self.daemon_mode and self.error_count >= self.max_errors:
+                        if self.request_restart("监控循环错误过多"):
+                            break
+                    
                     try:
                         time.sleep(5)
                     except KeyboardInterrupt:
@@ -3507,6 +3797,7 @@ class EVMMonitor:
             print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
             print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测")
             print(f"{Fore.GREEN}10.{Style.RESET_ALL} 🪙 添加自定义代币")
+            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🛡️ 守护进程管理")
             
             print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
             print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
@@ -3542,6 +3833,8 @@ class EVMMonitor:
                     self.menu_rpc_testing()
                 elif choice == '10':
                     self.menu_add_custom_token()
+                elif choice == '11':
+                    self.menu_daemon_management()
                 elif choice == '0':
                     self.menu_exit()
                     break
@@ -3906,6 +4199,169 @@ class EVMMonitor:
         self.save_wallets()
         print(f"{Fore.GREEN}✅ 程序已安全退出{Style.RESET_ALL}")
 
+    def menu_daemon_management(self):
+        """菜单：守护进程管理"""
+        print(f"\n{Fore.CYAN}✨ ====== 🛡️ 守护进程管理 🛡️ ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 🚀 管理程序的守护进程模式和稳定性功能 {Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📊 当前状态：{Style.RESET_ALL}")
+        print(f"  守护进程模式: {'🟢 启用' if self.daemon_mode else '🔴 禁用'}")
+        print(f"  错误计数: {Fore.YELLOW}{self.error_count}/{self.max_errors}{Style.RESET_ALL}")
+        print(f"  重启计数: {Fore.YELLOW}{self.restart_count}/{self.max_restarts}{Style.RESET_ALL}")
+        
+        # 显示内存清理状态
+        import time
+        time_since_cleanup = int(time.time() - self.last_memory_cleanup)
+        cleanup_interval = self.memory_cleanup_interval
+        print(f"  上次内存清理: {Fore.CYAN}{time_since_cleanup//60}分钟前{Style.RESET_ALL}")
+        print(f"  下次内存清理: {Fore.CYAN}{(cleanup_interval - time_since_cleanup)//60}分钟后{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}🔧 管理选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🧹 立即执行内存清理")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📊 查看系统状态详情")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚙️  调整守护进程参数")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 📜 创建守护进程启动脚本")
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🔄 重置错误计数")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-5): {Style.RESET_ALL}").strip()
+        
+        try:
+            if choice == '1':
+                # 立即执行内存清理
+                print(f"\n{Fore.CYAN}🧹 正在执行内存清理...{Style.RESET_ALL}")
+                self.cleanup_memory()
+                print(f"{Fore.GREEN}✅ 内存清理完成！{Style.RESET_ALL}")
+                
+            elif choice == '2':
+                # 查看系统状态详情
+                self._show_system_status()
+                
+            elif choice == '3':
+                # 调整守护进程参数
+                self._adjust_daemon_params()
+                
+            elif choice == '4':
+                # 创建守护进程启动脚本
+                self.create_daemon_wrapper()
+                
+            elif choice == '5':
+                # 重置错误计数
+                self.error_count = 0
+                self.restart_count = 0
+                print(f"{Fore.GREEN}✅ 错误计数和重启计数已重置{Style.RESET_ALL}")
+                
+            elif choice == '0':
+                return
+            else:
+                print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+    
+    def _show_system_status(self):
+        """显示系统状态详情"""
+        print(f"\n{Back.CYAN}{Fore.BLACK} 📊 系统状态详情 📊 {Style.RESET_ALL}")
+        
+        import psutil
+        import gc
+        
+        try:
+            # 内存使用情况
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / 1024 / 1024
+            
+            print(f"\n{Fore.YELLOW}💾 内存使用：{Style.RESET_ALL}")
+            print(f"  当前内存: {Fore.CYAN}{memory_mb:.1f} MB{Style.RESET_ALL}")
+            print(f"  虚拟内存: {Fore.CYAN}{memory_info.vms / 1024 / 1024:.1f} MB{Style.RESET_ALL}")
+            
+            # CPU使用情况
+            cpu_percent = process.cpu_percent()
+            print(f"\n{Fore.YELLOW}🖥️ CPU使用：{Style.RESET_ALL}")
+            print(f"  CPU占用: {Fore.CYAN}{cpu_percent:.1f}%{Style.RESET_ALL}")
+            
+        except ImportError:
+            print(f"{Fore.YELLOW}⚠️ 需要安装psutil来查看系统资源信息{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ 获取系统信息失败: {e}{Style.RESET_ALL}")
+        
+        # 缓存状态
+        print(f"\n{Fore.YELLOW}🗃️ 缓存状态：{Style.RESET_ALL}")
+        print(f"  RPC测试缓存: {Fore.CYAN}{len(self.rpc_test_cache)}{Style.RESET_ALL} 个网络")
+        print(f"  代币元数据缓存: {Fore.CYAN}{len(self.token_metadata_cache)}{Style.RESET_ALL} 个代币")
+        print(f"  活跃代币追踪: {Fore.CYAN}{len(self.active_token_tracker)}{Style.RESET_ALL} 个地址")
+        print(f"  被拉黑RPC: {Fore.CYAN}{len(self.blocked_rpcs)}{Style.RESET_ALL} 个")
+        
+        # 连接状态
+        print(f"\n{Fore.YELLOW}🌐 网络连接：{Style.RESET_ALL}")
+        print(f"  已连接网络: {Fore.CYAN}{len(self.web3_connections)}{Style.RESET_ALL} 个")
+        print(f"  监控地址: {Fore.CYAN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
+        print(f"  钱包数量: {Fore.CYAN}{len(self.wallets)}{Style.RESET_ALL} 个")
+        
+        # 垃圾回收信息
+        gc_stats = gc.get_stats()
+        print(f"\n{Fore.YELLOW}🗑️ 垃圾回收：{Style.RESET_ALL}")
+        print(f"  GC统计: {Fore.CYAN}{len(gc_stats)}{Style.RESET_ALL} 个世代")
+        print(f"  可回收对象: {Fore.CYAN}{len(gc.garbage)}{Style.RESET_ALL} 个")
+    
+    def _adjust_daemon_params(self):
+        """调整守护进程参数"""
+        print(f"\n{Back.YELLOW}{Fore.BLACK} ⚙️ 守护进程参数调整 ⚙️ {Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}当前参数：{Style.RESET_ALL}")
+        print(f"  1. 最大错误数: {Fore.CYAN}{self.max_errors}{Style.RESET_ALL}")
+        print(f"  2. 最大重启次数: {Fore.CYAN}{self.max_restarts}{Style.RESET_ALL}")
+        print(f"  3. 重启间隔: {Fore.CYAN}{self.restart_interval//60}分钟{Style.RESET_ALL}")
+        print(f"  4. 内存清理间隔: {Fore.CYAN}{self.memory_cleanup_interval//60}分钟{Style.RESET_ALL}")
+        
+        param_choice = self.safe_input(f"\n{Fore.YELLOW}选择要调整的参数 (1-4, 0取消): {Style.RESET_ALL}").strip()
+        
+        try:
+            if param_choice == '1':
+                new_value = int(self.safe_input(f"输入新的最大错误数 (当前: {self.max_errors}): "))
+                if 1 <= new_value <= 1000:
+                    self.max_errors = new_value
+                    print(f"{Fore.GREEN}✅ 最大错误数已设置为: {new_value}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}❌ 值必须在1-1000之间{Style.RESET_ALL}")
+                    
+            elif param_choice == '2':
+                new_value = int(self.safe_input(f"输入新的最大重启次数 (当前: {self.max_restarts}): "))
+                if 1 <= new_value <= 100:
+                    self.max_restarts = new_value
+                    print(f"{Fore.GREEN}✅ 最大重启次数已设置为: {new_value}{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}❌ 值必须在1-100之间{Style.RESET_ALL}")
+                    
+            elif param_choice == '3':
+                new_value = int(self.safe_input(f"输入新的重启间隔(分钟) (当前: {self.restart_interval//60}): "))
+                if 1 <= new_value <= 1440:  # 最多24小时
+                    self.restart_interval = new_value * 60
+                    print(f"{Fore.GREEN}✅ 重启间隔已设置为: {new_value}分钟{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}❌ 值必须在1-1440分钟之间{Style.RESET_ALL}")
+                    
+            elif param_choice == '4':
+                new_value = int(self.safe_input(f"输入新的内存清理间隔(分钟) (当前: {self.memory_cleanup_interval//60}): "))
+                if 10 <= new_value <= 1440:  # 10分钟到24小时
+                    self.memory_cleanup_interval = new_value * 60
+                    print(f"{Fore.GREEN}✅ 内存清理间隔已设置为: {new_value}分钟{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}❌ 值必须在10-1440分钟之间{Style.RESET_ALL}")
+                    
+            elif param_choice == '0':
+                return
+            else:
+                print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                
+        except ValueError:
+            print(f"{Fore.RED}❌ 请输入有效的数字{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ 参数调整失败: {e}{Style.RESET_ALL}")
+
     def menu_rpc_testing(self):
         """菜单：RPC节点检测"""
         print(f"\n{Fore.CYAN}✨ ====== 🔍 RPC节点检测管理 🔍 ====== ✨{Style.RESET_ALL}")
@@ -3916,9 +4372,10 @@ class EVMMonitor:
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📊 查看RPC状态报告")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
         print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-5): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -3990,6 +4447,10 @@ class EVMMonitor:
             elif choice == '4':
                 # 从ChainList数据批量导入RPC
                 self.import_rpcs_from_chainlist()
+                
+            elif choice == '5':
+                # 管理被拉黑的RPC
+                self.manage_blocked_rpcs()
                 
             elif choice == '0':
                 return
@@ -4098,7 +4559,7 @@ class EVMMonitor:
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
-    def add_custom_rpc(self, network_key: str, rpc_url: str) -> bool:
+    def add_custom_rpc(self, network_key: str, rpc_url: str, quick_test: bool = False) -> bool:
         """添加自定义RPC到指定网络，支持HTTP(S)和WebSocket，自动去重"""
         try:
             if network_key not in self.networks:
@@ -4111,19 +4572,25 @@ class EVMMonitor:
             # 自动去重：检查URL是否已存在
             existing_urls = self.networks[network_key]['rpc_urls']
             if rpc_url in existing_urls:
-                print(f"{Fore.YELLOW}⚠️ RPC已存在，跳过添加: {rpc_url[:50]}...{Style.RESET_ALL}")
+                if not quick_test:  # 只在非快速测试时显示消息
+                    print(f"{Fore.YELLOW}⚠️ RPC已存在，跳过添加: {rpc_url[:50]}...{Style.RESET_ALL}")
                 return True
             
             # 验证URL格式，支持HTTP(S)和WebSocket
             if not rpc_url.startswith(('http://', 'https://', 'ws://', 'wss://')):
-                print(f"{Fore.RED}❌ 无效的RPC URL格式，支持: http(s)://、ws(s)://{Style.RESET_ALL}")
+                if not quick_test:
+                    print(f"{Fore.RED}❌ 无效的RPC URL格式，支持: http(s)://、ws(s)://{Style.RESET_ALL}")
                 return False
             
             # 测试RPC连接
             network_info = self.networks[network_key]
-            print(f"{Fore.CYAN}🔄 正在测试RPC连接...{Style.RESET_ALL}")
+            if not quick_test:
+                print(f"{Fore.CYAN}🔄 正在测试RPC连接...{Style.RESET_ALL}")
             
-            if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=10):
+            # 根据是否快速测试选择超时时间
+            timeout = 1 if quick_test else 10
+            
+            if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=timeout, quick_test=quick_test):
                 # 添加到RPC列表的开头（优先使用）
                 self.networks[network_key]['rpc_urls'].insert(0, rpc_url)
                 print(f"{Fore.GREEN}✅ RPC已添加到网络 {network_info['name']}{Style.RESET_ALL}")
@@ -4559,8 +5026,9 @@ class EVMMonitor:
         print(f"\n{Fore.YELLOW}🚀 准备导入操作：{Style.RESET_ALL}")
         total_import_rpcs = sum(len(rpcs) for rpcs in matched_networks.values())
         print(f"  📊 将为 {len(matched_networks)} 个网络导入 {total_import_rpcs} 个RPC")
-        print(f"  🔍 每个RPC都会进行连接测试")
-        print(f"  ❌ 无效的RPC会自动屏蔽")
+        print(f"  🔍 每个RPC都会进行快速连接测试（1秒超时）")
+        print(f"  ⚡ 超过1秒无响应的RPC将被自动拉黑")
+        print(f"  ❌ 连接失败的RPC会自动屏蔽")
         
         confirm = self.safe_input(f"\n{Fore.YELLOW}➜ 确认开始导入？(y/N): {Style.RESET_ALL}").strip().lower()
         if confirm != 'y':
@@ -4588,7 +5056,7 @@ class EVMMonitor:
             skipped_count = 0
             
             for i, rpc_url in enumerate(rpc_urls, 1):
-                print(f"  {i}/{len(rpc_urls)} 测试: {rpc_url[:60]}...", end=" ")
+                print(f"  {i}/{len(rpc_urls)} 测试: {rpc_url[:60]}...", end=" ", flush=True)
                 
                 # 检查是否已存在
                 if rpc_url in self.networks[network_key]['rpc_urls']:
@@ -4596,17 +5064,31 @@ class EVMMonitor:
                     skipped_count += 1
                     continue
                 
-                # 尝试添加RPC
-                if self.add_custom_rpc(network_key, rpc_url):
-                    print(f"{Fore.GREEN}成功{Style.RESET_ALL}")
+                # 检查是否已被拉黑
+                if rpc_url in self.blocked_rpcs:
+                    print(f"{Fore.RED}跳过(已拉黑){Style.RESET_ALL}")
+                    skipped_count += 1
+                    continue
+                
+                # 使用快速测试模式（1秒超时）
+                import time
+                start_time = time.time()
+                
+                if self.add_custom_rpc(network_key, rpc_url, quick_test=True):
+                    elapsed = time.time() - start_time
+                    print(f"{Fore.GREEN}成功({elapsed:.2f}s){Style.RESET_ALL}")
                     success_count += 1
                 else:
-                    print(f"{Fore.RED}失败{Style.RESET_ALL}")
-                    # 自动屏蔽失败的RPC
+                    elapsed = time.time() - start_time
+                    print(f"{Fore.RED}失败({elapsed:.2f}s){Style.RESET_ALL}")
+                    
+                    # 自动拉黑失败的RPC（包括超时的）
+                    reason = "超过1秒超时" if elapsed >= 1.0 else "连接失败"
                     self.blocked_rpcs[rpc_url] = {
-                        'reason': 'ChainList批量导入时连接失败',
+                        'reason': f'ChainList批量导入时{reason}',
                         'blocked_time': time.time(),
-                        'network': network_key
+                        'network': network_key,
+                        'test_duration': elapsed
                     }
                     failed_count += 1
             
@@ -4626,8 +5108,15 @@ class EVMMonitor:
         # 显示导入总结
         print(f"\n{Back.GREEN}{Fore.BLACK} 📋 导入完成总结 📋 {Style.RESET_ALL}")
         print(f"✅ 成功导入: {Fore.GREEN}{total_success}{Style.RESET_ALL} 个RPC")
-        print(f"❌ 失败屏蔽: {Fore.RED}{total_failed}{Style.RESET_ALL} 个RPC")
+        print(f"❌ 失败拉黑: {Fore.RED}{total_failed}{Style.RESET_ALL} 个RPC（包括超时）")
         print(f"⏭️ 跳过重复: {Fore.YELLOW}{total_skipped}{Style.RESET_ALL} 个RPC")
+        
+        # 显示被拉黑的RPC统计
+        if total_failed > 0:
+            timeout_count = sum(1 for rpc_url, info in self.blocked_rpcs.items() 
+                              if '超过1秒超时' in info.get('reason', ''))
+            if timeout_count > 0:
+                print(f"⚡ 其中超时拉黑: {Fore.YELLOW}{timeout_count}{Style.RESET_ALL} 个RPC")
         print(f"📊 总处理量: {Fore.CYAN}{total_success + total_failed + total_skipped}{Style.RESET_ALL} 个RPC")
         
         # 显示详细结果
@@ -4649,6 +5138,171 @@ class EVMMonitor:
         self.save_state()
         print(f"\n{Fore.GREEN}🎉 ChainList RPC导入操作完成！{Style.RESET_ALL}")
     
+    def manage_blocked_rpcs(self):
+        """管理被拉黑的RPC"""
+        print(f"\n{Back.RED}{Fore.WHITE} 🚫 被拉黑的RPC管理 🚫 {Style.RESET_ALL}")
+        
+        if not self.blocked_rpcs:
+            print(f"\n{Fore.GREEN}✅ 目前没有被拉黑的RPC{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.CYAN}📊 被拉黑的RPC统计：{Style.RESET_ALL}")
+        print(f"总数量: {Fore.YELLOW}{len(self.blocked_rpcs)}{Style.RESET_ALL} 个")
+        
+        # 按拉黑原因分类统计
+        reason_stats = {}
+        timeout_count = 0
+        for rpc_url, info in self.blocked_rpcs.items():
+            reason = info.get('reason', '未知原因')
+            reason_stats[reason] = reason_stats.get(reason, 0) + 1
+            if '超过1秒超时' in reason:
+                timeout_count += 1
+        
+        print(f"\n{Fore.YELLOW}📋 拉黑原因分布：{Style.RESET_ALL}")
+        for reason, count in reason_stats.items():
+            print(f"  • {reason}: {Fore.CYAN}{count}{Style.RESET_ALL} 个")
+        
+        if timeout_count > 0:
+            print(f"\n{Fore.YELLOW}⚡ 超时拉黑RPC: {timeout_count} 个{Style.RESET_ALL}")
+        
+        # 显示最近拉黑的RPC
+        print(f"\n{Fore.YELLOW}🕒 最近拉黑的RPC（前10个）：{Style.RESET_ALL}")
+        import time
+        sorted_rpcs = sorted(self.blocked_rpcs.items(), 
+                           key=lambda x: x[1].get('blocked_time', 0), reverse=True)
+        
+        for i, (rpc_url, info) in enumerate(sorted_rpcs[:10], 1):
+            blocked_time = info.get('blocked_time', 0)
+            reason = info.get('reason', '未知原因')
+            network = info.get('network', '未知网络')
+            test_duration = info.get('test_duration', 0)
+            
+            time_str = time.strftime('%H:%M:%S', time.localtime(blocked_time))
+            duration_str = f"({test_duration:.2f}s)" if test_duration > 0 else ""
+            
+            print(f"  {i:2d}. {rpc_url[:50]}...")
+            print(f"      网络: {Fore.CYAN}{network}{Style.RESET_ALL} | "
+                  f"时间: {Fore.YELLOW}{time_str}{Style.RESET_ALL} | "
+                  f"原因: {Fore.RED}{reason}{Style.RESET_ALL} {duration_str}")
+        
+        if len(sorted_rpcs) > 10:
+            print(f"      ... 还有 {len(sorted_rpcs) - 10} 个")
+        
+        # 管理选项
+        print(f"\n{Fore.YELLOW}🔧 管理选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔄 重新测试所有被拉黑的RPC")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🗑️  清空所有被拉黑的RPC")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚡ 只清空超时拉黑的RPC")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 📋 导出被拉黑的RPC列表")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}请选择操作 (0-4): {Style.RESET_ALL}").strip()
+        
+        if choice == '1':
+            self._retest_blocked_rpcs()
+        elif choice == '2':
+            self._clear_all_blocked_rpcs()
+        elif choice == '3':
+            self._clear_timeout_blocked_rpcs()
+        elif choice == '4':
+            self._export_blocked_rpcs()
+        elif choice == '0':
+            return
+        else:
+            print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+    
+    def _retest_blocked_rpcs(self):
+        """重新测试被拉黑的RPC"""
+        print(f"\n{Fore.CYAN}🔄 重新测试被拉黑的RPC...{Style.RESET_ALL}")
+        
+        if not self.blocked_rpcs:
+            print(f"{Fore.YELLOW}⚠️ 没有被拉黑的RPC需要测试{Style.RESET_ALL}")
+            return
+        
+        unblocked_count = 0
+        total_count = len(self.blocked_rpcs)
+        rpcs_to_remove = []
+        
+        # 创建网络名称映射
+        network_names = {key: info['name'] for key, info in self.networks.items()}
+        
+        print(f"📊 开始测试 {total_count} 个被拉黑的RPC...")
+        
+        for i, (rpc_url, info) in enumerate(self.blocked_rpcs.items(), 1):
+            network_key = info.get('network', '')
+            print(f"  {i}/{total_count} 测试: {rpc_url[:50]}...", end=" ", flush=True)
+            
+            if network_key in self.networks:
+                network_info = self.networks[network_key]
+                # 使用正常超时（不是快速测试）
+                if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=5):
+                    print(f"{Fore.GREEN}恢复{Style.RESET_ALL}")
+                    rpcs_to_remove.append(rpc_url)
+                    unblocked_count += 1
+                else:
+                    print(f"{Fore.RED}仍失败{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}网络不存在{Style.RESET_ALL}")
+                rpcs_to_remove.append(rpc_url)
+        
+        # 移除恢复的RPC
+        for rpc_url in rpcs_to_remove:
+            del self.blocked_rpcs[rpc_url]
+        
+        print(f"\n{Fore.GREEN}✅ 重测完成！{Style.RESET_ALL}")
+        print(f"恢复RPC: {Fore.GREEN}{unblocked_count}{Style.RESET_ALL} 个")
+        print(f"仍被拉黑: {Fore.RED}{total_count - unblocked_count}{Style.RESET_ALL} 个")
+    
+    def _clear_all_blocked_rpcs(self):
+        """清空所有被拉黑的RPC"""
+        count = len(self.blocked_rpcs)
+        confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认清空所有 {count} 个被拉黑的RPC？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm == 'y':
+            self.blocked_rpcs.clear()
+            print(f"\n{Fore.GREEN}✅ 已清空所有被拉黑的RPC{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+    
+    def _clear_timeout_blocked_rpcs(self):
+        """只清空超时拉黑的RPC"""
+        timeout_rpcs = [url for url, info in self.blocked_rpcs.items() 
+                       if '超过1秒超时' in info.get('reason', '')]
+        
+        if not timeout_rpcs:
+            print(f"\n{Fore.YELLOW}⚠️ 没有超时拉黑的RPC{Style.RESET_ALL}")
+            return
+        
+        confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认清空 {len(timeout_rpcs)} 个超时拉黑的RPC？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm == 'y':
+            for url in timeout_rpcs:
+                del self.blocked_rpcs[url]
+            print(f"\n{Fore.GREEN}✅ 已清空 {len(timeout_rpcs)} 个超时拉黑的RPC{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+    
+    def _export_blocked_rpcs(self):
+        """导出被拉黑的RPC列表"""
+        if not self.blocked_rpcs:
+            print(f"\n{Fore.YELLOW}⚠️ 没有被拉黑的RPC可导出{Style.RESET_ALL}")
+            return
+        
+        import json
+        import os
+        
+        filename = f"blocked_rpcs_{int(time.time())}.json"
+        filepath = os.path.join(os.getcwd(), filename)
+        
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(self.blocked_rpcs, f, indent=2, ensure_ascii=False)
+            
+            print(f"\n{Fore.GREEN}✅ 被拉黑的RPC列表已导出到: {filepath}{Style.RESET_ALL}")
+            print(f"📊 包含 {len(self.blocked_rpcs)} 个RPC记录")
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 导出失败: {e}{Style.RESET_ALL}")
+
     def manage_insufficient_rpc_chains(self):
         """检查并管理RPC数量不足的链条，支持直接添加RPC"""
         print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ RPC数量管理 - 检查并添加RPC ⚠️ {Style.RESET_ALL}")
@@ -4908,6 +5562,8 @@ class EVMMonitor:
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
     try:
+        print(f"{Fore.CYAN}🛡️ 启动守护进程模式{Style.RESET_ALL}")
+        
         # 加载钱包和状态
         if not monitor.load_wallets():
             monitor.logger.error("加载钱包失败")
@@ -4916,26 +5572,12 @@ def run_daemon_mode(monitor, password):
         monitor.load_state()
         monitor.logger.info(f"守护进程启动，已连接网络: {', '.join(monitor.web3_connections.keys())}")
         
-        # 自动开始监控
-        if monitor.start_monitoring():
-            monitor.logger.info("监控已启动")
-            
-            # 保持程序运行
-            try:
-                while True:
-                    time.sleep(60)
-            except KeyboardInterrupt:
-                monitor.logger.info("收到停止信号")
-                monitor.stop_monitoring()
-                monitor.save_state()
-                monitor.save_wallets()
-                return True
-        else:
-            monitor.logger.error("启动监控失败")
-            return False
+        # 启动守护进程模式（包含自动重启和内存清理）
+        return monitor.start_daemon_mode()
             
     except Exception as e:
         monitor.logger.error(f"守护进程错误: {e}")
+        monitor.handle_error(e, "守护进程启动")
         return False
 
 def main():
