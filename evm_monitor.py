@@ -525,7 +525,9 @@ class EVMMonitor:
                 'chain_id': 80084,
                 'rpc_urls': [
                     'https://rpc.berachain.com',
-                    'https://berachain.drpc.org'
+                    'https://berachain.drpc.org',
+                    'https://bera-mainnet.nodeinfra.com',
+                    'https://berachain.publicnode.com'
                 ],
                 'native_currency': 'BERA',
                 'explorer': 'https://berascan.com'
@@ -584,7 +586,9 @@ class EVMMonitor:
                 'chain_id': 17777,
                 'rpc_urls': [
                     'https://api.evm.eosnetwork.com',
-                    'https://eosevm.blockpi.network/v1/rpc/public'
+                    'https://eosevm.blockpi.network/v1/rpc/public',
+                    'https://evm.eosnetwork.com',
+                    'https://rpc.ankr.com/eos'
                 ],
                 'native_currency': 'EOS',
                 'explorer': 'https://explorer.evm.eosnetwork.com'
@@ -763,7 +767,8 @@ class EVMMonitor:
                 'chain_id': 88,
                 'rpc_urls': [
                     'https://rpc.tomochain.com',
-                    'https://tomo.blockpi.network/v1/rpc/public'
+                    'https://tomo.blockpi.network/v1/rpc/public',
+                    'https://rpc.ankr.com/tomochain'
                 ],
                 'native_currency': 'TOMO',
                 'explorer': 'https://tomoscan.io'
@@ -1033,15 +1038,7 @@ class EVMMonitor:
                 'explorer': 'https://mainnet-explorer.kekchain.com'
             },
             
-            'laozi': {
-                'name': '👴 LaoZi',
-                'chain_id': 6969,
-                'rpc_urls': [
-                    'https://rpc.laozi.network'
-                ],
-                'native_currency': 'LAO',
-                'explorer': 'https://scan.laozi.network'
-            },
+
             
             'lightstreams': {
                 'name': '💡 Lightstreams',
@@ -1197,15 +1194,7 @@ class EVMMonitor:
                 'explorer': 'https://scan.ecoball.org'
             },
             
-            'ellaism': {
-                'name': '👸 Ellaism',
-                'chain_id': 64,
-                'rpc_urls': [
-                    'https://jsonrpc.ellaism.org'
-                ],
-                'native_currency': 'ELLA',
-                'explorer': 'https://explorer.ellaism.org'
-            },
+
             
             'etho': {
                 'name': '🔮 Etho Protocol',
@@ -1297,15 +1286,7 @@ class EVMMonitor:
                 'explorer': 'https://scan.ipos.network'
             },
             
-            'joys': {
-                'name': '😊 Joys Digital',
-                'chain_id': 99,
-                'rpc_urls': [
-                    'https://rpc.joys.digital'
-                ],
-                'native_currency': 'JOYS',
-                'explorer': 'https://explorer.joys.digital'
-            },
+
             
             'lambda': {
                 'name': '🧮 Lambda Chain',
@@ -2315,7 +2296,9 @@ class EVMMonitor:
                 'chain_id': 80085,
                 'rpc_urls': [
                     'https://bartio.rpc.berachain.com',
-                    'https://bera-testnet.nodeinfra.com'
+                    'https://bera-testnet.nodeinfra.com',
+                    'https://bartio.rpc.b-harvest.io',
+                    'https://bera-testnet-rpc.publicnode.com'
                 ],
                 'native_currency': 'BERA',
                 'explorer': 'https://bartio.beratrail.io'
@@ -2370,7 +2353,10 @@ class EVMMonitor:
                 'chain_id': 3363,
                 'rpc_urls': [
                     'https://rpc.testnet.mantrachain.io',
-                    'https://mantra-testnet.drpc.org'
+                    'https://mantra-testnet.drpc.org',
+                    'https://evm.dukong.mantrachain.io',
+                    'https://mantra-testnet-rpc.publicnode.com',
+                    'https://mantra-testnet-rpc.itrocket.net'
                 ],
                 'native_currency': 'OM',
                 'explorer': 'https://explorer.testnet.mantrachain.io'
@@ -2505,16 +2491,7 @@ class EVMMonitor:
                 'explorer': 'https://testnet.ftmscan.com'
             },
             
-            'goerli': {
-                'name': '🧪 Ethereum Goerli (Deprecated)',
-                'chain_id': 5,
-                'rpc_urls': [
-                    'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-                    'https://rpc.ankr.com/eth_goerli'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://goerli.etherscan.io'
-            },
+
             
             'harmony_testnet': {
                 'name': '🧪 Harmony Testnet',
@@ -2566,16 +2543,7 @@ class EVMMonitor:
                 'explorer': 'https://moonbase.moonscan.io'
             },
             
-            'mumbai': {
-                'name': '🧪 Polygon Mumbai (Deprecated)',
-                'chain_id': 80001,
-                'rpc_urls': [
-                    'https://rpc-mumbai.maticvigil.com',
-                    'https://rpc.ankr.com/polygon_mumbai'
-                ],
-                'native_currency': 'MATIC',
-                'explorer': 'https://mumbai.polygonscan.com'
-            },
+
             
             'okx_testnet': {
                 'name': '🧪 OKX Chain Testnet',
@@ -2587,15 +2555,7 @@ class EVMMonitor:
                 'explorer': 'https://www.oklink.com/okc-test'
             },
             
-            'polygon_zkevm_goerli': {
-                'name': '🧪 Polygon zkEVM Goerli',
-                'chain_id': 1442,
-                'rpc_urls': [
-                    'https://rpc.public.zkevm-test.net'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://testnet-zkevm.polygonscan.com'
-            },
+
             
             'sepolia': {
                 'name': '🧪 Ethereum Sepolia',
@@ -4204,17 +4164,17 @@ esac
                         if result:
                             results[network_key] = result
                         
-                        # 显示测试结果
-                        success_rate = result['success_rate']
-                        if success_rate == 100:
-                            status_color = Fore.GREEN
-                            status_icon = "🟢"
-                        elif success_rate >= 50:
-                            status_color = Fore.YELLOW
-                            status_icon = "🟡"
-                        else:
-                            status_color = Fore.RED
-                            status_icon = "🔴"
+                            # 显示测试结果
+                            success_rate = result['success_rate']
+                            if success_rate == 100:
+                                status_color = Fore.GREEN
+                                status_icon = "🟢"
+                            elif success_rate >= 50:
+                                status_color = Fore.YELLOW
+                                status_icon = "🟡"
+                            else:
+                                status_color = Fore.RED
+                                status_icon = "🔴"
                         
                         # 按RPC类型统计
                         rpc_stats = {'公共节点': 0, 'Alchemy': 0, 'Ankr': 0}
@@ -5690,7 +5650,7 @@ esac
         
         print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐，包含自动屏蔽失效RPC）")
-        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🔧 管理无可用RPC的链条（单独管理）")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
         print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
@@ -5723,8 +5683,8 @@ esac
                 print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
                 
             elif choice == '2':
-                # 检查并管理RPC数量不足的链条
-                self.manage_insufficient_rpc_chains()
+                # 管理无可用RPC的链条（专门针对完全没有可用RPC的网络）
+                self.manage_zero_rpc_chains()
                 
             elif choice == '3':
                 # 从ChainList数据批量导入RPC
@@ -5792,7 +5752,7 @@ esac
                             status_color = Fore.RED
                             status_icon = "❌"
                             status_text = "无可用RPC"
-                    
+                        
                         # 实时显示每个网络的连接状态
                         progress = f"[{completed_count:2d}/{total_networks}]"
                         print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
@@ -5822,6 +5782,15 @@ esac
         if successful_connections > 0:
             print(f"\n{Fore.GREEN}🎉 服务器连接初始化成功！现在可以开始扫描了。{Style.RESET_ALL}")
             
+            # 检查是否有无可用RPC的网络
+            try:
+                rpc_results = self.get_cached_rpc_results()
+                zero_rpc_count = sum(1 for result in rpc_results.values() if result['available_count'] == 0)
+                if zero_rpc_count > 0:
+                    print(f"\n{Fore.YELLOW}⚠️ 发现 {zero_rpc_count} 个网络无可用RPC，建议使用菜单选项 4 → 2 单独管理{Style.RESET_ALL}")
+            except:
+                zero_rpc_count = 0
+            
             if self.wallets:
                 start_scan = self.safe_input(f"\n{Fore.YELLOW}🚀 是否立即开始扫描钱包地址？(Y/n): {Style.RESET_ALL}").strip().lower()
                 if start_scan in ['', 'y', 'yes']:
@@ -5833,10 +5802,15 @@ esac
                         return
                 else:
                     print(f"\n{Fore.YELLOW}⚠️ 扫描已取消，可随时通过主菜单开始监控{Style.RESET_ALL}")
+                    if zero_rpc_count > 0:
+                        print(f"{Fore.CYAN}💡 提示：按 2 可以给无可用RPC的链条单独增加RPC{Style.RESET_ALL}")
             else:
                 print(f"\n{Fore.YELLOW}💡 提示：请先添加钱包地址，然后就可以开始监控了{Style.RESET_ALL}")
+                if zero_rpc_count > 0:
+                    print(f"{Fore.CYAN}💡 发现无可用RPC的网络，按 2 可以单独管理{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.RED}❌ 所有网络连接都失败了，请检查网络设置或RPC配置{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 建议使用菜单选项 4 → 2 管理无可用RPC的链条{Style.RESET_ALL}")
     
     def establish_single_connection(self, network_key: str, rpc_url: str) -> bool:
         """建立单个网络的连接"""
@@ -6923,6 +6897,192 @@ esac
             print(f"📊 包含 {len(self.blocked_rpcs)} 个RPC记录")
         except Exception as e:
             print(f"\n{Fore.RED}❌ 导出失败: {e}{Style.RESET_ALL}")
+
+    def manage_zero_rpc_chains(self):
+        """专门管理无可用RPC的链条"""
+        print(f"\n{Back.RED}{Fore.WHITE} 🚨 管理无可用RPC的链条 🚨 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在检测完全没有可用RPC的网络...{Style.RESET_ALL}")
+        
+        # 获取RPC检测结果
+        rpc_results = self.get_cached_rpc_results(force_refresh=True)
+        
+        # 只筛选出完全没有可用RPC的网络
+        zero_rpc_networks = []
+        
+        for network_key, result in rpc_results.items():
+            available_count = result['available_count']
+            
+            if available_count == 0:
+                zero_rpc_networks.append({
+                    'network_key': network_key,
+                    'name': result['name'],
+                    'chain_id': result['chain_id'],
+                    'total_rpcs': result['total_count'],
+                    'available_rpcs': available_count,
+                    'failed_rpcs': len(result['failed_rpcs']),
+                    'currency': result['currency']
+                })
+        
+        # 显示结果
+        if not zero_rpc_networks:
+            print(f"\n{Fore.GREEN}🎉 太好了！所有网络都至少有1个可用的RPC{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 如果需要管理RPC数量不足的链条，请使用原有功能{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Fore.RED}🚨 发现 {len(zero_rpc_networks)} 个网络完全没有可用RPC：{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+        
+        for i, chain in enumerate(zero_rpc_networks, 1):
+            print(f"  {Fore.GREEN}{i:2d}.{Style.RESET_ALL} {Fore.RED}❌ {chain['name']:<30}{Style.RESET_ALL} ({chain['currency']:<6}) "
+                  f"- 总计: {chain['total_rpcs']} 个RPC，{Fore.RED}全部失效{Style.RESET_ALL}")
+            print(f"      Chain ID: {Fore.CYAN}{chain['chain_id']}{Style.RESET_ALL}, Network Key: {Fore.MAGENTA}{chain['network_key']}{Style.RESET_ALL}")
+        
+        # 管理选项
+        print(f"\n{Fore.YELLOW}🛠️ 管理选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔧 选择单个网络添加RPC")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🚀 为所有无RPC网络批量添加RPC")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📋 查看详细的失效RPC信息")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🔄 重新测试所有失效的RPC")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回RPC管理菜单")
+        
+        action = self.safe_input(f"\n{Fore.CYAN}➜ 请选择操作: {Style.RESET_ALL}").strip()
+        
+        try:
+            if action == '1':
+                # 选择单个网络添加RPC
+                self._select_and_add_rpc_for_zero_chains(zero_rpc_networks)
+            elif action == '2':
+                # 批量为所有网络添加RPC
+                self._batch_add_rpc_for_zero_chains(zero_rpc_networks)
+            elif action == '3':
+                # 查看详细信息
+                self._show_zero_rpc_details(zero_rpc_networks)
+            elif action == '4':
+                # 重新测试失效RPC
+                self._retest_zero_rpc_chains(zero_rpc_networks)
+            elif action == '0':
+                return
+            else:
+                print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+        # 递归调用显示管理界面
+        self.manage_zero_rpc_chains()
+
+    def _select_and_add_rpc_for_zero_chains(self, zero_rpc_networks: list):
+        """选择单个网络添加RPC"""
+        print(f"\n{Fore.CYAN}🔧 选择要添加RPC的网络：{Style.RESET_ALL}")
+        
+        for i, chain in enumerate(zero_rpc_networks, 1):
+            print(f"  {Fore.GREEN}{i}.{Style.RESET_ALL} {chain['name']} ({chain['currency']})")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}请选择网络编号 (1-{len(zero_rpc_networks)}): {Style.RESET_ALL}").strip()
+        
+        if not choice.isdigit() or not (1 <= int(choice) <= len(zero_rpc_networks)):
+            print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+            return
+        
+        selected_chain = zero_rpc_networks[int(choice) - 1]
+        print(f"\n{Fore.CYAN}🎯 为网络 {Fore.YELLOW}{selected_chain['name']}{Style.RESET_ALL} 添加RPC")
+        self._add_rpc_for_chain(selected_chain['network_key'], selected_chain['name'])
+
+    def _batch_add_rpc_for_zero_chains(self, zero_rpc_networks: list):
+        """批量为所有无RPC网络添加RPC"""
+        print(f"\n{Fore.CYAN}🚀 批量为所有无可用RPC的网络添加RPC{Style.RESET_ALL}")
+        
+        confirm = self.safe_input(f"{Fore.YELLOW}⚠️ 确认为 {len(zero_rpc_networks)} 个网络批量添加RPC？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm != 'y':
+            print(f"{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            return
+        
+        for i, chain in enumerate(zero_rpc_networks, 1):
+            print(f"\n{Back.BLUE}{Fore.WHITE} [{i}/{len(zero_rpc_networks)}] 处理网络: {chain['name']} {Style.RESET_ALL}")
+            self._add_rpc_for_chain(chain['network_key'], chain['name'])
+            
+            # 添加分隔线
+            if i < len(zero_rpc_networks):
+                print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
+
+    def _show_zero_rpc_details(self, zero_rpc_networks: list):
+        """显示无可用RPC网络的详细信息"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 📋 无可用RPC网络详细信息 📋 {Style.RESET_ALL}")
+        
+        for i, chain in enumerate(zero_rpc_networks, 1):
+            network_key = chain['network_key']
+            network_info = self.networks[network_key]
+            
+            print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}{i}. {chain['name']}{Style.RESET_ALL}")
+            print(f"   Chain ID: {Fore.CYAN}{chain['chain_id']}{Style.RESET_ALL}")
+            print(f"   原生货币: {Fore.CYAN}{chain['currency']}{Style.RESET_ALL}")
+            print(f"   Network Key: {Fore.MAGENTA}{network_key}{Style.RESET_ALL}")
+            print(f"   配置的RPC总数: {Fore.RED}{chain['total_rpcs']}{Style.RESET_ALL}")
+            
+            # 显示所有RPC的失效状态
+            print(f"   📡 失效的RPC列表:")
+            for j, rpc_url in enumerate(network_info['rpc_urls'], 1):
+                if rpc_url in self.blocked_rpcs:
+                    blocked_info = self.blocked_rpcs[rpc_url]
+                    reason = blocked_info.get('reason', '未知原因')
+                    blocked_time = blocked_info.get('blocked_time', 0)
+                    time_str = time.strftime('%H:%M:%S', time.localtime(blocked_time))
+                    print(f"      {j:2d}. {Fore.RED}🚫 {rpc_url[:50]}...{Style.RESET_ALL}")
+                    print(f"          {Fore.RED}拉黑原因: {reason}{Style.RESET_ALL}")
+                    print(f"          {Fore.YELLOW}拉黑时间: {time_str}{Style.RESET_ALL}")
+                else:
+                    print(f"      {j:2d}. {Fore.RED}❌ {rpc_url[:50]}...{Style.RESET_ALL}")
+                    print(f"          {Fore.RED}状态: 连接失败（未拉黑）{Style.RESET_ALL}")
+
+    def _retest_zero_rpc_chains(self, zero_rpc_networks: list):
+        """重新测试无可用RPC网络的所有RPC"""
+        print(f"\n{Fore.CYAN}🔄 重新测试无可用RPC网络的所有RPC节点...{Style.RESET_ALL}")
+        
+        total_rpcs_tested = 0
+        total_rpcs_recovered = 0
+        
+        for i, chain in enumerate(zero_rpc_networks, 1):
+            network_key = chain['network_key']
+            network_info = self.networks[network_key]
+            
+            print(f"\n{Back.BLUE}{Fore.WHITE} [{i}/{len(zero_rpc_networks)}] 测试网络: {chain['name']} {Style.RESET_ALL}")
+            
+            rpcs_recovered = 0
+            rpcs_to_unblock = []
+            
+            for j, rpc_url in enumerate(network_info['rpc_urls'], 1):
+                print(f"  {j}/{len(network_info['rpc_urls'])} 测试: {rpc_url[:50]}...", end=" ", flush=True)
+                total_rpcs_tested += 1
+                
+                # 重新测试RPC连接
+                if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=5, quiet=True):
+                    print(f"{Fore.GREEN}恢复{Style.RESET_ALL}")
+                    rpcs_recovered += 1
+                    total_rpcs_recovered += 1
+                    
+                    # 如果在拉黑列表中，标记为需要解除拉黑
+                    if rpc_url in self.blocked_rpcs:
+                        rpcs_to_unblock.append(rpc_url)
+                else:
+                    print(f"{Fore.RED}仍失败{Style.RESET_ALL}")
+            
+            # 解除恢复的RPC的拉黑状态
+            for rpc_url in rpcs_to_unblock:
+                del self.blocked_rpcs[rpc_url]
+            
+            if rpcs_recovered > 0:
+                print(f"  {Fore.GREEN}✅ 网络 {chain['name']} 恢复了 {rpcs_recovered} 个RPC{Style.RESET_ALL}")
+            else:
+                print(f"  {Fore.RED}❌ 网络 {chain['name']} 仍然没有可用RPC{Style.RESET_ALL}")
+        
+        print(f"\n{Back.GREEN}{Fore.BLACK} 📊 重测完成统计 📊 {Style.RESET_ALL}")
+        print(f"总测试RPC: {Fore.CYAN}{total_rpcs_tested}{Style.RESET_ALL} 个")
+        print(f"成功恢复: {Fore.GREEN}{total_rpcs_recovered}{Style.RESET_ALL} 个")
+        print(f"仍然失效: {Fore.RED}{total_rpcs_tested - total_rpcs_recovered}{Style.RESET_ALL} 个")
 
     def manage_insufficient_rpc_chains(self):
         """检查并管理RPC数量不足的链条，支持直接添加RPC"""
