@@ -12,6 +12,7 @@ import time
 import threading
 import hashlib
 import base64
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import logging
@@ -2308,10 +2309,17 @@ class EVMMonitor:
             return "统计数据获取失败"
 
     def test_rpc_connection(self, rpc_url: str, expected_chain_id: int, timeout: int = 5) -> bool:
-        """测试单个RPC连接"""
+        """测试单个RPC连接，支持HTTP(S)和WebSocket"""
         try:
             from web3 import Web3
-            w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout}))
+            
+            # 根据URL类型选择提供者
+            if rpc_url.startswith(('ws://', 'wss://')):
+                provider = Web3.WebsocketProvider(rpc_url, websocket_kwargs={'timeout': timeout})
+            else:
+                provider = Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout})
+            
+            w3 = Web3(provider)
             
             # 测试连接
             if not w3.is_connected():
@@ -3458,8 +3466,7 @@ class EVMMonitor:
             print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置")
             print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
             print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测")
-            print(f"{Fore.GREEN}10.{Style.RESET_ALL} ➕ 添加自定义RPC")
-            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🪙 添加自定义代币")
+            print(f"{Fore.GREEN}10.{Style.RESET_ALL} 🪙 添加自定义代币")
             
             print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
             print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
@@ -3494,8 +3501,6 @@ class EVMMonitor:
                 elif choice == '9':
                     self.menu_rpc_testing()
                 elif choice == '10':
-                    self.menu_add_custom_rpc()
-                elif choice == '11':
                     self.menu_add_custom_token()
                 elif choice == '0':
                     self.menu_exit()
@@ -3850,33 +3855,15 @@ class EVMMonitor:
         print(f"{Back.BLUE}{Fore.WHITE} 📡 检测所有网络的RPC节点连接状态 {Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔍 测试所有RPC连接")
-        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
-        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📊 查看RPC状态报告")
-        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} ⚠️ 检查RPC数量不足的链条")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📊 查看RPC状态报告")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
-                # 测试所有RPC连接
-                results = self.test_all_rpcs()
-                
-                # 显示汇总报告
-                print(f"\n{Back.GREEN}{Fore.BLACK} 📊 RPC检测汇总报告 📊 {Style.RESET_ALL}")
-                
-                total_networks = len(results)
-                total_rpcs = sum(len(r['working_rpcs']) + len(r['failed_rpcs']) for r in results.values())
-                working_rpcs = sum(len(r['working_rpcs']) for r in results.values())
-                
-                print(f"🌐 总网络数: {Fore.CYAN}{total_networks}{Style.RESET_ALL}")
-                print(f"📡 总RPC数: {Fore.CYAN}{total_rpcs}{Style.RESET_ALL}")
-                print(f"✅ 可用RPC: {Fore.GREEN}{working_rpcs}{Style.RESET_ALL}")
-                print(f"❌ 失效RPC: {Fore.RED}{total_rpcs - working_rpcs}{Style.RESET_ALL}")
-                print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
-                
-            elif choice == '2':
                 # 自动屏蔽失效RPC
                 confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认自动屏蔽失效RPC？(y/N): {Style.RESET_ALL}").strip().lower()
                 if confirm == 'y':
@@ -3885,7 +3872,7 @@ class EVMMonitor:
                 else:
                     print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
                     
-            elif choice == '3':
+            elif choice == '2':
                 # 查看RPC状态报告
                 results = self.test_all_rpcs()
                 
@@ -3919,9 +3906,9 @@ class EVMMonitor:
                         if len(result['failed_rpcs']) > 3:
                             print(f"     • ... 还有 {len(result['failed_rpcs']) - 3} 个")
                             
-            elif choice == '4':
-                # 检查RPC数量不足的链条
-                self.check_insufficient_rpc_chains()
+            elif choice == '3':
+                # 检查并管理RPC数量不足的链条
+                self.manage_insufficient_rpc_chains()
                 
             elif choice == '0':
                 return
@@ -3932,140 +3919,6 @@ class EVMMonitor:
             print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
-
-    def menu_add_custom_rpc(self):
-        """菜单：添加自定义RPC"""
-        print(f"\n{Fore.CYAN}✨ ====== ➕ 添加自定义RPC ➕ ====== ✨{Style.RESET_ALL}")
-        print(f"{Back.GREEN}{Fore.BLACK} 🌐 为指定网络添加自定义RPC节点 {Style.RESET_ALL}")
-        
-        # 分类网络：已连接 vs 未连接
-        connected_networks = []
-        disconnected_networks = []
-        
-        network_list = list(self.networks.items())
-        for i, (network_key, network_info) in enumerate(network_list):
-            rpc_count = len(network_info['rpc_urls'])
-            network_data = {
-                'index': i + 1,
-                'key': network_key,
-                'info': network_info,
-                'rpc_count': rpc_count
-            }
-            
-            if network_key in self.web3_connections:
-                connected_networks.append(network_data)
-            else:
-                disconnected_networks.append(network_data)
-        
-        # 显示连接统计
-        print(f"\n{Fore.CYAN}📊 网络连接统计：{Style.RESET_ALL}")
-        print(f"  🟢 {Fore.GREEN}已连接: {len(connected_networks)} 个网络{Style.RESET_ALL}")
-        print(f"  🔴 {Fore.RED}未连接: {len(disconnected_networks)} 个网络{Style.RESET_ALL}")
-        
-        # 显示已连接的网络
-        if connected_networks:
-            print(f"\n{Back.GREEN}{Fore.BLACK} 🟢 已连接的网络 🟢 {Style.RESET_ALL}")
-            for network in connected_networks[:15]:  # 显示前15个
-                status_icon = "🟢"
-                print(f"  {Fore.GREEN}{network['index']:3d}.{Style.RESET_ALL} {status_icon} {network['info']['name']:<35} "
-                      f"({Fore.CYAN}{network['rpc_count']}{Style.RESET_ALL} 个RPC) - {network['info']['native_currency']}")
-            
-            if len(connected_networks) > 15:
-                print(f"    {Fore.GREEN}... 还有 {len(connected_networks) - 15} 个已连接网络{Style.RESET_ALL}")
-        
-        # 显示未连接的网络（重点关注区域）
-        if disconnected_networks:
-            print(f"\n{Back.RED}{Fore.WHITE} 🔴 未连接的网络 - 需要添加RPC 🔴 {Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}💡 这些网络可能需要您手动添加更多RPC节点{Style.RESET_ALL}")
-            
-            for network in disconnected_networks:
-                status_icon = "🔴"
-                print(f"  {Fore.RED}{network['index']:3d}.{Style.RESET_ALL} {status_icon} {network['info']['name']:<35} "
-                      f"({Fore.YELLOW}{network['rpc_count']}{Style.RESET_ALL} 个RPC) - {network['info']['native_currency']}")
-        
-        print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}💡 选择方式：{Style.RESET_ALL}")
-        print(f"  • 输入编号: {Fore.GREEN}1-{len(network_list)}{Style.RESET_ALL}")
-        print(f"  • 输入网络名称: {Fore.GREEN}ethereum{Style.RESET_ALL}")
-        print(f"  • 输入network_key: {Fore.GREEN}ethereum{Style.RESET_ALL}")
-        print(f"  • 建议优先为 {Fore.RED}🔴 未连接{Style.RESET_ALL} 的网络添加RPC")
-        
-        # 选择网络
-        network_input = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择要添加RPC的网络: {Style.RESET_ALL}").strip()
-        
-        if not network_input:
-            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
-            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
-            return
-        
-        # 解析网络选择
-        selected_network = None
-        
-        # 尝试数字索引
-        try:
-            index = int(network_input) - 1
-            if 0 <= index < len(network_list):
-                selected_network = network_list[index][0]
-        except ValueError:
-            pass
-        
-        # 尝试网络key匹配
-        if not selected_network:
-            network_input_lower = network_input.lower()
-            for network_key in self.networks:
-                if network_key.lower() == network_input_lower:
-                    selected_network = network_key
-                    break
-        
-        # 尝试网络名称匹配
-        if not selected_network:
-            for network_key, network_info in self.networks.items():
-                if network_input_lower in network_info['name'].lower():
-                    selected_network = network_key
-                    break
-        
-        if not selected_network:
-            print(f"\n{Fore.RED}❌ 未找到匹配的网络: {network_input}{Style.RESET_ALL}")
-            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
-            return
-        
-        network_info = self.networks[selected_network]
-        print(f"\n{Fore.GREEN}✅ 已选择网络: {network_info['name']}{Style.RESET_ALL}")
-        print(f"   当前RPC数量: {Fore.CYAN}{len(network_info['rpc_urls'])}{Style.RESET_ALL} 个")
-        print(f"   链ID: {Fore.YELLOW}{network_info['chain_id']}{Style.RESET_ALL}")
-        
-        # 输入RPC URL
-        print(f"\n{Fore.YELLOW}🔗 请输入要添加的RPC URL：{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}示例：{Style.RESET_ALL}")
-        print(f"  • https://eth.llamarpc.com")
-        print(f"  • https://rpc.flashbots.net")
-        print(f"  • https://ethereum.publicnode.com")
-        
-        rpc_url = self.safe_input(f"\n{Fore.CYAN}➜ RPC URL: {Style.RESET_ALL}").strip()
-        
-        if not rpc_url:
-            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
-            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
-            return
-        
-        # 验证URL格式
-        if not rpc_url.startswith(('http://', 'https://')):
-            print(f"\n{Fore.RED}❌ 无效的RPC URL格式{Style.RESET_ALL}")
-            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
-            return
-        
-        # 添加RPC
-        print(f"\n{Fore.CYAN}🔄 正在添加自定义RPC...{Style.RESET_ALL}")
-        
-        if self.add_custom_rpc(selected_network, rpc_url):
-            print(f"\n{Fore.GREEN}🎉 自定义RPC添加成功！{Style.RESET_ALL}")
-            print(f"   网络: {network_info['name']}")
-            print(f"   RPC: {rpc_url}")
-            print(f"   新RPC数量: {Fore.CYAN}{len(self.networks[selected_network]['rpc_urls'])}{Style.RESET_ALL} 个")
-        else:
-            print(f"\n{Fore.RED}❌ 自定义RPC添加失败{Style.RESET_ALL}")
-        
-        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_add_custom_token(self):
         """菜单：添加自定义代币"""
@@ -4165,16 +4018,25 @@ class EVMMonitor:
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
     def add_custom_rpc(self, network_key: str, rpc_url: str) -> bool:
-        """添加自定义RPC到指定网络"""
+        """添加自定义RPC到指定网络，支持HTTP(S)和WebSocket，自动去重"""
         try:
             if network_key not in self.networks:
                 print(f"{Fore.RED}❌ 网络不存在: {network_key}{Style.RESET_ALL}")
                 return False
             
-            # 检查URL是否已存在
-            if rpc_url in self.networks[network_key]['rpc_urls']:
-                print(f"{Fore.YELLOW}⚠️ RPC已存在，跳过添加{Style.RESET_ALL}")
+            # 标准化URL格式
+            rpc_url = rpc_url.strip()
+            
+            # 自动去重：检查URL是否已存在
+            existing_urls = self.networks[network_key]['rpc_urls']
+            if rpc_url in existing_urls:
+                print(f"{Fore.YELLOW}⚠️ RPC已存在，跳过添加: {rpc_url[:50]}...{Style.RESET_ALL}")
                 return True
+            
+            # 验证URL格式，支持HTTP(S)和WebSocket
+            if not rpc_url.startswith(('http://', 'https://', 'ws://', 'wss://')):
+                print(f"{Fore.RED}❌ 无效的RPC URL格式，支持: http(s)://、ws(s)://{Style.RESET_ALL}")
+                return False
             
             # 测试RPC连接
             network_info = self.networks[network_key]
@@ -4183,18 +4045,25 @@ class EVMMonitor:
             if self.test_rpc_connection(rpc_url, network_info['chain_id'], timeout=10):
                 # 添加到RPC列表的开头（优先使用）
                 self.networks[network_key]['rpc_urls'].insert(0, rpc_url)
+                print(f"{Fore.GREEN}✅ RPC已添加到网络 {network_info['name']}{Style.RESET_ALL}")
                 
                 # 尝试重新连接该网络
                 try:
                     from web3 import Web3
-                    w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
+                    # 根据URL类型选择提供者
+                    if rpc_url.startswith(('ws://', 'wss://')):
+                        provider = Web3.WebsocketProvider(rpc_url, websocket_kwargs={'timeout': 10})
+                    else:
+                        provider = Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10})
+                    
+                    w3 = Web3(provider)
                     if w3.is_connected():
                         self.web3_connections[network_key] = w3
-                        print(f"{Fore.GREEN}✅ RPC连接成功并已设为该网络的主要连接{Style.RESET_ALL}")
+                        print(f"{Fore.GREEN}✅ 网络连接成功，已设为该网络的主要连接{Style.RESET_ALL}")
                 except Exception as e:
-                    print(f"{Fore.YELLOW}⚠️ RPC已添加但连接失败: {e}{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}⚠️ RPC已添加但网络连接失败: {e}{Style.RESET_ALL}")
                 
-                # 保存配置（如果需要持久化）
+                # 保存配置
                 self.logger.info(f"已添加自定义RPC: {network_key} -> {rpc_url}")
                 return True
             else:
@@ -4206,9 +4075,9 @@ class EVMMonitor:
             self.logger.error(f"添加自定义RPC失败: {network_key} -> {rpc_url}: {e}")
             return False
     
-    def check_insufficient_rpc_chains(self):
-        """检查RPC数量不足（少于3个可用）的链条"""
-        print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 检查RPC数量不足的链条 ⚠️ {Style.RESET_ALL}")
+    def manage_insufficient_rpc_chains(self):
+        """检查并管理RPC数量不足的链条，支持直接添加RPC"""
+        print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ RPC数量管理 - 检查并添加RPC ⚠️ {Style.RESET_ALL}")
         print(f"{Fore.CYAN}正在分析所有网络的RPC配置...{Style.RESET_ALL}")
         
         insufficient_chains = []
@@ -4257,14 +4126,35 @@ class EVMMonitor:
             print(f"\n{Fore.RED}发现 {len(insufficient_chains)} 个链条RPC数量不足：{Style.RESET_ALL}")
             print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
             
-            for chain in insufficient_chains:
+            for i, chain in enumerate(insufficient_chains, 1):
                 status_color = Fore.RED if chain['available_rpcs'] == 0 else Fore.YELLOW
-                print(f"  {status_color}⚠️ {chain['name']:<30}{Style.RESET_ALL} ({chain['currency']:<6}) "
+                print(f"  {Fore.GREEN}{i:2d}.{Style.RESET_ALL} {status_color}⚠️ {chain['name']:<30}{Style.RESET_ALL} ({chain['currency']:<6}) "
                       f"- 可用: {Fore.GREEN}{chain['available_rpcs']}{Style.RESET_ALL}/"
                       f"{chain['total_rpcs']} 个RPC")
-                print(f"     Chain ID: {Fore.CYAN}{chain['chain_id']}{Style.RESET_ALL}")
-                print(f"     Network Key: {Fore.MAGENTA}{chain['network_key']}{Style.RESET_ALL}")
-                print()
+                print(f"      Chain ID: {Fore.CYAN}{chain['chain_id']}{Style.RESET_ALL}, Network Key: {Fore.MAGENTA}{chain['network_key']}{Style.RESET_ALL}")
+            
+            # 提供添加RPC的选项
+            print(f"\n{Fore.YELLOW}🛠️ 管理选项：{Style.RESET_ALL}")
+            print(f"  • 输入编号 (1-{len(insufficient_chains)}) 为对应链条添加RPC")
+            print(f"  • 输入 'all' 为所有不足的链条批量添加RPC") 
+            print(f"  • 直接按回车跳过")
+            
+            action = self.safe_input(f"\n{Fore.CYAN}➜ 请选择操作: {Style.RESET_ALL}").strip()
+            
+            if action.lower() == 'all':
+                # 批量为所有不足的链条添加RPC
+                for chain in insufficient_chains:
+                    print(f"\n{Fore.CYAN}🔧 正在为 {chain['name']} 添加RPC...{Style.RESET_ALL}")
+                    self._add_rpc_for_chain(chain['network_key'], chain['name'])
+            elif action.isdigit():
+                # 为指定链条添加RPC
+                index = int(action) - 1
+                if 0 <= index < len(insufficient_chains):
+                    chain = insufficient_chains[index]
+                    print(f"\n{Fore.CYAN}🔧 正在为 {chain['name']} 添加RPC...{Style.RESET_ALL}")
+                    self._add_rpc_for_chain(chain['network_key'], chain['name'])
+                else:
+                    print(f"\n{Fore.RED}❌ 无效的编号{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.GREEN}✅ 所有链条的RPC数量都充足（≥3个可用）{Style.RESET_ALL}")
         
@@ -4277,14 +4167,181 @@ class EVMMonitor:
         
         # 显示总结和建议
         print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}💡 建议：{Style.RESET_ALL}")
-        print(f"  • 为RPC不足的链条手动添加更多公共节点")
-        print(f"  • 使用菜单选项 10 (添加自定义RPC) 来补充RPC节点")
-        print(f"  • 优先添加免费的公共RPC节点")
+        print(f"{Fore.YELLOW}💡 支持的RPC格式：{Style.RESET_ALL}")
+        print(f"  • HTTP(S): https://rpc.example.com")
+        print(f"  • WebSocket: wss://ws.example.com")
+        print(f"  • 自动去重：重复的RPC会被跳过")
         
         if insufficient_chains:
             print(f"\n{Fore.RED}需要补充RPC的链条总数: {len(insufficient_chains)}{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}建议每个链条至少保持3-5个可用RPC节点{Style.RESET_ALL}")
+    
+    def _add_rpc_for_chain(self, network_key: str, network_name: str):
+        """为指定链条添加RPC，支持批量智能识别"""
+        print(f"\n{Fore.GREEN}🌐 为网络 {network_name} 添加RPC节点{Style.RESET_ALL}")
+        print(f"   Network Key: {Fore.MAGENTA}{network_key}{Style.RESET_ALL}")
+        print(f"   当前RPC数量: {Fore.CYAN}{len(self.networks[network_key]['rpc_urls'])}{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📝 支持的输入方式：{Style.RESET_ALL}")
+        print(f"  • 单条RPC: https://rpc.example.com")
+        print(f"  • 批量粘贴: 支持从表格、列表等复制的内容")
+        print(f"  • 智能识别: 自动提取有效的RPC地址")
+        print(f"  • 格式支持: HTTP(S)、WebSocket (ws/wss)")
+        print(f"\n{Fore.CYAN}💡 提示：支持粘贴包含表格、文本的混合内容，程序会自动识别RPC{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}✨ 输入完成后双击回车开始批量处理{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}🔍 请输入RPC内容（支持多行粘贴）：{Style.RESET_ALL}")
+        
+        # 收集多行输入
+        lines = []
+        empty_line_count = 0
+        
+        while True:
+            try:
+                line = self.safe_input().strip()
+                if line:
+                    lines.append(line)
+                    empty_line_count = 0
+                else:
+                    empty_line_count += 1
+                    if empty_line_count >= 2:  # 双击回车
+                        break
+            except EOFError:
+                break
+        
+        if not lines:
+            print(f"{Fore.YELLOW}⚠️ 未输入任何内容，跳过为 {network_name} 添加RPC{Style.RESET_ALL}")
+            return
+        
+        # 智能提取RPC地址
+        extracted_rpcs = self._extract_rpcs_from_text(lines)
+        
+        if not extracted_rpcs:
+            print(f"{Fore.RED}❌ 未识别到有效的RPC地址{Style.RESET_ALL}")
+            return
+        
+        # 显示识别结果
+        print(f"\n{Fore.CYAN}🔍 智能识别结果：{Style.RESET_ALL}")
+        print(f"识别到 {Fore.GREEN}{len(extracted_rpcs)}{Style.RESET_ALL} 个RPC地址：")
+        
+        for i, rpc in enumerate(extracted_rpcs, 1):
+            rpc_type = "WebSocket" if rpc.startswith(('ws://', 'wss://')) else "HTTP(S)"
+            print(f"  {Fore.GREEN}{i:2d}.{Style.RESET_ALL} {Fore.CYAN}[{rpc_type}]{Style.RESET_ALL} {rpc}")
+        
+        # 确认添加
+        confirm = self.safe_input(f"\n{Fore.YELLOW}确认批量添加这些RPC？(Y/n): {Style.RESET_ALL}").strip().lower()
+        if confirm and confirm != 'y':
+            print(f"{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            return
+        
+        # 批量添加和测试
+        print(f"\n{Fore.CYAN}🚀 开始批量添加和测试RPC...{Style.RESET_ALL}")
+        
+        success_count = 0
+        failed_count = 0
+        skipped_count = 0
+        
+        for i, rpc_url in enumerate(extracted_rpcs, 1):
+            print(f"\n{Fore.CYAN}[{i}/{len(extracted_rpcs)}]{Style.RESET_ALL} 处理: {rpc_url[:60]}...")
+            
+            # 检查是否已存在（去重）
+            if rpc_url in self.networks[network_key]['rpc_urls']:
+                print(f"  {Fore.YELLOW}⚠️ 已存在，跳过{Style.RESET_ALL}")
+                skipped_count += 1
+                continue
+            
+            # 添加RPC
+            if self.add_custom_rpc(network_key, rpc_url):
+                print(f"  {Fore.GREEN}✅ 添加成功{Style.RESET_ALL}")
+                success_count += 1
+            else:
+                print(f"  {Fore.RED}❌ 添加失败，已自动屏蔽{Style.RESET_ALL}")
+                # 自动屏蔽失效的RPC
+                self.blocked_rpcs[rpc_url] = {
+                    'reason': '批量添加时连接失败',
+                    'blocked_time': time.time(),
+                    'network': network_key
+                }
+                failed_count += 1
+        
+        # 显示批量处理结果
+        print(f"\n{Back.GREEN}{Fore.BLACK} 📊 批量处理完成 📊 {Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}✅ 成功添加: {success_count} 个{Style.RESET_ALL}")
+        print(f"  {Fore.YELLOW}⚠️ 跳过重复: {skipped_count} 个{Style.RESET_ALL}")
+        print(f"  {Fore.RED}❌ 失败屏蔽: {failed_count} 个{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}📊 网络 {network_name} 当前RPC总数: {len(self.networks[network_key]['rpc_urls'])} 个{Style.RESET_ALL}")
+        
+        if success_count > 0:
+            print(f"\n{Fore.GREEN}🎉 成功为网络 {network_name} 添加了 {success_count} 个新的RPC节点！{Style.RESET_ALL}")
+    
+    def _extract_rpcs_from_text(self, lines: List[str]) -> List[str]:
+        """从文本中智能提取RPC地址"""
+        import re
+        
+        rpcs = []
+        
+        # RPC地址的正则表达式模式
+        rpc_patterns = [
+            r'(https?://[^\s\t]+)',  # HTTP(S) URLs
+            r'(wss?://[^\s\t]+)',    # WebSocket URLs
+        ]
+        
+        for line in lines:
+            # 跳过明显的无关行
+            if any(skip_word in line.lower() for skip_word in [
+                '连接钱包', 'rpc 服务器', '高度', '延迟', '分数', '隐私',
+                'height', 'latency', 'score', 'privacy', 'connect wallet'
+            ]):
+                continue
+            
+            # 提取所有可能的RPC地址
+            for pattern in rpc_patterns:
+                matches = re.findall(pattern, line, re.IGNORECASE)
+                for match in matches:
+                    # 清理URL（移除尾部的标点符号等）
+                    cleaned_url = re.sub(r'[,;\s\t]+$', '', match.strip())
+                    
+                    # 验证URL格式
+                    if self._is_valid_rpc_url(cleaned_url):
+                        if cleaned_url not in rpcs:  # 去重
+                            rpcs.append(cleaned_url)
+        
+        return rpcs
+    
+    def _is_valid_rpc_url(self, url: str) -> bool:
+        """验证RPC URL是否有效"""
+        import re
+        
+        # 基本格式检查
+        if not url or len(url) < 10:
+            return False
+        
+        # 必须以支持的协议开头
+        if not url.startswith(('http://', 'https://', 'ws://', 'wss://')):
+            return False
+        
+        # 不能包含空格或其他无效字符
+        if re.search(r'[\s\t]', url):
+            return False
+        
+        # 必须包含域名
+        domain_pattern = r'://([a-zA-Z0-9.-]+)'
+        match = re.search(domain_pattern, url)
+        if not match:
+            return False
+        
+        domain = match.group(1)
+        
+        # 域名不能为空或只包含点
+        if not domain or domain.count('.') == len(domain):
+            return False
+        
+        # 排除明显的无效域名
+        invalid_domains = ['localhost', '127.0.0.1', '0.0.0.0']
+        if domain in invalid_domains:
+            return False
+        
+        return True
 
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
