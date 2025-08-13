@@ -306,13 +306,18 @@ class EVMMonitor:
 
 
     def add_private_key(self, private_key: str) -> Optional[str]:
-        """添加私钥并返回对应的地址"""
+        """添加私钥并返回对应的地址（自动去重）"""
         try:
             if not private_key.startswith('0x'):
                 private_key = '0x' + private_key
             
             account = Account.from_key(private_key)
             address = account.address
+            
+            # 检查是否已存在（去重）
+            if address in self.wallets:
+                print(f"{Fore.YELLOW}⚠️ 钱包地址已存在: {address}{Style.RESET_ALL}")
+                return address
             
             self.wallets[address] = private_key
             print(f"{Fore.GREEN}✅ 成功添加钱包地址: {address}{Style.RESET_ALL}")
@@ -523,11 +528,14 @@ class EVMMonitor:
                         if balance > self.min_transfer_amount:
                             print(f"\n{Fore.YELLOW}💰 发现余额: {balance:.6f} {currency} in {address[:10]}... on {self.networks[network]['name']}{Style.RESET_ALL}")
                             
-                            # 执行转账
-                            if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
-                                # 更新最后检查时间
-                                address_info['last_check'] = time.time()
-                                self.save_state()
+                            # 只有设置了目标钱包才执行转账
+                            if self.target_wallet:
+                                if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
+                                    # 更新最后检查时间
+                                    address_info['last_check'] = time.time()
+                                    self.save_state()
+                            else:
+                                print(f"{Fore.CYAN}💡 未设置目标钱包，跳过转账{Style.RESET_ALL}")
                         else:
                             # 显示余额状态
                             if balance > 0:
@@ -549,10 +557,6 @@ class EVMMonitor:
 
     def start_monitoring(self):
         """开始监控"""
-        if not self.target_wallet:
-            print(f"{Fore.RED}❌ 请先设置目标钱包地址{Style.RESET_ALL}")
-            return False
-        
         if not self.wallets:
             print(f"{Fore.RED}❌ 没有钱包地址可监控{Style.RESET_ALL}")
             return False
@@ -560,6 +564,11 @@ class EVMMonitor:
         if self.monitoring:
             print(f"{Fore.YELLOW}⚠️ 监控已在运行中{Style.RESET_ALL}")
             return False
+        
+        # 如果没有设置目标钱包，提示设置
+        if not self.target_wallet:
+            print(f"{Fore.YELLOW}⚠️ 未设置目标钱包地址，转账功能将暂停{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 请在菜单中设置目标钱包地址后重新开始监控{Style.RESET_ALL}")
         
         # 扫描地址
         self.scan_addresses()
@@ -611,58 +620,87 @@ class EVMMonitor:
     def show_menu(self):
         """显示主菜单"""
         while True:
-            print(f"\n{Fore.CYAN}{Back.BLACK} EVM监控软件主菜单 {Style.RESET_ALL}")
-            print("=" * 50)
-            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 添加钱包私钥")
-            print(f"{Fore.GREEN}2.{Style.RESET_ALL} 查看当前地址")
-            print(f"{Fore.GREEN}3.{Style.RESET_ALL} 开始监控")
-            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 停止监控")
-            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 设置目标钱包地址")
-            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 批量导入私钥")
-            print(f"{Fore.GREEN}7.{Style.RESET_ALL} 查看监控状态")
-            print(f"{Fore.GREEN}8.{Style.RESET_ALL} 设置监控参数")
-            print(f"{Fore.GREEN}9.{Style.RESET_ALL} 网络连接管理")
-            print(f"{Fore.RED}0.{Style.RESET_ALL} 退出程序")
-            print("=" * 50)
+            # 清屏
+            os.system('clear' if os.name != 'nt' else 'cls')
             
-            # 显示状态信息
-            status = f"{Fore.GREEN}运行中{Style.RESET_ALL}" if self.monitoring else f"{Fore.RED}已停止{Style.RESET_ALL}"
-            print(f"当前状态: 监控 {status} | 钱包数量: {len(self.wallets)} | 监控地址: {len(self.monitored_addresses)}")
+            print(f"{Fore.CYAN}╔══════════════════════════════════════════════╗{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}║           🚀 EVM钱包监控软件                   ║{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}╚══════════════════════════════════════════════╝{Style.RESET_ALL}")
+            
+            # 显示当前状态
+            status_color = Fore.GREEN if self.monitoring else Fore.RED
+            status_text = "🟢 监控中" if self.monitoring else "🔴 已停止"
+            
+            print(f"\n📊 {Fore.CYAN}当前状态:{Style.RESET_ALL}")
+            print(f"   监控状态: {status_color}{status_text}{Style.RESET_ALL}")
+            print(f"   钱包数量: {Fore.YELLOW}{len(self.wallets)}{Style.RESET_ALL} 个")
+            print(f"   监控地址: {Fore.YELLOW}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
+            print(f"   网络连接: {Fore.YELLOW}{len(self.web3_connections)}{Style.RESET_ALL} 个")
+            
             if self.target_wallet:
-                print(f"目标钱包: {self.target_wallet[:10]}...{self.target_wallet[-10:]}")
+                print(f"   目标钱包: {Fore.GREEN}{self.target_wallet[:10]}...{self.target_wallet[-10:]}{Style.RESET_ALL}")
+            else:
+                print(f"   目标钱包: {Fore.RED}未设置{Style.RESET_ALL}")
+            
+            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 主要功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
+            
+            if len(self.wallets) == 0:
+                print(f"{Fore.YELLOW}💡 新手指南: 先添加钱包私钥，然后开始监控{Style.RESET_ALL}")
+            
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥 {Fore.BLUE}(支持批量粘贴){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} 📋 查看钱包列表")
+            
+            if not self.monitoring:
+                print(f"{Fore.GREEN}3.{Style.RESET_ALL} ▶️  开始监控")
+            else:
+                print(f"{Fore.YELLOW}3.{Style.RESET_ALL} ⏸️  停止监控")
+            
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标钱包")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 📁 从文件导入")
+            
+            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 高级功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情")
+            print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置")
+            print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
+            
+            print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
+            print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
             
             try:
-                choice = input(f"\n{Fore.YELLOW}请选择操作 (0-9): {Style.RESET_ALL}").strip()
+                choice = input(f"\n{Fore.YELLOW}请输入选项数字: {Style.RESET_ALL}").strip()
                 
                 if choice == '1':
                     self.menu_add_private_key()
                 elif choice == '2':
                     self.menu_show_addresses()
                 elif choice == '3':
-                    self.menu_start_monitoring()
+                    if self.monitoring:
+                        self.menu_stop_monitoring()
+                    else:
+                        self.menu_start_monitoring()
                 elif choice == '4':
-                    self.menu_stop_monitoring()
-                elif choice == '5':
                     self.menu_set_target_wallet()
-                elif choice == '6':
+                elif choice == '5':
                     self.menu_import_keys()
-                elif choice == '7':
+                elif choice == '6':
                     self.menu_show_status()
-                elif choice == '8':
+                elif choice == '7':
                     self.menu_settings()
-                elif choice == '9':
+                elif choice == '8':
                     self.menu_network_management()
                 elif choice == '0':
                     self.menu_exit()
                     break
                 else:
                     print(f"{Fore.RED}❌ 无效选择，请重试{Style.RESET_ALL}")
+                    input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
                     
             except KeyboardInterrupt:
                 print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
                 break
             except Exception as e:
                 print(f"{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
+                input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
 
     def menu_add_private_key(self):
         """菜单：添加私钥"""
@@ -694,8 +732,12 @@ class EVMMonitor:
                     success_count += 1
             
             print(f"\n{Fore.GREEN}✅ 批量导入完成: 成功添加 {success_count}/{len(lines)} 个钱包{Style.RESET_ALL}")
+            if success_count > 0:
+                print(f"{Fore.CYAN}💡 已自动去重，跳过 {len(lines) - success_count} 个重复地址{Style.RESET_ALL}")
         else:
             print(f"{Fore.YELLOW}⚠️ 未输入任何私钥{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_show_addresses(self):
         """菜单：显示地址"""
@@ -707,6 +749,8 @@ class EVMMonitor:
         for i, address in enumerate(self.wallets.keys(), 1):
             status = "🟢 监控中" if address in self.monitored_addresses else "🔴 未监控"
             print(f"{i:3d}. {address} {status}")
+        
+        input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_start_monitoring(self):
         """菜单：开始监控"""
