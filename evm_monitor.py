@@ -1774,15 +1774,21 @@ class EVMMonitor:
             
             # 清理活跃代币追踪器中的过期数据
             active_token_ttl = 86400  # 24小时
-            for address_network in list(self.active_token_tracker.keys()):
-                tracker_data = self.active_token_tracker[address_network]
-                for token in list(tracker_data.keys()):
-                    if current_time - tracker_data[token] > active_token_ttl:
-                        del tracker_data[token]
+            for address in list(self.active_tokens.keys()):
+                address_data = self.active_tokens[address]
+                for network in list(address_data.keys()):
+                    network_data = address_data[network]
+                    for token in list(network_data.keys()):
+                        if current_time - network_data[token] > active_token_ttl:
+                            del network_data[token]
+                    
+                    # 如果某个网络下没有活跃代币了，删除网络条目
+                    if not network_data:
+                        del address_data[network]
                 
-                # 如果某个地址-网络组合下没有活跃代币了，删除整个条目
-                if not tracker_data:
-                    del self.active_token_tracker[address_network]
+                # 如果某个地址下没有任何活跃代币了，删除地址条目
+                if not address_data:
+                    del self.active_tokens[address]
             
             # 清理过期的被拉黑RPC（超过24小时自动解封）
             blocked_rpc_ttl = 86400  # 24小时
@@ -3972,8 +3978,6 @@ esac
         self.monitor_thread.daemon = True
         self.monitor_thread.start()
         
-        print(f"\n{Fore.GREEN}🎉 监控已成功启动！{Style.RESET_ALL}")
-        
         return True
 
     def stop_monitoring(self):
@@ -4021,61 +4025,117 @@ esac
             # 清屏
             os.system('clear' if os.name != 'nt' else 'cls')
             
-            print(f"{Fore.CYAN}╔══════════════════════════════════════════════╗{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}║           🚀 EVM钱包监控软件                   ║{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}╚══════════════════════════════════════════════╝{Style.RESET_ALL}")
+            # 主标题
+            print(f"\n{Back.BLUE}{Fore.WHITE}{'='*60}{Style.RESET_ALL}")
+            print(f"{Back.BLUE}{Fore.WHITE}          🚀 EVM多链钱包监控系统 v2.0 🚀          {Style.RESET_ALL}")
+            print(f"{Back.BLUE}{Fore.WHITE}{'='*60}{Style.RESET_ALL}")
             
-            # 显示当前状态
+            # 显示当前状态面板
             status_color = Fore.GREEN if self.monitoring else Fore.RED
-            status_text = "🟢 监控中" if self.monitoring else "🔴 已停止"
+            status_text = "🟢 运行中" if self.monitoring else "🔴 已停止"
+            status_bg = Back.GREEN if self.monitoring else Back.RED
             
-            print(f"\n📊 {Fore.CYAN}当前状态:{Style.RESET_ALL}")
-            print(f"   监控状态: {status_color}{status_text}{Style.RESET_ALL}")
-            print(f"   钱包数量: {Fore.YELLOW}{len(self.wallets)}{Style.RESET_ALL} 个")
-            print(f"   监控地址: {Fore.YELLOW}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
-            print(f"   网络连接: {Fore.YELLOW}{len(self.web3_connections)}{Style.RESET_ALL} 个")
+            print(f"\n{Back.CYAN}{Fore.BLACK} 📊 系统状态面板 {Style.RESET_ALL}")
+            print(f"┌─────────────────────────────────────────────────────────┐")
+            print(f"│ 监控状态: {status_bg}{Fore.WHITE} {status_text} {Style.RESET_ALL}{'':>35}│")
+            print(f"│ 钱包数量: {Fore.YELLOW}{len(self.wallets):>3}{Style.RESET_ALL} 个   监控地址: {Fore.YELLOW}{len(self.monitored_addresses):>3}{Style.RESET_ALL} 个   网络连接: {Fore.YELLOW}{len(self.web3_connections):>3}{Style.RESET_ALL} 个 │")
             
             if self.target_wallet:
-                print(f"   🎯 目标账户: {Fore.GREEN}{self.target_wallet[:10]}...{self.target_wallet[-8:]}{Style.RESET_ALL}")
+                target_display = f"{self.target_wallet[:10]}...{self.target_wallet[-8:]}"
+                print(f"│ 🎯 目标账户: {Fore.GREEN}{target_display}{Style.RESET_ALL}{'':>25}│")
             else:
-                print(f"   🎯 目标账户: {Fore.RED}未设置{Style.RESET_ALL}")
+                print(f"│ 🎯 目标账户: {Fore.RED}{'未设置':>10}{Style.RESET_ALL}{'':>30}│")
             
-            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 主要功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
+            # 显示转账统计
+            if hasattr(self, 'transfer_stats') and self.transfer_stats['total_attempts'] > 0:
+                success_rate = (self.transfer_stats['successful_transfers'] / self.transfer_stats['total_attempts'] * 100)
+                print(f"│ 💰 转账统计: 成功 {Fore.GREEN}{self.transfer_stats['successful_transfers']}{Style.RESET_ALL} 次   成功率 {Fore.CYAN}{success_rate:.1f}%{Style.RESET_ALL}{'':>15}│")
             
+            print(f"└─────────────────────────────────────────────────────────┘")
+            
+            # 新手指南
             if len(self.wallets) == 0:
-                print(f"{Fore.YELLOW}💡 新手指南: 先添加钱包私钥，然后开始监控{Style.RESET_ALL}")
+                print(f"\n{Back.YELLOW}{Fore.BLACK} 💡 新手指南 {Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}1️⃣ 添加钱包私钥 → 2️⃣ 设置目标账户 → 3️⃣ 开始监控{Style.RESET_ALL}")
             
-            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥 {Fore.BLUE}(支持批量粘贴){Style.RESET_ALL}")
-            print(f"{Fore.GREEN}2.{Style.RESET_ALL} 📋 查看钱包列表")
+            # 主要功能区
+            print(f"\n{Back.GREEN}{Fore.BLACK} 🎯 核心功能 {Style.RESET_ALL}")
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥     {Fore.BLUE}(支持批量导入){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}2.{Style.RESET_ALL} 📋 查看钱包列表     {Fore.CYAN}({len(self.wallets)} 个钱包){Style.RESET_ALL}")
             
             if not self.monitoring:
-                print(f"{Fore.GREEN}3.{Style.RESET_ALL} ▶️  开始监控")
+                print(f"{Fore.GREEN}3.{Style.RESET_ALL} ▶️  开始监控         {Fore.BLUE}(一键启动){Style.RESET_ALL}")
             else:
-                print(f"{Fore.YELLOW}3.{Style.RESET_ALL} ⏸️  停止监控")
+                print(f"{Fore.YELLOW}3.{Style.RESET_ALL} ⏸️  停止监控         {Fore.RED}(安全停止){Style.RESET_ALL}")
             
-            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标账户")
-            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 📁 从文件导入")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标账户     {Fore.MAGENTA}(收款地址){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}5.{Style.RESET_ALL} 📁 从文件导入       {Fore.CYAN}(批量导入){Style.RESET_ALL}")
             
-            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 🔧 高级功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
-            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情")
-            print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置")
-            print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
-            print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测")
-            print(f"{Fore.GREEN}10.{Style.RESET_ALL} 🪙 添加自定义代币")
-            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🛡️ 守护进程管理")
+            # 高级功能区
+            print(f"\n{Back.MAGENTA}{Fore.WHITE} ⚙️ 高级功能 {Style.RESET_ALL}")
+            print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情     {Fore.CYAN}(实时数据){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置     {Fore.YELLOW}(个性化){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理     {Fore.BLUE}(多链支持){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测管理  {Fore.GREEN}(推荐){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}10.{Style.RESET_ALL} 🪙 添加自定义代币   {Fore.MAGENTA}(ERC20){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🛡️ 守护进程管理     {Fore.YELLOW}(后台运行){Style.RESET_ALL}")
             
-            print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
-            print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
+            # 退出选项
+            print(f"\n{Back.RED}{Fore.WHITE} 🚪 退出选项 {Style.RESET_ALL}")
+            print(f"{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
+            
+            print(f"\n{Fore.CYAN}{'━'*60}{Style.RESET_ALL}")
+            
+            # 实用提示
+            tips = [
+                "💡 提示：首次使用建议选择 9 → 1 初始化服务器连接",
+                "⚡ 快捷：Ctrl+C 可随时安全退出",
+                "🔄 更新：系统会自动保存所有设置和状态",
+                "🚀 快速：输入 'q' 快速启动监控（需要已设置钱包和目标账户）"
+            ]
+            
+            import random
+            tip = random.choice(tips)
+            print(f"{Fore.BLUE}{tip}{Style.RESET_ALL}")
+            
+            # 显示快速操作
+            if len(self.wallets) > 0 and self.target_wallet and not self.monitoring:
+                print(f"\n{Back.GREEN}{Fore.WHITE} ⚡ 快速操作 {Style.RESET_ALL}")
+                print(f"{Fore.GREEN}q.{Style.RESET_ALL} 🚀 快速启动监控     {Fore.CYAN}(一键开始){Style.RESET_ALL}")
             
             try:
-                choice = self.safe_input(f"\n{Fore.YELLOW}请输入选项数字: {Style.RESET_ALL}").strip()
+                choice = self.safe_input(f"\n{Fore.YELLOW}请输入选项数字 (或 q 快速启动): {Style.RESET_ALL}").strip().lower()
                 
                 # 如果返回空值或默认退出，直接退出
                 if choice == "" or choice == "0":
                     print(f"\n{Fore.YELLOW}👋 程序退出{Style.RESET_ALL}")
                     break
                 
-                if choice == '1':
+                # 快速启动监控
+                if choice == 'q':
+                    if len(self.wallets) > 0 and self.target_wallet and not self.monitoring:
+                        print(f"\n{Back.CYAN}{Fore.WHITE} 🚀 快速启动监控模式 🚀 {Style.RESET_ALL}")
+                        if self.start_monitoring():
+                            print(f"\n{Fore.GREEN}🎉 监控已成功启动！按 Ctrl+C 停止监控{Style.RESET_ALL}")
+                            try:
+                                while self.monitoring:
+                                    time.sleep(1)
+                            except KeyboardInterrupt:
+                                print(f"\n{Fore.YELLOW}👋 用户停止监控{Style.RESET_ALL}")
+                                self.stop_monitoring()
+                        else:
+                            print(f"\n{Fore.RED}❌ 快速启动失败{Style.RESET_ALL}")
+                            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+                    else:
+                        print(f"\n{Fore.RED}❌ 快速启动条件不满足{Style.RESET_ALL}")
+                        if len(self.wallets) == 0:
+                            print(f"{Fore.YELLOW}   • 请先添加钱包私钥 (选项 1){Style.RESET_ALL}")
+                        if not self.target_wallet:
+                            print(f"{Fore.YELLOW}   • 请先设置目标账户 (选项 4){Style.RESET_ALL}")
+                        if self.monitoring:
+                            print(f"{Fore.YELLOW}   • 监控已在运行中{Style.RESET_ALL}")
+                        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+                elif choice == '1':
                     self.menu_add_private_key()
                 elif choice == '2':
                     self.menu_show_addresses()
@@ -4633,17 +4693,22 @@ esac
         print(f"{Back.BLUE}{Fore.WHITE} 📡 检测所有网络的RPC节点连接状态 {Style.RESET_ALL}")
         
         print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
-        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📊 查看RPC状态报告")
-        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
-        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
-        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐）")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🛠️ 自动屏蔽失效RPC")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📊 查看RPC状态报告")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} ⚠️ 检查并管理RPC数量不足的链条")
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
+        print(f"  {Fore.GREEN}6.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-5): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-6): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
+                # 初始化服务器连接
+                self.initialize_server_connections()
+                
+            elif choice == '2':
                 # 自动屏蔽失效RPC
                 confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 确认自动屏蔽失效RPC？(y/N): {Style.RESET_ALL}").strip().lower()
                 if confirm == 'y':
@@ -4670,7 +4735,7 @@ esac
                 else:
                     print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
                     
-            elif choice == '2':
+            elif choice == '3':
                 # 查看RPC状态报告
                 print(f"\n{Fore.CYAN}📋 获取RPC状态报告...{Style.RESET_ALL}")
                 results = self.get_cached_rpc_results()
@@ -4705,15 +4770,15 @@ esac
                         if len(result['failed_rpcs']) > 3:
                             print(f"     • ... 还有 {len(result['failed_rpcs']) - 3} 个")
                             
-            elif choice == '3':
+            elif choice == '4':
                 # 检查并管理RPC数量不足的链条
                 self.manage_insufficient_rpc_chains()
                 
-            elif choice == '4':
+            elif choice == '5':
                 # 从ChainList数据批量导入RPC
                 self.import_rpcs_from_chainlist()
                 
-            elif choice == '5':
+            elif choice == '6':
                 # 管理被拉黑的RPC
                 self.manage_blocked_rpcs()
                 
@@ -4726,6 +4791,328 @@ esac
             print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+
+    def initialize_server_connections(self):
+        """初始化服务器连接 - 检测所有网络并建立最佳连接"""
+        print(f"\n{Back.GREEN}{Fore.BLACK} 🚀 初始化服务器连接 🚀 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在检测所有网络的RPC节点并建立最佳连接...{Style.RESET_ALL}")
+        
+        start_time = time.time()
+        
+        # 步骤1: 并发检测所有网络的RPC状态
+        print(f"\n{Back.BLUE}{Fore.WHITE} 📡 第一步：并发检测所有网络RPC状态 📡 {Style.RESET_ALL}")
+        
+        successful_connections = 0
+        failed_connections = 0
+        total_networks = len(self.networks)
+        
+        # 使用并发检测提高速度
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_network = {
+                executor.submit(self.test_network_concurrent, network_key): network_key 
+                for network_key in self.networks.keys()
+            }
+            
+            completed_count = 0
+            for future in as_completed(future_to_network):
+                network_key = future_to_network[future]
+                completed_count += 1
+                network_info = self.networks[network_key]
+                
+                try:
+                    result = future.result()
+                    if result and result['working_rpcs']:
+                        # 建立连接到最快的RPC
+                        fastest_rpc = result['fastest_rpc']
+                        if self.establish_single_connection(network_key, fastest_rpc['url']):
+                            successful_connections += 1
+                            status_color = Fore.GREEN
+                            status_icon = "✅"
+                            status_text = f"已连接 ({fastest_rpc['response_time']:.2f}s)"
+                        else:
+                            failed_connections += 1
+                            status_color = Fore.RED
+                            status_icon = "❌"
+                            status_text = "连接失败"
+                    else:
+                        failed_connections += 1
+                        status_color = Fore.RED
+                        status_icon = "❌"
+                        status_text = "无可用RPC"
+                    
+                    # 实时显示每个网络的连接状态
+                    progress = f"[{completed_count:2d}/{total_networks}]"
+                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
+                    
+                except Exception as e:
+                    failed_connections += 1
+                    progress = f"[{completed_count:2d}/{total_networks}]"
+                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {Fore.RED}❌ {network_info['name']:<35}{Style.RESET_ALL} {Fore.RED}异常: {str(e)[:30]}{Style.RESET_ALL}")
+        
+        # 步骤2: 显示连接总结
+        elapsed_time = time.time() - start_time
+        print(f"\n{Back.GREEN}{Fore.BLACK} 📊 连接初始化完成 📊 {Style.RESET_ALL}")
+        print(f"⏱️  用时: {Fore.CYAN}{elapsed_time:.2f}s{Style.RESET_ALL}")
+        print(f"✅ 成功连接: {Fore.GREEN}{successful_connections}{Style.RESET_ALL} 个网络")
+        print(f"❌ 连接失败: {Fore.RED}{failed_connections}{Style.RESET_ALL} 个网络")
+        print(f"📊 成功率: {Fore.YELLOW}{successful_connections/total_networks*100:.1f}%{Style.RESET_ALL}")
+        
+        # 步骤3: 询问是否直接开始扫描
+        if successful_connections > 0:
+            print(f"\n{Fore.GREEN}🎉 服务器连接初始化成功！现在可以开始扫描了。{Style.RESET_ALL}")
+            
+            if self.wallets:
+                start_scan = self.safe_input(f"\n{Fore.YELLOW}🚀 是否立即开始扫描钱包地址？(Y/n): {Style.RESET_ALL}").strip().lower()
+                if start_scan in ['', 'y', 'yes']:
+                    print(f"\n{Back.CYAN}{Fore.WHITE} 🔍 开始扫描钱包地址 🔍 {Style.RESET_ALL}")
+                    scan_result = self.scan_addresses_with_detailed_display()
+                    if scan_result:
+                        # 如果扫描后直接启动了监控，就不需要返回菜单了
+                        print(f"\n{Fore.GREEN}🎉 监控正在运行中...{Style.RESET_ALL}")
+                        return
+                else:
+                    print(f"\n{Fore.YELLOW}⚠️ 扫描已取消，可随时通过主菜单开始监控{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}💡 提示：请先添加钱包地址，然后就可以开始监控了{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.RED}❌ 所有网络连接都失败了，请检查网络设置或RPC配置{Style.RESET_ALL}")
+    
+    def establish_single_connection(self, network_key: str, rpc_url: str) -> bool:
+        """建立单个网络的连接"""
+        try:
+            network_info = self.networks[network_key]
+            w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
+            
+            if w3.is_connected():
+                # 验证链ID
+                chain_id = w3.eth.chain_id
+                if chain_id == network_info['chain_id']:
+                    self.web3_connections[network_key] = w3
+                    return True
+            return False
+        except Exception:
+            return False
+    
+    def scan_addresses_with_detailed_display(self):
+        """扫描地址并显示详细过程 - 专为初始化后调用设计"""
+        if not self.wallets:
+            print(f"{Fore.RED}❌ 没有钱包地址可扫描{Style.RESET_ALL}")
+            return
+        
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🔍 开始详细扫描所有钱包地址 🔍 {Style.RESET_ALL}")
+        
+        addresses_to_scan = list(self.wallets.keys())
+        total_addresses = len(addresses_to_scan)
+        start_time = time.time()
+        
+        for i, address in enumerate(addresses_to_scan, 1):
+            print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 扫描地址 ({i}/{total_addresses}) {Style.RESET_ALL} {Fore.CYAN}{address}{Style.RESET_ALL}")
+            
+            # 使用并发扫描每个地址的所有网络
+            address_networks = []
+            blocked_networks = []
+            
+            # 获取已连接的网络列表
+            connected_networks = list(self.web3_connections.keys())
+            total_networks = len(connected_networks)
+            
+            if not connected_networks:
+                print(f"  {Fore.RED}❌ 没有可用的网络连接{Style.RESET_ALL}")
+                continue
+            
+            print(f"  {Fore.CYAN}📊 将检查 {total_networks} 个已连接的网络{Style.RESET_ALL}")
+            
+            # 分批并发检查
+            batch_size = 5
+            network_count = 0
+            found_networks = 0
+            
+            for batch_start in range(0, len(connected_networks), batch_size):
+                batch_end = min(batch_start + batch_size, len(connected_networks))
+                batch_networks = connected_networks[batch_start:batch_end]
+                
+                print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发检查批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络) {Style.RESET_ALL}")
+                
+                # 并发检查这一批网络
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    future_to_network = {
+                        executor.submit(self.check_transaction_history_concurrent, address, nk, 1.0): nk 
+                        for nk in batch_networks
+                    }
+                    
+                    # 收集结果
+                    batch_results = {}
+                    for future in as_completed(future_to_network, timeout=2.0):
+                        try:
+                            network_key, has_history, elapsed, status = future.result()
+                            batch_results[network_key] = (has_history, elapsed, status)
+                        except Exception as e:
+                            network_key = future_to_network[future]
+                            batch_results[network_key] = (False, 1.0, f"异常: {str(e)[:20]}")
+                    
+                    # 显示这一批的结果
+                    for nk in batch_networks:
+                        network_count += 1
+                        network_name = self.networks[nk]['name']
+                        
+                        if nk in batch_results:
+                            has_history, elapsed, status = batch_results[nk]
+                            
+                            if has_history:
+                                address_networks.append(nk)
+                                found_networks += 1
+                                result_color = Fore.GREEN
+                                result_icon = "✅"
+                                result_text = f"有交易 ({status})"
+                            else:
+                                blocked_networks.append(nk)
+                                result_color = Fore.RED
+                                result_icon = "❌"
+                                result_text = f"无交易 ({status})"
+                        else:
+                            # 超时的网络
+                            blocked_networks.append(nk)
+                            result_color = Fore.YELLOW
+                            result_icon = "⏱️"
+                            result_text = "超时"
+                        
+                        print(f"    {Fore.CYAN}🌐 [{network_count:2d}/{total_networks}] {network_name:<35}{Style.RESET_ALL} {result_color}{result_icon} {result_text}{Style.RESET_ALL}")
+            
+            # 保存扫描结果
+            if address_networks:
+                self.monitored_addresses[address] = {
+                    'networks': address_networks,
+                    'last_check': time.time()
+                }
+                print(f"  {Fore.GREEN}🎯 该地址将被监控，发现 {len(address_networks)} 个网络有交易历史{Style.RESET_ALL}")
+            else:
+                print(f"  {Fore.YELLOW}⚠️ 该地址将被跳过（无交易历史）{Style.RESET_ALL}")
+            
+            if blocked_networks:
+                self.blocked_networks[address] = blocked_networks
+            
+            # 更新扫描完成状态
+            self.address_full_scan_done[address] = True
+        
+        # 扫描完成总结
+        elapsed = time.time() - start_time
+        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
+        print(f"✅ 监控地址: {Fore.GREEN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
+        print(f"❌ 屏蔽网络: {Fore.RED}{sum(len(nets) for nets in self.blocked_networks.values())}{Style.RESET_ALL} 个")
+        print(f"⏱️ 用时: {Fore.CYAN}{elapsed:.2f}s{Style.RESET_ALL}")
+        
+        # 更新全量扫描完成时间
+        self.last_full_scan_time = time.time()
+        
+        # 保存状态
+        self.save_state()
+        
+        # 询问是否立即开始监控
+        if self.monitored_addresses and self.target_wallet:
+            print(f"\n{Back.GREEN}{Fore.WHITE} 🎉 扫描完成！可以开始监控了 🎉 {Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ 监控地址: {len(self.monitored_addresses)} 个{Style.RESET_ALL}")
+            print(f"{Fore.GREEN}✅ 目标账户: {self.target_wallet[:10]}...{self.target_wallet[-8:]}{Style.RESET_ALL}")
+            print(f"\n{Back.CYAN}{Fore.WHITE} 🚀 准备开始监控 🚀 {Style.RESET_ALL}")
+            print(f"{Fore.CYAN}双击回车开始监控，或输入其他内容取消{Style.RESET_ALL}")
+            
+            # 等待双击回车
+            user_input = self.wait_for_double_enter()
+            
+            if user_input == "":  # 双击回车
+                print(f"\n{Back.CYAN}{Fore.WHITE} 🚀 正在启动监控系统... 🚀 {Style.RESET_ALL}")
+                if self.start_monitoring():
+                    print(f"\n{Fore.GREEN}🎉 监控已成功启动！系统将持续运行...{Style.RESET_ALL}")
+                    # 保持监控运行，直到用户按Ctrl+C
+                    try:
+                        while self.monitoring:
+                            time.sleep(1)
+                    except KeyboardInterrupt:
+                        print(f"\n{Fore.YELLOW}👋 用户停止监控{Style.RESET_ALL}")
+                        self.stop_monitoring()
+                    return True
+                else:
+                    print(f"\n{Fore.RED}❌ 监控启动失败{Style.RESET_ALL}")
+                    return False
+            elif user_input in ["cancelled", "error"]:
+                print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+                return False
+            else:
+                print(f"\n{Fore.YELLOW}⚠️ 监控已取消，可通过主菜单随时开始{Style.RESET_ALL}")
+                return False
+        elif not self.target_wallet:
+            print(f"\n{Fore.YELLOW}💡 提示：请先设置目标账户，然后就可以开始监控了{Style.RESET_ALL}")
+            return False
+        else:
+            print(f"\n{Fore.YELLOW}⚠️ 没有可监控的地址，请先添加钱包或重新扫描{Style.RESET_ALL}")
+            return False
+    
+    def handle_error(self, error: Exception, context: str = "", critical: bool = False) -> None:
+        """统一错误处理方法"""
+        try:
+            self.error_count += 1
+            error_msg = str(error)
+            error_type = type(error).__name__
+            
+            # 记录错误日志
+            self.logger.error(f"[{context}] {error_type}: {error_msg}")
+            
+            # 错误分类和处理
+            if any(keyword in error_msg.lower() for keyword in ['connection', 'timeout', 'network']):
+                # 网络相关错误 - 非关键
+                if not critical:
+                    print(f"{Fore.YELLOW}⚠️ 网络错误: {error_msg[:50]}...{Style.RESET_ALL}")
+            elif any(keyword in error_msg.lower() for keyword in ['rpc', 'json-rpc', 'web3']):
+                # RPC相关错误
+                print(f"{Fore.RED}🔗 RPC错误: {error_msg[:50]}...{Style.RESET_ALL}")
+            elif critical:
+                # 关键错误
+                print(f"{Fore.RED}❌ 严重错误 [{context}]: {error_msg}{Style.RESET_ALL}")
+                
+                # 发送Telegram通知
+                if self.telegram_enabled:
+                    notification = f"""
+🚨 *系统严重错误*
+
+📍 上下文: {context}
+❌ 错误类型: {error_type}
+📝 错误信息: {error_msg[:200]}
+🕒 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+📊 累计错误: {self.error_count}
+"""
+                    self.send_telegram_notification(notification)
+            else:
+                # 一般错误
+                print(f"{Fore.YELLOW}⚠️ 错误 [{context}]: {error_msg[:50]}...{Style.RESET_ALL}")
+            
+            # 错误计数管理
+            if self.error_count > self.max_errors and self.daemon_mode:
+                print(f"{Fore.RED}❌ 错误过多({self.error_count})，请求重启{Style.RESET_ALL}")
+                self.request_restart(f"累计错误过多: {self.error_count}")
+                
+        except Exception as e:
+            # 错误处理本身出错，使用最基本的记录
+            self.logger.critical(f"错误处理失败: {e}")
+            print(f"{Fore.RED}❌ 错误处理失败{Style.RESET_ALL}")
+    
+    def wait_for_double_enter(self) -> str:
+        """等待用户双击回车，返回输入内容（空字符串表示双击回车）"""
+        try:
+            first_input = self.safe_input()
+            if first_input == "":
+                # 第一次是回车，等待第二次
+                print(f"{Fore.YELLOW}再按一次回车确认开始监控...{Style.RESET_ALL}")
+                second_input = self.safe_input()
+                if second_input == "":
+                    return ""  # 双击回车
+                else:
+                    return second_input  # 第二次输入了内容
+            else:
+                return first_input  # 第一次就输入了内容
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}👋 操作已取消{Style.RESET_ALL}")
+            return "cancelled"
+        except Exception:
+            return "error"
 
     def menu_add_custom_token(self):
         """菜单：添加自定义代币"""
