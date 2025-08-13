@@ -843,13 +843,59 @@ class EVMMonitor:
         self.save_state()
         print(f"{Fore.GREEN}✅ 程序已安全退出{Style.RESET_ALL}")
 
+def run_daemon_mode(monitor, password):
+    """运行守护进程模式"""
+    try:
+        # 加载钱包和状态
+        if not monitor.load_wallets(password):
+            monitor.logger.error("加载钱包失败")
+            return False
+        
+        monitor.load_state()
+        monitor.logger.info(f"守护进程启动，已连接网络: {', '.join(monitor.web3_connections.keys())}")
+        
+        # 自动开始监控
+        if monitor.start_monitoring():
+            monitor.logger.info("监控已启动")
+            
+            # 保持程序运行
+            try:
+                while True:
+                    time.sleep(60)
+            except KeyboardInterrupt:
+                monitor.logger.info("收到停止信号")
+                monitor.stop_monitoring()
+                monitor.save_state()
+                return True
+        else:
+            monitor.logger.error("启动监控失败")
+            return False
+            
+    except Exception as e:
+        monitor.logger.error(f"守护进程错误: {e}")
+        return False
+
 def main():
     """主函数"""
     try:
+        # 解析命令行参数
+        import argparse
+        parser = argparse.ArgumentParser(description='EVM钱包监控软件')
+        parser.add_argument('--daemon', action='store_true', help='以守护进程模式运行')
+        parser.add_argument('--password', type=str, help='钱包密码（仅用于守护进程模式）')
+        args = parser.parse_args()
+        
         # 创建监控实例
         monitor = EVMMonitor()
         
-        # 密码验证
+        # 守护进程模式
+        if args.daemon:
+            if not args.password:
+                monitor.logger.error("守护进程模式需要提供密码参数")
+                return
+            return run_daemon_mode(monitor, args.password)
+        
+        # 交互模式
         while True:
             if os.path.exists(monitor.wallet_file):
                 password = input(f"{Fore.YELLOW}请输入钱包密码: {Style.RESET_ALL}")
