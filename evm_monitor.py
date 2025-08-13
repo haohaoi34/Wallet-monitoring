@@ -1737,9 +1737,19 @@ class EVMMonitor:
     def safe_input(self, prompt: str = "") -> str:
         """安全的输入函数，处理EOF错误"""
         try:
-            # 强制使用交互式模式
+            # 检查交互式环境
             import sys
-            if not sys.stdin.isatty():
+            import os
+            
+            # 更严格的交互式检测
+            is_interactive = (
+                sys.stdin.isatty() and 
+                sys.stdout.isatty() and 
+                os.isatty(0) and 
+                os.isatty(1)
+            )
+            
+            if not is_interactive:
                 # 非交互式环境，返回默认值
                 if "选项" in prompt or "选择" in prompt:
                     print(f"{Fore.YELLOW}⚠️  非交互式环境，自动退出{Style.RESET_ALL}")
@@ -1749,9 +1759,22 @@ class EVMMonitor:
                     return ""
             
             # 交互式环境，正常读取输入
-            return input(prompt)
+            try:
+                # 刷新输出缓冲区确保提示显示
+                sys.stdout.flush()
+                user_input = input(prompt)
+                return user_input
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}👋 用户中断{Style.RESET_ALL}")
+                return "0"
+                
         except EOFError:
             print(f"\n{Fore.YELLOW}⚠️  EOF错误，自动退出{Style.RESET_ALL}")
+            if "选项" in prompt or "选择" in prompt:
+                return "0"  # 退出菜单
+            return ""
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ 输入错误: {e}{Style.RESET_ALL}")
             if "选项" in prompt or "选择" in prompt:
                 return "0"  # 退出菜单
             return ""
