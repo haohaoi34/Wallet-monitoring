@@ -179,39 +179,18 @@ echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
 echo "=================================================="
 echo ""
 
-# 创建自动启动器
-cat > auto_start.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")"
-exec ./start.sh
-EOF
-chmod +x auto_start.sh
-
-# 尝试多种方式启动程序
-echo -e "${CYAN}正在启动程序...${NC}"
+# 安装完成提示
+echo -e "${CYAN}安装完成！请使用以下命令启动程序：${NC}"
 echo ""
-
-# 方法1: 尝试在新的终端会话中启动
-if command -v gnome-terminal >/dev/null 2>&1; then
-    gnome-terminal -- bash -c "cd '$PROJECT_DIR' && ./auto_start.sh; exec bash"
-    echo -e "${GREEN}✅ 程序已在新窗口中启动${NC}"
-elif command -v xterm >/dev/null 2>&1; then
-    xterm -e "cd '$PROJECT_DIR' && ./auto_start.sh; exec bash" &
-    echo -e "${GREEN}✅ 程序已在新窗口中启动${NC}"
-elif command -v tmux >/dev/null 2>&1; then
-    # 使用tmux创建新会话
-    tmux new-session -d -s evm-monitor "cd '$PROJECT_DIR' && ./auto_start.sh"
-    echo -e "${GREEN}✅ 程序已在tmux会话中启动${NC}"
-    echo -e "${YELLOW}使用以下命令查看: tmux attach -t evm-monitor${NC}"
-elif command -v screen >/dev/null 2>&1; then
-    # 使用screen创建新会话
-    screen -dmS evm-monitor bash -c "cd '$PROJECT_DIR' && ./auto_start.sh"
-    echo -e "${GREEN}✅ 程序已在screen会话中启动${NC}"
-    echo -e "${YELLOW}使用以下命令查看: screen -r evm-monitor${NC}"
-else
-    # 直接启动（可能会有输入问题）
-    echo -e "${YELLOW}正在直接启动程序...${NC}"
-    echo -e "${BLUE}如果遇到输入问题，请使用命令: cd $PROJECT_DIR && ./start.sh${NC}"
-    cd "$PROJECT_DIR"
-    exec ./start.sh
-fi
+echo -e "  ${YELLOW}cd $PROJECT_DIR && ./start.sh${NC}"
+echo ""
+echo -e "或者使用快捷命令：${NC}"
+echo -e "  ${YELLOW}source ~/.bashrc && evm-monitor${NC}"
+echo ""
+echo -e "${BLUE}程序特性：${NC}"
+echo -e "  🔑 支持批量粘贴私钥（双击回车确认）"
+echo -e "  🔄 自动去重钱包地址"
+echo -e "  💰 支持13个主流区块链网络"
+echo -e "  📊 实时监控和自动转账"
+echo -e "  📝 完整的操作日志"
+echo ""
