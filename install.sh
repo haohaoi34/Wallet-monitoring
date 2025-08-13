@@ -319,31 +319,30 @@ fi
 echo
 success "🎉 安装测试完成！正在自动启动程序..."
 
-# 给用户3秒时间看到完成信息
-echo -e "${YELLOW}⏰ 3秒后自动启动程序（按 Ctrl+C 可取消自动启动）...${NC}"
-sleep 1 && echo -n "3." && sleep 1 && echo -n "2." && sleep 1 && echo "1."
+# 简短倒计时
+echo -e "${YELLOW}⏰ 2秒后自动启动...${NC}"
+sleep 2
 
-echo
-echo -e "${GREEN}🚀 正在自动启动EVM钱包监控程序...${NC}"
-echo -e "${GREEN}=================================================${NC}"
-echo
+echo -e "${GREEN}🚀 正在启动EVM钱包监控程序...${NC}"
+echo "=================================================="
 
-# 确保在正确目录启动程序
-cd "$INSTALL_DIR" || {
-    error "无法切换到程序目录: $INSTALL_DIR"
-    exit 1
-}
+# 确保在正确目录
+cd "$INSTALL_DIR" || exit 1
 
-# 检查程序文件是否存在
-if [ ! -f "evm_monitor.py" ]; then
-    error "主程序文件不存在，请检查安装"
-    exit 1
-fi
+# 清除环境变量干扰
+unset PYTHONPATH 2>/dev/null || true
+export PYTHONIOENCODING=utf-8
 
-# 自动启动程序 - 使用exec替换当前进程
-echo -e "${CYAN}🎯 启动 EVM 钱包监控程序...${NC}"
-exec python3 evm_monitor.py
+# 创建Python启动器 - 最可靠的方法
+cat > "$INSTALL_DIR/launcher.py" << 'LAUNCHER_EOF'
+#!/usr/bin/env python3
+import os, sys
+os.chdir(os.path.expanduser("~/evm_monitor"))
+sys.path.insert(0, os.getcwd())
+print("🚀 启动 EVM 钱包监控程序...")
+print("=" * 50)
+exec(open('evm_monitor.py').read())
+LAUNCHER_EOF
 
-# 如果exec失败，下面的代码会执行
-error "程序启动失败，请手动运行："
-echo "cd $INSTALL_DIR && python3 evm_monitor.py"
+# 终极启动 - 替换当前shell进程
+exec python3 launcher.py
