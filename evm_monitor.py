@@ -36,11 +36,11 @@ class EVMMonitor:
         # 配置
         self.ALCHEMY_API_KEY = "S0hs4qoXIR1SMD8P7I6Wt"
         
-        # 支持的全链网络配置（Alchemy支持的所有EVM链）
+        # 支持的全链网络配置（Alchemy支持的所有EVM兼容链）
         self.networks = {
-            # Ethereum主网和测试网
+            # ==== 🌐 Layer 1 主网 ====
             'ethereum': {
-                'name': 'Ethereum Mainnet',
+                'name': '🔷 Ethereum Mainnet',
                 'chain_id': 1,
                 'rpc_urls': [
                     f'https://eth-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
@@ -51,193 +51,24 @@ class EVMMonitor:
                 'explorer': 'https://etherscan.io'
             },
             
-            'ethereum_sepolia': {
-                'name': 'Ethereum Sepolia',
-                'chain_id': 11155111,
+            'bsc': {
+                'name': '🟡 BNB Smart Chain',
+                'chain_id': 56,
                 'rpc_urls': [
-                    f'https://eth-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161'
+                    'https://bsc-dataseed1.binance.org',
+                    'https://bsc.publicnode.com',
+                    'https://rpc.ankr.com/bsc'
                 ],
-                'native_currency': 'ETH',
-                'explorer': 'https://sepolia.etherscan.io'
+                'native_currency': 'BNB',
+                'explorer': 'https://bscscan.com'
             },
             
-            # Polygon网络
-            'polygon': {
-                'name': 'Polygon Mainnet',
-                'chain_id': 137,
-                'rpc_urls': [
-                    f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://polygon.publicnode.com',
-                    'https://rpc.ankr.com/polygon'
-                ],
-                'native_currency': 'MATIC',
-                'explorer': 'https://polygonscan.com'
-            },
-            
-            'polygon_amoy': {
-                'name': 'Polygon Amoy',
-                'chain_id': 80002,
-                'rpc_urls': [
-                    f'https://polygon-amoy.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://rpc-amoy.polygon.technology'
-                ],
-                'native_currency': 'MATIC',
-                'explorer': 'https://amoy.polygonscan.com'
-            },
-            
-            # Arbitrum网络
-            'arbitrum': {
-                'name': 'Arbitrum One',
-                'chain_id': 42161,
-                'rpc_urls': [
-                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://arbitrum.publicnode.com',
-                    'https://rpc.ankr.com/arbitrum'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://arbiscan.io'
-            },
-            
-            'arbitrum_sepolia': {
-                'name': 'Arbitrum Sepolia',
-                'chain_id': 421614,
-                'rpc_urls': [
-                    f'https://arb-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia-rollup.arbitrum.io/rpc'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://sepolia.arbiscan.io'
-            },
-            
-            # Optimism网络
-            'optimism': {
-                'name': 'Optimism Mainnet',
-                'chain_id': 10,
-                'rpc_urls': [
-                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://optimism.publicnode.com',
-                    'https://rpc.ankr.com/optimism'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://optimistic.etherscan.io'
-            },
-            
-            'optimism_sepolia': {
-                'name': 'Optimism Sepolia',
-                'chain_id': 11155420,
-                'rpc_urls': [
-                    f'https://opt-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia.optimism.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://sepolia-optimistic.etherscan.io'
-            },
-            
-            # Base网络
-            'base': {
-                'name': 'Base Mainnet',
-                'chain_id': 8453,
-                'rpc_urls': [
-                    f'https://base-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://base.publicnode.com',
-                    'https://rpc.ankr.com/base'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://basescan.org'
-            },
-            
-            'base_sepolia': {
-                'name': 'Base Sepolia',
-                'chain_id': 84532,
-                'rpc_urls': [
-                    f'https://base-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia.base.org'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://sepolia.basescan.org'
-            },
-            
-
-            
-            # Blast网络
-            'blast': {
-                'name': 'Blast Mainnet',
-                'chain_id': 81457,
-                'rpc_urls': [
-                    f'https://blast-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://rpc.blast.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://blastscan.io'
-            },
-            
-            'blast_sepolia': {
-                'name': 'Blast Sepolia',
-                'chain_id': 168587773,
-                'rpc_urls': [
-                    f'https://blast-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia.blast.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://testnet.blastscan.io'
-            },
-            
-            # Frax网络
-            'frax': {
-                'name': 'Frax Mainnet',
-                'chain_id': 252,
-                'rpc_urls': [
-                    f'https://frax-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://rpc.frax.com'
-                ],
-                'native_currency': 'FRAX',
-                'explorer': 'https://fraxscan.com'
-            },
-            
-            # zkSync网络
-            'zksync': {
-                'name': 'zkSync Era',
-                'chain_id': 324,
-                'rpc_urls': [
-                    f'https://zksync-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://mainnet.era.zksync.io'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://explorer.zksync.io'
-            },
-            
-            'zksync_sepolia': {
-                'name': 'zkSync Sepolia',
-                'chain_id': 300,
-                'rpc_urls': [
-                    f'https://zksync-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://sepolia.era.zksync.dev'
-                ],
-                'native_currency': 'ETH',
-                'explorer': 'https://sepolia.explorer.zksync.io'
-            },
-            
-
-            
-            # Astar网络
-            'astar': {
-                'name': 'Astar Network',
-                'chain_id': 592,
-                'rpc_urls': [
-                    f'https://astar-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    'https://evm.astar.network'
-                ],
-                'native_currency': 'ASTR',
-                'explorer': 'https://astar.subscan.io'
-            },
-            
-            # 其他主流EVM链
             'avalanche': {
-                'name': 'Avalanche C-Chain',
+                'name': '🏔️ Avalanche C-Chain',
                 'chain_id': 43114,
                 'rpc_urls': [
                     'https://api.avax.network/ext/bc/C/rpc',
+                    'https://avalanche.public-rpc.com',
                     'https://rpc.ankr.com/avalanche'
                 ],
                 'native_currency': 'AVAX',
@@ -245,44 +76,58 @@ class EVMMonitor:
             },
             
             'fantom': {
-                'name': 'Fantom Opera',
+                'name': '👻 Fantom Opera',
                 'chain_id': 250,
                 'rpc_urls': [
                     'https://rpc.ftm.tools',
+                    'https://fantom.publicnode.com',
                     'https://rpc.ankr.com/fantom'
                 ],
                 'native_currency': 'FTM',
                 'explorer': 'https://ftmscan.com'
             },
             
-            'bsc': {
-                'name': 'BNB Smart Chain',
-                'chain_id': 56,
-                'rpc_urls': [
-                    'https://bsc-dataseed1.binance.org',
-                    'https://bsc.publicnode.com'
-                ],
-                'native_currency': 'BNB',
-                'explorer': 'https://bscscan.com'
-            },
-            
             'cronos': {
-                'name': 'Cronos',
+                'name': '🦀 Cronos',
                 'chain_id': 25,
                 'rpc_urls': [
                     'https://evm.cronos.org',
-                    'https://cronos.publicnode.com'
+                    'https://cronos.publicnode.com',
+                    'https://rpc.ankr.com/cronos'
                 ],
                 'native_currency': 'CRO',
                 'explorer': 'https://cronoscan.com'
             },
             
+            'solana': {
+                'name': '☀️ Solana',
+                'chain_id': 792703809,
+                'rpc_urls': [
+                    f'https://solana-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://api.mainnet-beta.solana.com'
+                ],
+                'native_currency': 'SOL',
+                'explorer': 'https://explorer.solana.com'
+            },
+            
+            'aptos': {
+                'name': '🍎 Aptos',
+                'chain_id': 1,
+                'rpc_urls': [
+                    f'https://aptos-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://fullnode.mainnet.aptoslabs.com/v1'
+                ],
+                'native_currency': 'APT',
+                'explorer': 'https://explorer.aptoslabs.com'
+            },
+            
             'gnosis': {
-                'name': 'Gnosis Chain',
+                'name': '🦉 Gnosis Chain',
                 'chain_id': 100,
                 'rpc_urls': [
                     'https://rpc.gnosischain.com',
-                    'https://gnosis.publicnode.com'
+                    'https://gnosis.publicnode.com',
+                    'https://rpc.ankr.com/gnosis'
                 ],
                 'native_currency': 'xDAI',
                 'explorer': 'https://gnosisscan.io'
@@ -293,10 +138,25 @@ class EVMMonitor:
                 'chain_id': 42220,
                 'rpc_urls': [
                     'https://forno.celo.org',
-                    'https://celo.publicnode.com'
+                    'https://celo.publicnode.com',
+                    'https://rpc.ankr.com/celo',
+                    'https://celo.llamarpc.com'
                 ],
                 'native_currency': 'CELO',
                 'explorer': 'https://celoscan.io'
+            },
+            
+            'harmony': {
+                'name': 'Harmony',
+                'chain_id': 1666600000,
+                'rpc_urls': [
+                    'https://api.harmony.one',
+                    'https://harmony.publicnode.com',
+                    'https://rpc.ankr.com/harmony',
+                    'https://harmony.llamarpc.com'
+                ],
+                'native_currency': 'ONE',
+                'explorer': 'https://explorer.harmony.one'
             },
             
             'moonbeam': {
@@ -304,10 +164,38 @@ class EVMMonitor:
                 'chain_id': 1284,
                 'rpc_urls': [
                     'https://rpc.api.moonbeam.network',
-                    'https://moonbeam.publicnode.com'
+                    'https://moonbeam.publicnode.com',
+                    'https://rpc.ankr.com/moonbeam',
+                    'https://moonbeam.llamarpc.com'
                 ],
                 'native_currency': 'GLMR',
                 'explorer': 'https://moonscan.io'
+            },
+            
+            'moonriver': {
+                'name': 'Moonriver',
+                'chain_id': 1285,
+                'rpc_urls': [
+                    'https://rpc.api.moonriver.moonbeam.network',
+                    'https://moonriver.publicnode.com',
+                    'https://rpc.ankr.com/moonriver',
+                    'https://moonriver.llamarpc.com'
+                ],
+                'native_currency': 'MOVR',
+                'explorer': 'https://moonriver.moonscan.io'
+            },
+            
+            'klaytn': {
+                'name': 'Klaytn',
+                'chain_id': 8217,
+                'rpc_urls': [
+                    'https://public-node-api.klaytnapi.com/v1/cypress',
+                    'https://klaytn.publicnode.com',
+                    'https://rpc.ankr.com/klaytn',
+                    'https://klaytn.llamarpc.com'
+                ],
+                'native_currency': 'KLAY',
+                'explorer': 'https://scope.klaytn.com'
             },
             
             'aurora': {
@@ -315,16 +203,393 @@ class EVMMonitor:
                 'chain_id': 1313161554,
                 'rpc_urls': [
                     'https://mainnet.aurora.dev',
-                    'https://aurora.publicnode.com'
+                    'https://aurora.publicnode.com',
+                    'https://rpc.ankr.com/aurora',
+                    'https://aurora.llamarpc.com'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://aurorascan.dev'
+            },
+            
+            'okx': {
+                'name': 'OKX Chain',
+                'chain_id': 66,
+                'rpc_urls': [
+                    'https://exchainrpc.okex.org',
+                    'https://okx.publicnode.com',
+                    'https://rpc.ankr.com/okx',
+                    'https://okx.llamarpc.com'
+                ],
+                'native_currency': 'OKT',
+                'explorer': 'https://www.oklink.com/okc'
+            },
+            
+            'heco': {
+                'name': 'Huobi ECO Chain',
+                'chain_id': 128,
+                'rpc_urls': [
+                    'https://http-mainnet.hecochain.com',
+                    'https://heco.publicnode.com',
+                    'https://rpc.ankr.com/heco',
+                    'https://heco.llamarpc.com'
+                ],
+                'native_currency': 'HT',
+                'explorer': 'https://hecoinfo.com'
+            },
+            
+            'metis': {
+                'name': 'Metis Andromeda',
+                'chain_id': 1088,
+                'rpc_urls': [
+                    'https://andromeda.metis.io/?owner=1088',
+                    'https://metis.publicnode.com',
+                    'https://rpc.ankr.com/metis',
+                    'https://metis.llamarpc.com'
+                ],
+                'native_currency': 'METIS',
+                'explorer': 'https://andromeda-explorer.metis.io'
+            },
+            
+            'evmos': {
+                'name': 'Evmos',
+                'chain_id': 9001,
+                'rpc_urls': [
+                    'https://evmos-evm.publicnode.com',
+                    'https://evmos.lava.build',
+                    'https://rpc.ankr.com/evmos',
+                    'https://evmos.llamarpc.com'
+                ],
+                'native_currency': 'EVMOS',
+                'explorer': 'https://escan.live'
+            },
+            
+            'kava': {
+                'name': 'Kava EVM',
+                'chain_id': 2222,
+                'rpc_urls': [
+                    'https://evm.kava.io',
+                    'https://kava.publicnode.com',
+                    'https://rpc.ankr.com/kava',
+                    'https://kava.llamarpc.com'
+                ],
+                'native_currency': 'KAVA',
+                'explorer': 'https://explorer.kava.io'
+            },
+            
+            'telos': {
+                'name': 'Telos EVM',
+                'chain_id': 40,
+                'rpc_urls': [
+                    'https://mainnet.telos.net/evm',
+                    'https://telos.publicnode.com',
+                    'https://rpc.ankr.com/telos',
+                    'https://telos.llamarpc.com'
+                ],
+                'native_currency': 'TLOS',
+                'explorer': 'https://teloscan.io'
+            },
+            
+            'astar': {
+                'name': 'Astar',
+                'chain_id': 592,
+                'rpc_urls': [
+                    'https://evm.astar.network',
+                    'https://astar.publicnode.com',
+                    'https://rpc.ankr.com/astar',
+                    'https://astar.llamarpc.com'
+                ],
+                'native_currency': 'ASTR',
+                'explorer': 'https://blockscout.com/astar'
+            },
+            
+            'shiden': {
+                'name': 'Shiden',
+                'chain_id': 336,
+                'rpc_urls': [
+                    'https://shiden.public.blastapi.io',
+                    'https://shiden.publicnode.com',
+                    'https://rpc.ankr.com/shiden',
+                    'https://shiden.llamarpc.com'
+                ],
+                'native_currency': 'SDN',
+                'explorer': 'https://blockscout.com/shiden'
+            },
+            
+            'boba': {
+                'name': 'Boba Network',
+                'chain_id': 288,
+                'rpc_urls': [
+                    'https://mainnet.boba.network',
+                    'https://boba.publicnode.com',
+                    'https://rpc.ankr.com/boba',
+                    'https://boba.llamarpc.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://bobascan.com'
+            },
+            
+            'fuse': {
+                'name': 'Fuse',
+                'chain_id': 122,
+                'rpc_urls': [
+                    'https://rpc.fuse.io',
+                    'https://fuse.publicnode.com',
+                    'https://rpc.ankr.com/fuse',
+                    'https://fuse.llamarpc.com'
+                ],
+                'native_currency': 'FUSE',
+                'explorer': 'https://explorer.fuse.io'
+            },
+            
+            # ==== 🌈 Layer 2 网络 ====
+            'polygon': {
+                'name': '🟣 Polygon PoS',
+                'chain_id': 137,
+                'rpc_urls': [
+                    f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://polygon.llamarpc.com',
+                    'https://polygon.publicnode.com'
+                ],
+                'native_currency': 'MATIC',
+                'explorer': 'https://polygonscan.com'
+            },
+            
+            'polygon_zkevm': {
+                'name': '🟣 Polygon zkEVM',
+                'chain_id': 1101,
+                'rpc_urls': [
+                    f'https://polygonzkevm-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://zkevm-rpc.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://zkevm.polygonscan.com'
+            },
+            
+            'arbitrum': {
+                'name': '🟦 Arbitrum One',
+                'chain_id': 42161,
+                'rpc_urls': [
+                    f'https://arb-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://arbitrum.llamarpc.com',
+                    'https://arbitrum.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://arbiscan.io'
+            },
+            
+            'arbitrum_nova': {
+                'name': '🟦 Arbitrum Nova',
+                'chain_id': 42170,
+                'rpc_urls': [
+                    f'https://arbnova-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://nova.arbitrum.io/rpc'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://nova.arbiscan.io'
+            },
+            
+            'optimism': {
+                'name': '🔴 Optimism',
+                'chain_id': 10,
+                'rpc_urls': [
+                    f'https://opt-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://optimism.llamarpc.com',
+                    'https://optimism.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://optimistic.etherscan.io'
+            },
+            
+            'base': {
+                'name': '🟦 Base',
+                'chain_id': 8453,
+                'rpc_urls': [
+                    f'https://base-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://base.llamarpc.com',
+                    'https://base.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://basescan.org'
+            },
+            
+            'zksync': {
+                'name': '⚡ zkSync Era',
+                'chain_id': 324,
+                'rpc_urls': [
+                    f'https://zksync-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://mainnet.era.zksync.io',
+                    'https://zksync.llamarpc.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://explorer.zksync.io'
+            },
+            
+            'linea': {
+                'name': '🟢 Linea',
+                'chain_id': 59144,
+                'rpc_urls': [
+                    'https://linea.drpc.org',
+                    'https://linea.llamarpc.com',
+                    'https://linea.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://lineascan.build'
+            },
+            
+            'mantle': {
+                'name': '🧥 Mantle',
+                'chain_id': 5000,
+                'rpc_urls': [
+                    'https://rpc.mantle.xyz',
+                    'https://mantle.llamarpc.com',
+                    'https://mantle.publicnode.com'
+                ],
+                'native_currency': 'MNT',
+                'explorer': 'https://explorer.mantle.xyz'
+            },
+            
+            'scroll': {
+                'name': '📜 Scroll',
+                'chain_id': 534352,
+                'rpc_urls': [
+                    'https://rpc.scroll.io',
+                    'https://scroll.llamarpc.com',
+                    'https://scroll.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://scrollscan.com'
+            },
+            
+            'manta': {
+                'name': '🦈 Manta Pacific',
+                'chain_id': 169,
+                'rpc_urls': [
+                    'https://pacific.manta.network/http',
+                    'https://manta.llamarpc.com',
+                    'https://manta.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://pacific-explorer.manta.network'
+            },
+            
+            'blast': {
+                'name': '💥 Blast',
+                'chain_id': 81457,
+                'rpc_urls': [
+                    f'https://blast-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc.blast.io',
+                    'https://blast.llamarpc.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://blastscan.io'
+            },
+            
+            # ==== 🧪 测试网络 ====
+            'ethereum_sepolia': {
+                'name': '🧪 Ethereum Sepolia',
+                'chain_id': 11155111,
+                'rpc_urls': [
+                    f'https://eth-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc.sepolia.org',
+                    'https://sepolia.publicnode.com'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.etherscan.io'
+            },
+            
+            'ethereum_holesky': {
+                'name': '🧪 Ethereum Holesky',
+                'chain_id': 17000,
+                'rpc_urls': [
+                    f'https://eth-holesky.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://holesky.drpc.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://holesky.etherscan.io'
+            },
+            
+            'polygon_amoy': {
+                'name': '🧪 Polygon Amoy',
+                'chain_id': 80002,
+                'rpc_urls': [
+                    f'https://polygon-amoy.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc-amoy.polygon.technology'
+                ],
+                'native_currency': 'MATIC',
+                'explorer': 'https://amoy.polygonscan.com'
+            },
+            
+            'arbitrum_sepolia': {
+                'name': '🧪 Arbitrum Sepolia',
+                'chain_id': 421614,
+                'rpc_urls': [
+                    f'https://arb-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia-rollup.arbitrum.io/rpc'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.arbiscan.io'
+            },
+            
+            'optimism_sepolia': {
+                'name': '🧪 Optimism Sepolia',
+                'chain_id': 11155420,
+                'rpc_urls': [
+                    f'https://opt-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.optimism.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia-optimistic.etherscan.io'
+            },
+            
+            'base_sepolia': {
+                'name': '🧪 Base Sepolia',
+                'chain_id': 84532,
+                'rpc_urls': [
+                    f'https://base-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.base.org'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.basescan.org'
+            },
+            
+            'blast_sepolia': {
+                'name': '🧪 Blast Sepolia',
+                'chain_id': 168587773,
+                'rpc_urls': [
+                    f'https://blast-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.blast.io'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://testnet.blastscan.io'
+            },
+            
+            'zksync_sepolia': {
+                'name': '🧪 zkSync Sepolia',
+                'chain_id': 300,
+                'rpc_urls': [
+                    f'https://zksync-sepolia.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://sepolia.era.zksync.dev'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://sepolia.explorer.zksync.io'
+            },
+            
+            'polygon_zkevm_testnet': {
+                'name': '🧪 Polygon zkEVM Testnet',
+                'chain_id': 1442,
+                'rpc_urls': [
+                    f'https://polygonzkevm-testnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    'https://rpc.public.zkevm-test.net'
+                ],
+                'native_currency': 'ETH',
+                'explorer': 'https://testnet-zkevm.polygonscan.com'
             }
+
         }
         
         # 状态变量
         self.wallets: Dict[str, str] = {}  # address -> private_key
-        self.target_wallet = "0x6b219df8c31c6b39a1a9b88446e0199be8f63cf1"  # 默认目标钱包
+        self.target_wallet = ""  # 固定目标账户
         self.monitored_addresses: Dict[str, Dict] = {}  # address -> {networks: [...], last_check: timestamp}
         self.monitoring = False
         self.monitor_thread = None
@@ -638,14 +903,14 @@ class EVMMonitor:
                         if balance > self.min_transfer_amount:
                             print(f"\n{Fore.YELLOW}💰 发现余额: {balance:.6f} {currency} in {address[:10]}... on {self.networks[network]['name']}{Style.RESET_ALL}")
                             
-                            # 只有设置了目标钱包才执行转账
+                            # 转账到固定目标账户
                             if self.target_wallet:
                                 if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
                                     # 更新最后检查时间
                                     address_info['last_check'] = time.time()
                                     self.save_state()
                             else:
-                                print(f"{Fore.CYAN}💡 未设置目标钱包，跳过转账{Style.RESET_ALL}")
+                                print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
                         else:
                             # 显示余额状态
                             if balance > 0:
@@ -675,10 +940,9 @@ class EVMMonitor:
             print(f"{Fore.YELLOW}⚠️ 监控已在运行中{Style.RESET_ALL}")
             return False
         
-        # 如果没有设置目标钱包，提示设置
         if not self.target_wallet:
-            print(f"{Fore.YELLOW}⚠️ 未设置目标钱包地址，转账功能将暂停{Style.RESET_ALL}")
-            print(f"{Fore.CYAN}💡 请在菜单中设置目标钱包地址后重新开始监控{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}⚠️ 未设置目标账户，请先设置目标账户{Style.RESET_ALL}")
+            return False
         
         # 扫描地址
         self.scan_addresses()
@@ -748,9 +1012,9 @@ class EVMMonitor:
             print(f"   网络连接: {Fore.YELLOW}{len(self.web3_connections)}{Style.RESET_ALL} 个")
             
             if self.target_wallet:
-                print(f"   目标钱包: {Fore.GREEN}{self.target_wallet[:10]}...{self.target_wallet[-10:]}{Style.RESET_ALL}")
+                print(f"   🎯 目标账户: {Fore.GREEN}{self.target_wallet[:10]}...{self.target_wallet[-8:]}{Style.RESET_ALL}")
             else:
-                print(f"   目标钱包: {Fore.RED}未设置{Style.RESET_ALL}")
+                print(f"   🎯 目标账户: {Fore.RED}未设置{Style.RESET_ALL}")
             
             print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 主要功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
             
@@ -765,10 +1029,10 @@ class EVMMonitor:
             else:
                 print(f"{Fore.YELLOW}3.{Style.RESET_ALL} ⏸️  停止监控")
             
-            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标钱包")
+            print(f"{Fore.GREEN}4.{Style.RESET_ALL} 🎯 设置目标账户")
             print(f"{Fore.GREEN}5.{Style.RESET_ALL} 📁 从文件导入")
             
-            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 高级功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}━━━━━━━━━━━━━━ 🔧 高级功能 ━━━━━━━━━━━━━━{Style.RESET_ALL}")
             print(f"{Fore.GREEN}6.{Style.RESET_ALL} 📊 监控状态详情")
             print(f"{Fore.GREEN}7.{Style.RESET_ALL} ⚙️  监控参数设置")
             print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
@@ -814,10 +1078,10 @@ class EVMMonitor:
 
     def menu_add_private_key(self):
         """菜单：添加私钥"""
-        print(f"\n{Fore.CYAN}📝 添加钱包私钥{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}支持单个私钥或批量粘贴多个私钥（每行一个）{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}输入完成后双击回车确认{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}请输入私钥:${Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}✨ ====== 🔑 添加钱包私钥 🔑 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.YELLOW}{Fore.BLACK} 📝 支持单个私钥或批量粘贴多个私钥（每行一个） {Style.RESET_ALL}")
+        print(f"{Back.GREEN}{Fore.BLACK} ✨ 输入完成后双击回车确认 ✨ {Style.RESET_ALL}")
+        print(f"\n{Fore.GREEN}🔍 请输入私钥：{Style.RESET_ALL}")
         
         lines = []
         empty_line_count = 0
@@ -841,137 +1105,235 @@ class EVMMonitor:
                 if self.add_private_key(private_key):
                     success_count += 1
             
-            print(f"\n{Fore.GREEN}✅ 批量导入完成: 成功添加 {success_count}/{len(lines)} 个钱包{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}🎉 批量导入完成：成功添加 {success_count}/{len(lines)} 个钱包！{Style.RESET_ALL}")
             if success_count > 0:
-                print(f"{Fore.CYAN}💡 已自动去重，跳过 {len(lines) - success_count} 个重复地址{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}✨ 已自动去重，跳过 {len(lines) - success_count} 个重复地址{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}⚠️  未成功添加任何新钱包（可能都是重复或无效的）{Style.RESET_ALL}")
         else:
-            print(f"{Fore.YELLOW}⚠️ 未输入任何私钥{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}⚠️  未输入任何私钥{Style.RESET_ALL}")
         
-        input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_show_addresses(self):
         """菜单：显示地址"""
-        print(f"\n{Fore.CYAN}📋 当前钱包地址列表{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}✨ ====== 📋 钱包地址列表 📋 ====== ✨{Style.RESET_ALL}")
+        
         if not self.wallets:
-            print(f"{Fore.YELLOW}⚠️ 暂无钱包地址{Style.RESET_ALL}")
-            return
+            print(f"\n{Fore.YELLOW}😭 暂无钱包地址，请先添加钱包{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}💡 提示：使用菜单选项 1 添加私钥{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.GREEN}💼 共有 {len(self.wallets)} 个钱包地址：{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+            
+            for i, address in enumerate(self.wallets.keys(), 1):
+                status = f"{Fore.GREEN}🟢 监控中{Style.RESET_ALL}" if address in self.monitored_addresses else f"{Fore.RED}🔴 未监控{Style.RESET_ALL}"
+                
+                # 显示缩短的地址
+                short_address = f"{address[:8]}...{address[-6:]}"
+                print(f"{Fore.YELLOW}{i:2d}.{Style.RESET_ALL} {Fore.WHITE}{short_address}{Style.RESET_ALL} {status}")
+                
+                # 每5个地址显示一次分割线
+                if i % 5 == 0 and i < len(self.wallets):
+                    print(f"{Fore.CYAN}─" * 40 + f"{Style.RESET_ALL}")
         
-        for i, address in enumerate(self.wallets.keys(), 1):
-            status = "🟢 监控中" if address in self.monitored_addresses else "🔴 未监控"
-            print(f"{i:3d}. {address} {status}")
-        
-        input(f"\n{Fore.YELLOW}按回车键返回主菜单...{Style.RESET_ALL}")
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_start_monitoring(self):
         """菜单：开始监控"""
-        print(f"\n{Fore.CYAN}🚀 开始监控{Style.RESET_ALL}")
-        self.start_monitoring()
+        print(f"\n{Fore.CYAN}✨ ====== 🚀 开始监控 🚀 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.GREEN}{Fore.BLACK} 🔍 正在检查系统状态... {Style.RESET_ALL}")
+        
+        if self.start_monitoring():
+            print(f"\n{Fore.GREEN}🎉 监控已成功启动！{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🔄 系统将自动监控所有钱包余额并转账到目标账户{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.RED}❌ 监控启动失败！{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_stop_monitoring(self):
         """菜单：停止监控"""
-        print(f"\n{Fore.CYAN}⏹️ 停止监控{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}✨ ====== ⏹️ 停止监控 ⏹️ ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.RED}{Fore.WHITE} ⚠️ 正在安全停止监控系统... {Style.RESET_ALL}")
+        
         self.stop_monitoring()
+        print(f"\n{Fore.GREEN}✅ 监控已安全停止{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💾 所有数据已保存{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+
+
 
     def menu_set_target_wallet(self):
-        """菜单：设置目标钱包"""
-        print(f"\n{Fore.CYAN}🎯 设置目标钱包地址{Style.RESET_ALL}")
-        if self.target_wallet:
-            print(f"当前目标钱包: {self.target_wallet}")
+        """菜单：设置目标账户"""
+        print(f"\n{Fore.CYAN}✨ ====== 🎯 设置目标账户 🎯 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 📝 提示：所有监控到的余额将自动转账到这个地址 {Style.RESET_ALL}")
         
-        new_address = input("请输入新的目标钱包地址: ").strip()
+        if self.target_wallet:
+            print(f"\n💼 当前目标账户: {Fore.GREEN}{self.target_wallet}{Style.RESET_ALL}")
+        else:
+            print(f"\n⚠️  当前状态: {Fore.RED}未设置目标账户{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}🔍 请输入新的目标钱包地址：{Style.RESET_ALL}")
+        new_address = input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
+        
         if new_address:
             if new_address.startswith('0x') and len(new_address) == 42:
                 self.target_wallet = new_address
-                print(f"{Fore.GREEN}✅ 目标钱包地址已设置{Style.RESET_ALL}")
+                self.save_wallets()  # 保存更新
+                print(f"\n{Fore.GREEN}✅ 成功！目标账户已设置为: {new_address}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}🚀 现在就可以开始监控转账了！{Style.RESET_ALL}")
             else:
-                print(f"{Fore.RED}❌ 无效的钱包地址格式{Style.RESET_ALL}")
-
+                print(f"\n{Fore.RED}❌ 错误！无效的钱包地址格式{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}📝 正确格式示例: 0x1234567890abcdef1234567890abcdef12345678{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}⚠️  取消设置{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+    
     def menu_import_keys(self):
         """菜单：批量导入私钥"""
-        print(f"\n{Fore.CYAN}📁 批量导入私钥{Style.RESET_ALL}")
-        file_path = input("请输入私钥文件路径: ").strip()
+        print(f"\n{Fore.CYAN}✨ ====== 📁 批量导入私钥 📁 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.GREEN}{Fore.BLACK} 📝 支持的文件格式：每行一个私钥 (.txt文件) {Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📂 请输入私钥文件路径：{Style.RESET_ALL}")
+        file_path = input(f"{Fore.CYAN}➜ {Style.RESET_ALL}").strip()
+        
         if file_path and os.path.exists(file_path):
-            self.import_private_keys_from_file(file_path)
+            print(f"\n{Fore.BLUE}🔄 正在导入私钥...{Style.RESET_ALL}")
+            count = self.import_private_keys_from_file(file_path)
+            if count > 0:
+                print(f"\n{Fore.GREEN}🎉 导入成功！共添加 {count} 个钱包{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}⚠️  未成功导入任何钱包{Style.RESET_ALL}")
         else:
-            print(f"{Fore.RED}❌ 文件不存在{Style.RESET_ALL}")
+            print(f"\n{Fore.RED}❌ 错误！文件不存在 或 路径无效{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_show_status(self):
         """菜单：显示监控状态"""
-        print(f"\n{Fore.CYAN}📊 监控状态详情{Style.RESET_ALL}")
-        print(f"总钱包数量: {len(self.wallets)}")
-        print(f"监控地址数量: {len(self.monitored_addresses)}")
-        print(f"监控状态: {'运行中' if self.monitoring else '已停止'}")
-        print(f"目标钱包: {self.target_wallet}")
-        print(f"监控间隔: {self.monitor_interval} 秒")
-        print(f"最小转账金额: {self.min_transfer_amount} ETH")
+        print(f"\n{Fore.CYAN}✨ ====== 📊 系统状态详情 📊 ====== ✨{Style.RESET_ALL}")
+        
+        # 基本信息
+        print(f"\n{Fore.YELLOW}💼 基本信息：{Style.RESET_ALL}")
+        print(f"  🔑 总钱包数量: {Fore.GREEN}{len(self.wallets)}{Style.RESET_ALL} 个")
+        print(f"  🔍 监控地址: {Fore.GREEN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
+        print(f"  🌐 网络连接: {Fore.GREEN}{len(self.web3_connections)}{Style.RESET_ALL} 个")
+        
+        # 监控状态
+        status_color = Fore.GREEN if self.monitoring else Fore.RED
+        status_icon = "🟢" if self.monitoring else "🔴"
+        status_text = "运行中" if self.monitoring else "已停止"
+        print(f"\n{Fore.YELLOW}🔄 监控状态：{Style.RESET_ALL}")
+        print(f"  {status_icon} 状态: {status_color}{status_text}{Style.RESET_ALL}")
+        
+        # 转账配置
+        print(f"\n{Fore.YELLOW}💸 转账配置：{Style.RESET_ALL}")
+        if self.target_wallet:
+            print(f"  🎯 目标账户: {Fore.GREEN}{self.target_wallet[:10]}...{self.target_wallet[-8:]}{Style.RESET_ALL}")
+        else:
+            print(f"  🎯 目标账户: {Fore.RED}未设置{Style.RESET_ALL}")
+        print(f"  ⏱️ 监控间隔: {Fore.GREEN}{self.monitor_interval}{Style.RESET_ALL} 秒")
+        print(f"  💰 最小转账: {Fore.GREEN}{self.min_transfer_amount}{Style.RESET_ALL} ETH")
         
         if self.monitored_addresses:
             print(f"\n{Fore.YELLOW}监控地址详情:{Style.RESET_ALL}")
             for addr, info in self.monitored_addresses.items():
                 networks = ', '.join(info['networks'])
                 last_check = datetime.fromtimestamp(info['last_check']).strftime('%Y-%m-%d %H:%M:%S')
-                print(f"  {addr[:10]}... | 网络: {networks} | 最后检查: {last_check}")
+                print(f"  💵 {addr[:8]}...{addr[-6:]} | 🌐 {networks} | 🕒 {last_check}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_settings(self):
         """菜单：设置监控参数"""
-        print(f"\n{Fore.CYAN}⚙️ 监控参数设置{Style.RESET_ALL}")
-        print(f"1. 监控间隔: {self.monitor_interval} 秒")
-        print(f"2. 最小转账金额: {self.min_transfer_amount} ETH")
-        print(f"3. Gas价格: {self.gas_price_gwei} Gwei")
+        print(f"\n{Fore.CYAN}✨ ====== ⚙️ 监控参数设置 ⚙️ ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 📝 当前配置参数如下，可按需要修改 {Style.RESET_ALL}")
         
-        choice = input("请选择要修改的参数 (1-3): ").strip()
+        print(f"\n{Fore.YELLOW}🔧 可修改的参数：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} ⏱️ 监控间隔: {Fore.CYAN}{self.monitor_interval}{Style.RESET_ALL} 秒")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 💰 最小转账金额: {Fore.CYAN}{self.min_transfer_amount}{Style.RESET_ALL} ETH")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⛽ Gas价格: {Fore.CYAN}{self.gas_price_gwei}{Style.RESET_ALL} Gwei")
+        
+        choice = input(f"\n{Fore.YELLOW}🔢 请选择要修改的参数 (1-3): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
-                new_interval = int(input("请输入新的监控间隔（秒）: "))
+                new_interval = int(input(f"{Fore.CYAN}⏱️ 请输入新的监控间隔（秒）: {Style.RESET_ALL}"))
                 if new_interval > 0:
                     self.monitor_interval = new_interval
-                    print(f"{Fore.GREEN}✅ 监控间隔已设置为 {new_interval} 秒{Style.RESET_ALL}")
+                    print(f"\n{Fore.GREEN}✅ 成功！监控间隔已设置为 {new_interval} 秒{Style.RESET_ALL}")
+                else:
+                    print(f"\n{Fore.RED}❌ 错误！间隔必须大于0{Style.RESET_ALL}")
             elif choice == '2':
-                new_amount = float(input("请输入新的最小转账金额（ETH）: "))
+                new_amount = float(input(f"{Fore.CYAN}💰 请输入新的最小转账金额（ETH）: {Style.RESET_ALL}"))
                 if new_amount > 0:
                     self.min_transfer_amount = new_amount
-                    print(f"{Fore.GREEN}✅ 最小转账金额已设置为 {new_amount} ETH{Style.RESET_ALL}")
+                    print(f"\n{Fore.GREEN}✅ 成功！最小转账金额已设置为 {new_amount} ETH{Style.RESET_ALL}")
+                else:
+                    print(f"\n{Fore.RED}❌ 错误！金额必须大于0{Style.RESET_ALL}")
             elif choice == '3':
-                new_gas_price = int(input("请输入新的Gas价格（Gwei）: "))
+                new_gas_price = int(input(f"{Fore.CYAN}⛽ 请输入新的Gas价格（Gwei）: {Style.RESET_ALL}"))
                 if new_gas_price > 0:
                     self.gas_price_gwei = new_gas_price
-                    print(f"{Fore.GREEN}✅ Gas价格已设置为 {new_gas_price} Gwei{Style.RESET_ALL}")
+                    print(f"\n{Fore.GREEN}✅ 成功！Gas价格已设置为 {new_gas_price} Gwei{Style.RESET_ALL}")
+                else:
+                    print(f"\n{Fore.RED}❌ 错误！Gas价格必须大于0{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}⚠️ 取消修改{Style.RESET_ALL}")
         except ValueError:
-            print(f"{Fore.RED}❌ 输入格式错误{Style.RESET_ALL}")
+            print(f"\n{Fore.RED}❌ 输入格式错误！请输入有效数字{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
     def menu_network_management(self):
         """菜单：网络连接管理"""
-        print(f"\n{Fore.CYAN}🌐 网络连接管理{Style.RESET_ALL}")
-        print("=" * 50)
+        print(f"\n{Fore.CYAN}✨ ====== 🌐 网络连接管理 🌐 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.BLUE}{Fore.WHITE} 🔍 正在检查所有网络连接状态... {Style.RESET_ALL}")
         
         # 显示所有网络状态
         connected_networks = []
         failed_networks = []
         
+        print(f"\n{Fore.YELLOW}📈 网络连接状态：{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+        
         for network_key, network_info in self.networks.items():
-            status = "✅ 已连接" if network_key in self.web3_connections else "❌ 未连接"
-            currency = network_info['native_currency']
-            
             if network_key in self.web3_connections:
                 connected_networks.append((network_key, network_info))
+                status_icon = "🟢"
+                status_text = "已连接"
                 color = Fore.GREEN
             else:
                 failed_networks.append((network_key, network_info))
+                status_icon = "🔴"
+                status_text = "未连接"
                 color = Fore.RED
             
-            print(f"{color}{network_info['name']} ({currency}) - {status}{Style.RESET_ALL}")
+            currency = network_info['native_currency']
+            network_name = network_info['name']
+            print(f"  {status_icon} {color}{network_name:<25}{Style.RESET_ALL} ({currency:<5}) - {color}{status_text}{Style.RESET_ALL}")
         
-        print(f"\n{Fore.CYAN}连接统计:{Style.RESET_ALL}")
-        print(f"✅ 已连接: {len(connected_networks)} 个网络")
-        print(f"❌ 未连接: {len(failed_networks)} 个网络")
+        print(f"\n{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📊 连接统计：{Style.RESET_ALL}")
+        print(f"  🟢 {Fore.GREEN}已连接: {len(connected_networks)} 个网络{Style.RESET_ALL}")
+        print(f"  🔴 {Fore.RED}未连接: {len(failed_networks)} 个网络{Style.RESET_ALL}")
         
         if failed_networks:
-            print(f"\n{Fore.YELLOW}重新连接失败的网络? (y/N): {Style.RESET_ALL}", end="")
+            print(f"\n{Fore.YELLOW}🔄 是否重新连接失败的网络? (y/N): {Style.RESET_ALL}", end="")
             choice = input().strip().lower()
             if choice == 'y':
-                print(f"{Fore.CYAN}正在重新连接...{Style.RESET_ALL}")
+                print(f"\n{Fore.BLUE}🔄 正在重新连接失败的网络...{Style.RESET_ALL}")
                 self.init_web3_connections()
+                print(f"{Fore.GREEN}✅ 重新连接完成！{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}⚠️  已取消重新连接{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.GREEN}🎉 所有网络都已成功连接！{Style.RESET_ALL}")
+        
+        input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
     
     def menu_exit(self):
         """菜单：退出程序"""
@@ -1005,6 +1367,7 @@ def run_daemon_mode(monitor, password):
                 monitor.logger.info("收到停止信号")
                 monitor.stop_monitoring()
                 monitor.save_state()
+                monitor.save_wallets()
                 return True
         else:
             monitor.logger.error("启动监控失败")
