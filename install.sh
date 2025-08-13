@@ -1,193 +1,199 @@
 #!/bin/bash
 
-# EVM钱包监控软件一键安装脚本
-# 使用方法: curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh | bash
+# EVM钱包监控软件智能安装脚本 - 支持数据合并与去重
+# curl -fsSL https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main/install.sh | bash
 
 set -e
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-echo -e "${CYAN}🚀 EVM钱包监控软件一键安装程序${NC}"
-echo "=================================================="
-
-# 清理pip缓存
-echo -e "${BLUE}🧹 清理系统缓存...${NC}"
-pip3 cache purge >/dev/null 2>&1 || true
-rm -rf ~/.cache/pip/* >/dev/null 2>&1 || true
-
-# 创建项目目录
-PROJECT_DIR="$HOME/evm_wallet_monitor"
-
-if [ -d "$PROJECT_DIR" ]; then
-    echo -e "${YELLOW}⚠️ 项目目录已存在${NC}"
-    
-    # 备份重要文件
-    echo -e "${BLUE}📦 备份重要文件...${NC}"
-    BACKUP_DIR="${PROJECT_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-    
-    # 保存日志文件
-    if [ -f "$PROJECT_DIR/monitor.log" ]; then
-        cp "$PROJECT_DIR/monitor.log" "$BACKUP_DIR/"
-        echo -e "${GREEN}✅ 日志文件已备份${NC}"
-    fi
-    
-    # 保存钱包文件
-    if [ -f "$PROJECT_DIR/wallets.json" ]; then
-        cp "$PROJECT_DIR/wallets.json" "$BACKUP_DIR/"
-        echo -e "${GREEN}✅ 钱包文件已备份${NC}"
-    fi
-    
-    # 保存监控状态
-    if [ -f "$PROJECT_DIR/monitor_state.json" ]; then
-        cp "$PROJECT_DIR/monitor_state.json" "$BACKUP_DIR/"
-        echo -e "${GREEN}✅ 监控状态已备份${NC}"
-    fi
-    
-    # 删除旧目录
-    rm -rf "$PROJECT_DIR"
-    echo -e "${GREEN}✅ 旧文件清理完成${NC}"
-fi
-
-# 创建新的项目目录
-mkdir -p "$PROJECT_DIR"
-cd "$PROJECT_DIR"
-echo -e "${GREEN}✅ 项目目录创建完成: $PROJECT_DIR${NC}"
-
-# 恢复备份的文件
-if [ -n "$BACKUP_DIR" ]; then
-    echo -e "${BLUE}📦 恢复重要文件...${NC}"
-    [ -f "$BACKUP_DIR/monitor.log" ] && cp "$BACKUP_DIR/monitor.log" ./ && echo -e "${GREEN}✅ 日志文件已恢复${NC}"
-    [ -f "$BACKUP_DIR/wallets.json" ] && cp "$BACKUP_DIR/wallets.json" ./ && echo -e "${GREEN}✅ 钱包文件已恢复${NC}"
-    [ -f "$BACKUP_DIR/monitor_state.json" ] && cp "$BACKUP_DIR/monitor_state.json" ./ && echo -e "${GREEN}✅ 监控状态已恢复${NC}"
-fi
-
-# 安装Python依赖包
-echo -e "${BLUE}⚙️ 安装Python依赖包...${NC}"
-
-PACKAGES=(
-    "web3==6.11.3"
-    "eth-account==0.10.0"
-    "colorama==0.4.6"
-    "pyyaml==6.0.1"
-    "requests==2.31.0"
-    "pycryptodome==3.19.0"
-)
-
-for package in "${PACKAGES[@]}"; do
-    echo -e "${YELLOW}正在安装 $package...${NC}"
-    pip3 install --user "$package" --break-system-packages --no-cache-dir >/dev/null 2>&1 || true
-done
-
-echo -e "${GREEN}✅ 依赖安装完成${NC}"
-
-# 下载程序文件
-echo -e "${BLUE}📥 正在下载程序文件...${NC}"
-
-# 清理GitHub缓存
-REPO_URL="https://raw.githubusercontent.com/haohaoi34/Wallet-monitoring/main"
-GITHUB_CACHE_BUSTER="?$(date +%s)"
-
-# 下载主程序
-if curl -fsSL "$REPO_URL/evm_monitor.py$GITHUB_CACHE_BUSTER" -o evm_monitor.py; then
-    echo -e "${GREEN}✅ 主程序下载完成${NC}"
-else
-    echo -e "${RED}❌ 主程序下载失败${NC}"
-    touch evm_monitor.py
-fi
-
-# 下载启动脚本
-if curl -fsSL "$REPO_URL/start.sh$GITHUB_CACHE_BUSTER" -o start.sh; then
-    echo -e "${GREEN}✅ 启动脚本下载完成${NC}"
-else
-    echo -e "${YELLOW}⚠️ 启动脚本下载失败，创建本地版本${NC}"
-    cat > start.sh << 'EOF'
-#!/bin/bash
-set -e
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-echo -e "${CYAN}🚀 启动EVM钱包监控软件${NC}"
-echo "================================"
+# 配置
+REPO_URL="https://github.com/haohaoi34/Wallet-monitoring.git"
+PROJECT_NAME="evm_monitor"
+INSTALL_DIR="$HOME/$PROJECT_NAME"
+TEMP_DIR="/tmp/evm_monitor_temp_$$"
 
-check_dependencies() {
-    echo -e "${BLUE}📦 检查Python依赖...${NC}"
+# 日志函数
+info() { echo -e "${CYAN}ℹ️  $1${NC}"; }
+success() { echo -e "${GREEN}✅ $1${NC}"; }
+warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+error() { echo -e "${RED}❌ $1${NC}"; }
+
+# 清理函数
+cleanup() { [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"; }
+trap cleanup EXIT
+
+echo -e "${BLUE}🚀 EVM钱包监控软件一键安装程序${NC}"
+echo "=================================================="
+
+# 1. 清理系统缓存
+info "🧹 清理系统缓存..."
+sudo apt-get clean 2>/dev/null || true
+
+# 2. 智能检测现有项目
+info "🔍 智能检测现有项目..."
+existing_projects=()
+
+# 搜索所有可能的项目位置
+search_locations=(
+    "$HOME/evm_monitor"
+    "$HOME/Wallet-monitoring" 
+    "$HOME/wallet_monitor"
+    "$HOME/EVM_Monitor"
+    "$HOME/evm-monitor"
+)
+
+for location in "${search_locations[@]}"; do
+    if [ -d "$location" ] && [ -f "$location/evm_monitor.py" ]; then
+        existing_projects+=("$location")
+        info "找到项目: $location"
+    fi
+done
+
+# 3. 数据合并策略
+if [ ${#existing_projects[@]} -gt 0 ]; then
+    warning "检测到 ${#existing_projects[@]} 个现有项目，开始智能合并..."
     
-    REQUIRED_PACKAGES=(
-        "web3"
-        "eth_account"
-        "colorama"
-        "pyyaml"
-        "requests"
-        "pycryptodome"
-    )
+    # 创建备份目录
+    backup_dir="$HOME/.evm_monitor_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
     
-    MISSING_PACKAGES=()
+    # 准备合并目录
+    merge_dir="$INSTALL_DIR"
+    mkdir -p "$merge_dir"
     
-    for package in "${REQUIRED_PACKAGES[@]}"; do
-        if ! python3 -c "import $package" 2>/dev/null; then
-            MISSING_PACKAGES+=("$package")
+    # 合并所有项目数据
+    for project in "${existing_projects[@]}"; do
+        if [ "$project" = "$merge_dir" ]; then continue; fi
+        
+        info "📦 备份并合并: $project"
+        
+        # 创建项目备份
+        cp -r "$project" "$backup_dir/$(basename "$project")"
+        
+        # 智能合并JSON数据文件
+        for json_file in "monitor_state.json" "wallets.json" "networks.json"; do
+            if [ -f "$project/$json_file" ]; then
+                if [ -f "$merge_dir/$json_file" ]; then
+                    # 合并JSON文件
+                    python3 -c "
+import json
+try:
+    with open('$project/$json_file', 'r', encoding='utf-8') as f:
+        src = json.load(f)
+    with open('$merge_dir/$json_file', 'r', encoding='utf-8') as f:
+        dst = json.load(f)
+    
+    # 智能合并逻辑
+    if isinstance(src, dict) and isinstance(dst, dict):
+        if 'monitored_addresses' in src and 'monitored_addresses' in dst:
+            dst['monitored_addresses'].update(src['monitored_addresses'])
+        if 'blocked_rpcs' in src:
+            dst.setdefault('blocked_rpcs', {}).update(src['blocked_rpcs'])
+        if 'user_added_tokens' in src:
+            existing_tokens = set(dst.get('user_added_tokens', []))
+            for token in src.get('user_added_tokens', []):
+                if token not in existing_tokens:
+                    dst.setdefault('user_added_tokens', []).append(token)
+        dst.update({k: v for k, v in src.items() if k not in dst})
+    
+    with open('$merge_dir/$json_file', 'w', encoding='utf-8') as f:
+        json.dump(dst, f, indent=2, ensure_ascii=False)
+    print('✅ 合并完成: $json_file')
+except Exception as e:
+    print('⚠️ 合并失败: $json_file -', str(e))
+" 2>/dev/null || cp "$project/$json_file" "$merge_dir/"
+                else
+                    cp "$project/$json_file" "$merge_dir/"
+                fi
+            fi
+        done
+        
+        # 合并日志文件（保留最近7天）
+        if [ -d "$project/logs" ]; then
+            mkdir -p "$merge_dir/logs"
+            find "$project/logs" -name "*.log" -mtime -7 -exec cp {} "$merge_dir/logs/" \; 2>/dev/null || true
+        fi
+        
+        # 删除旧项目目录
+        if [ "$project" != "$merge_dir" ]; then
+            rm -rf "$project"
+            success "清理旧目录: $project"
         fi
     done
     
-    if [ ${#MISSING_PACKAGES[@]} -ne 0 ]; then
-        echo -e "${YELLOW}⚠️ 检测到缺失依赖包，正在安装...${NC}"
-        pip3 install --user web3==6.11.3 eth-account==0.10.0 colorama==0.4.6 pyyaml==6.0.1 requests==2.31.0 pycryptodome==3.19.0 --break-system-packages --no-cache-dir
-    else
-        echo -e "${GREEN}✅ 所有依赖已满足${NC}"
-    fi
-}
-
-main() {
-    check_dependencies
-    echo -e "${GREEN}✅ 环境检查完成，启动程序...${NC}"
-    echo "================================"
-    python3 evm_monitor.py
-}
-
-trap 'echo -e "\n${YELLOW}👋 程序已退出${NC}"; exit 0' INT
-main "$@"
-EOF
+    success "数据合并完成，备份位置: $backup_dir"
+else
+    info "未发现现有项目，执行全新安装"
 fi
 
-chmod +x *.py *.sh
+# 4. 下载最新代码
+info "📦 下载最新项目代码..."
+git clone "$REPO_URL" "$TEMP_DIR" 2>/dev/null || {
+    error "代码下载失败，请检查网络连接"
+    exit 1
+}
 
-# 创建命令行快捷方式
-BASHRC="$HOME/.bashrc"
-if [ -f "$BASHRC" ]; then
-    if ! grep -q "alias evm-monitor=" "$BASHRC"; then
-        echo "alias evm-monitor='cd $PROJECT_DIR && ./start.sh'" >> "$BASHRC"
-        echo -e "${GREEN}✅ 命令行快捷方式已创建 (使用 'evm-monitor' 命令启动)${NC}"
-    fi
+# 5. 更新项目文件（保护用户数据）
+info "🔄 更新项目文件..."
+rsync -av \
+    --exclude='monitor_state.json' \
+    --exclude='wallets.json' \
+    --exclude='networks.json' \
+    --exclude='logs/' \
+    --exclude='*.log' \
+    --exclude='__pycache__/' \
+    "$TEMP_DIR/" "$INSTALL_DIR/"
+
+# 6. 安装依赖
+info "📦 安装Python依赖..."
+cd "$INSTALL_DIR"
+
+# 检查Python3
+if ! command -v python3 &> /dev/null; then
+    info "安装Python3..."
+    sudo apt-get update && sudo apt-get install -y python3 python3-pip
 fi
 
-# 安装完成
-echo ""
-echo "=================================================="
-echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
-echo "=================================================="
-echo ""
+# 安装必需包
+packages=("web3>=6.0.0" "colorama" "requests" "websockets")
+for package in "${packages[@]}"; do
+    pip3 install "$package" --user --break-system-packages 2>/dev/null || pip3 install "$package" --user || true
+done
 
-# 创建启动器
-cat > "$PROJECT_DIR/run.sh" << 'EOF'
+# 7. 设置权限和启动脚本
+chmod +x "$INSTALL_DIR/evm_monitor.py"
+
+cat > "$INSTALL_DIR/start.sh" << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
-exec setsid ./start.sh < /dev/tty > /dev/tty 2>&1
+python3 evm_monitor.py "$@"
 EOF
-chmod +x "$PROJECT_DIR/run.sh"
+chmod +x "$INSTALL_DIR/start.sh"
 
-# 自动启动程序
-echo -e "${CYAN}正在启动程序...${NC}"
-echo ""
-"$PROJECT_DIR/run.sh"
+# 8. 完成安装
+echo
+echo -e "${GREEN}🎉 安装完成！${NC}"
+echo "=================================================="
+success "项目目录: $INSTALL_DIR" 
+success "启动命令: cd $INSTALL_DIR && python3 evm_monitor.py"
+success "快捷启动: $INSTALL_DIR/start.sh"
+
+if [ ${#existing_projects[@]} -gt 0 ]; then
+    echo
+    info "📊 智能合并报告:"
+    echo "  • 已合并 ${#existing_projects[@]} 个项目的数据"
+    echo "  • 监控地址、钱包、RPC设置已保留"
+    echo "  • 重复数据已自动去除" 
+    echo "  • 原数据备份: $backup_dir"
+fi
+
+echo
+warning "💡 提示: 现在系统中只有一个统一的项目目录"
+info "如有问题，请检查备份目录中的原始数据"
