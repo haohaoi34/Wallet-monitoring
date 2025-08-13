@@ -629,9 +629,23 @@ class EVMMonitor:
     def safe_input(self, prompt: str = "") -> str:
         """安全的输入函数，处理EOF错误"""
         try:
+            # 强制使用交互式模式
+            import sys
+            if not sys.stdin.isatty():
+                # 非交互式环境，返回默认值
+                if "选项" in prompt or "选择" in prompt:
+                    print(f"{Fore.YELLOW}⚠️  非交互式环境，自动退出{Style.RESET_ALL}")
+                    return "0"
+                else:
+                    print(f"{Fore.YELLOW}⚠️  非交互式环境，使用空值{Style.RESET_ALL}")
+                    return ""
+            
+            # 交互式环境，正常读取输入
             return input(prompt)
         except EOFError:
-            print(f"\n{Fore.YELLOW}⚠️  检测到非交互式环境，使用默认值{Style.RESET_ALL}")
+            print(f"\n{Fore.YELLOW}⚠️  EOF错误，自动退出{Style.RESET_ALL}")
+            if "选项" in prompt or "选择" in prompt:
+                return "0"  # 退出菜单
             return ""
         except KeyboardInterrupt:
             print(f"\n{Fore.YELLOW}👋 用户取消操作{Style.RESET_ALL}")
@@ -1054,6 +1068,11 @@ class EVMMonitor:
             try:
                 choice = self.safe_input(f"\n{Fore.YELLOW}请输入选项数字: {Style.RESET_ALL}").strip()
                 
+                # 如果返回空值或默认退出，直接退出
+                if choice == "" or choice == "0":
+                    print(f"\n{Fore.YELLOW}👋 程序退出{Style.RESET_ALL}")
+                    break
+                
                 if choice == '1':
                     self.menu_add_private_key()
                 elif choice == '2':
@@ -1084,11 +1103,16 @@ class EVMMonitor:
                 print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
                 break
             except EOFError:
-                print(f"\n{Fore.YELLOW}👋 检测到非交互式环境，程序退出{Style.RESET_ALL}")
+                print(f"\n{Fore.YELLOW}👋 检测到EOF，程序退出{Style.RESET_ALL}")
                 break
             except Exception as e:
                 print(f"{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
-                self.safe_input(f"{Fore.YELLOW}按回车键继续...{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}⚠️  按任意键继续或稍后重试...{Style.RESET_ALL}")
+                try:
+                    self.safe_input()
+                except:
+                    print(f"{Fore.YELLOW}继续运行...{Style.RESET_ALL}")
+                    pass
 
     def menu_add_private_key(self):
         """菜单：添加私钥"""
@@ -1404,6 +1428,7 @@ def main():
         parser.add_argument('--daemon', action='store_true', help='以守护进程模式运行')
         parser.add_argument('--password', type=str, help='钱包密码（仅用于守护进程模式）')
         parser.add_argument('--auto-start', action='store_true', help='自动开始监控（非交互式模式）')
+        parser.add_argument('--force-interactive', action='store_true', help='强制交互式模式（默认）')
         args = parser.parse_args()
         
         # 创建监控实例
@@ -1413,8 +1438,8 @@ def main():
         if args.daemon:
             return run_daemon_mode(monitor, args.password)
         
-        # 非交互式模式（自动开始监控）
-        if not is_interactive or args.auto_start:
+        # 除非明确指定其他模式，否则强制交互式
+        if args.auto_start and not args.force_interactive:
             print(f"{Fore.YELLOW}⚠️  检测到非交互式环境，将自动开始监控{Style.RESET_ALL}")
             if monitor.wallets and monitor.target_wallet:
                 monitor.start_monitoring()
@@ -1429,7 +1454,9 @@ def main():
                 print(f"{Fore.RED}❌ 缺少必要配置（钱包或目标账户），无法自动开始{Style.RESET_ALL}")
                 return False
         
-        # 交互模式 - 直接进入菜单
+        # 交互模式（默认模式）
+        print(f"{Fore.CYAN}🚀 进入交互式菜单模式{Style.RESET_ALL}")
+        
         # 加载钱包
         monitor.load_wallets()
         
@@ -1439,6 +1466,8 @@ def main():
         # 显示欢迎信息
         print(f"\n{Fore.GREEN}🎉 欢迎使用EVM监控软件！{Style.RESET_ALL}")
         print(f"已连接网络: {', '.join(monitor.web3_connections.keys())}")
+        print(f"{Fore.YELLOW}📝 提示：如果遇到输入问题，请直接按回车键或输入0退出{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}✨ 如果运行在SSH或脚本中，请使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
         
         # 显示菜单
         monitor.show_menu()
@@ -1446,9 +1475,11 @@ def main():
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}👋 程序已退出{Style.RESET_ALL}")
     except EOFError:
-        print(f"\n{Fore.YELLOW}👋 检测到非交互式环境，程序退出{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}👋 检测到EOF错误，程序退出{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}💡 建议使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
     except Exception as e:
         print(f"{Fore.RED}❌ 程序出错: {e}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}💡 如果是EOF错误，请使用: python3 evm_monitor.py --auto-start{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
