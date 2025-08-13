@@ -266,8 +266,63 @@ chmod +x "$INSTALL_DIR/evm_monitor.py"
 
 cat > "$INSTALL_DIR/start.sh" << 'EOF'
 #!/bin/bash
-cd "$(dirname "$0")"
-python3 evm_monitor.py "$@"
+# EVM监控程序启动脚本
+
+# 切换到程序目录
+cd "$(dirname "$0")" || exit 1
+
+# 设置环境变量
+export PYTHONIOENCODING=utf-8
+export PYTHONUNBUFFERED=1
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${CYAN}🚀 EVM钱包监控程序启动器${NC}"
+echo "=================================="
+
+# 检查Python环境
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}❌ 未找到Python3，请先安装Python3${NC}"
+    exit 1
+fi
+
+# 检查主程序文件
+if [ ! -f "evm_monitor.py" ]; then
+    echo -e "${RED}❌ 未找到主程序文件 evm_monitor.py${NC}"
+    exit 1
+fi
+
+# 检查是否在交互式环境中
+if [ -t 0 ] && [ -t 1 ]; then
+    echo -e "${GREEN}✅ 检测到交互式环境${NC}"
+    echo -e "${YELLOW}💡 提示：使用 Ctrl+C 可随时退出程序${NC}"
+    echo ""
+    
+    # 如果没有参数，强制交互式模式
+    if [ $# -eq 0 ]; then
+        python3 evm_monitor.py --force-interactive
+    else
+        python3 evm_monitor.py "$@"
+    fi
+else
+    echo -e "${YELLOW}⚠️  检测到非交互式环境${NC}"
+    echo -e "${CYAN}💡 建议使用参数：${NC}"
+    echo "   --auto-start     自动开始监控"
+    echo "   --daemon         守护进程模式"
+    echo "   --force-interactive 强制交互模式"
+    echo ""
+    
+    # 非交互式环境，传递所有参数
+    python3 evm_monitor.py "$@"
+fi
+
+echo -e "${GREEN}✅ 程序执行完成${NC}"
 EOF
 chmod +x "$INSTALL_DIR/start.sh"
 
@@ -344,5 +399,57 @@ print("=" * 50)
 exec(open('evm_monitor.py').read())
 LAUNCHER_EOF
 
-# 终极启动 - 替换当前shell进程
-exec python3 launcher.py
+# 启动程序
+echo "🔄 程序安装完成，准备启动..."
+
+# 检查是否在交互式环境中
+if [ -t 0 ] && [ -t 1 ]; then
+    # 交互式环境（终端）
+    echo "📋 检测到交互式环境"
+    echo ""
+    echo "🚀 启动选项："
+    echo "1. 立即启动交互式程序 (推荐)"
+    echo "2. 仅显示启动命令"
+    echo ""
+    
+    # 提供用户选择
+    read -p "请选择 [1-2，默认1]: " start_choice
+    start_choice=${start_choice:-1}
+    
+    if [ "$start_choice" = "1" ]; then
+        echo ""
+        echo "🚀 正在启动EVM钱包监控程序..."
+        echo "💡 提示：程序启动后可以使用 Ctrl+C 随时退出"
+        echo "=================================================="
+        sleep 1
+        
+        # 启动程序，不使用exec以避免替换shell
+        cd "$INSTALL_DIR"
+        python3 launcher.py
+        
+        echo ""
+        success "程序运行结束"
+    else
+        echo ""
+        echo "📝 手动启动命令："
+        echo "   cd $INSTALL_DIR"
+        echo "   python3 evm_monitor.py"
+        echo ""
+        success "安装完成！"
+    fi
+else
+    # 非交互式环境（脚本、SSH等）
+    echo "📋 检测到非交互式环境"
+    echo "✅ 程序安装完成！"
+    echo ""
+    echo "🚀 启动方式："
+    echo "1. 交互式模式: cd $INSTALL_DIR && python3 evm_monitor.py"
+    echo "2. 自动监控模式: cd $INSTALL_DIR && python3 evm_monitor.py --auto-start"
+    echo "3. 守护进程模式: cd $INSTALL_DIR && python3 evm_monitor.py --daemon"
+    echo "4. 快捷启动: $INSTALL_DIR/start.sh"
+    echo ""
+    echo "📝 查看程序状态："
+    echo "   ps aux | grep evm_monitor"
+    echo ""
+    success "安装脚本执行完成！请使用上述命令启动程序。"
+fi
