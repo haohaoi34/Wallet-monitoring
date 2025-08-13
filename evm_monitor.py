@@ -3482,20 +3482,53 @@ esac
                 print(f"{Fore.CYAN}💡 提示：地址格式可能有问题，正在检查...{Style.RESET_ALL}")
             return False
 
-    def scan_addresses(self):
+    def scan_addresses(self, only_new_addresses=False):
         """扫描所有地址，检查交易历史并建立监控列表"""
-        print(f"\n{Fore.CYAN}🔍 开始扫描地址交易历史...{Style.RESET_ALL}")
+        addresses_to_scan = []
+        
+        if only_new_addresses:
+            # 只扫描新添加的地址（不在监控列表和屏蔽列表中的）
+            for address in self.wallets.keys():
+                if (address not in self.monitored_addresses and 
+                    address not in self.blocked_networks):
+                    addresses_to_scan.append(address)
+            
+            if not addresses_to_scan:
+                print(f"\n{Fore.GREEN}✅ 没有新地址需要扫描{Style.RESET_ALL}")
+                return
+            
+            print(f"\n{Fore.CYAN}🔍 开始扫描新添加的地址交易历史...{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}📊 发现 {len(addresses_to_scan)} 个新地址需要扫描{Style.RESET_ALL}")
+        else:
+            # 扫描所有地址
+            addresses_to_scan = list(self.wallets.keys())
+            print(f"\n{Fore.CYAN}🔍 开始扫描地址交易历史...{Style.RESET_ALL}")
+        
         start_ts = time.time()
-        for address in self.wallets.keys():
-            print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 检查地址 {Style.RESET_ALL} {Fore.CYAN}{address}{Style.RESET_ALL}")
+        total_addresses = len(addresses_to_scan)
+        scanned_count = 0
+        
+        for i, address in enumerate(addresses_to_scan, 1):
+            print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 检查地址 ({i}/{total_addresses}) {Style.RESET_ALL} {Fore.CYAN}{address}{Style.RESET_ALL}")
             address_networks = []
             blocked_networks = []
             
+            network_count = 0
+            total_networks = len(self.networks)
+            
             for network_key in self.networks.keys():
+                network_count += 1
+                network_name = self.networks[network_key]['name']
+                
+                # 实时显示扫描进度
+                print(f"\r  {Fore.CYAN}🔄 扫描网络 ({network_count}/{total_networks}): {network_name[:30]}...{Style.RESET_ALL}", end="", flush=True)
+                
                 if self.check_transaction_history(address, network_key):
                     address_networks.append(network_key)
                 else:
                     blocked_networks.append(network_key)
+            
+            print()  # 换行
             
             # 更新监控列表
             if address_networks:
@@ -3506,11 +3539,11 @@ esac
                 print(f"{Fore.GREEN}✅ 监控网络: {len(address_networks)} 个{Style.RESET_ALL}")
                 
                 # 显示监控的网络
-                for net in address_networks[:5]:  # 只显示前5个
+                for net in address_networks[:3]:  # 只显示前3个
                     network_name = self.networks[net]['name']
                     print(f"  {Fore.GREEN}✓{Style.RESET_ALL} {network_name}")
-                if len(address_networks) > 5:
-                    print(f"  {Fore.GREEN}... 和其他 {len(address_networks) - 5} 个网络{Style.RESET_ALL}")
+                if len(address_networks) > 3:
+                    print(f"  {Fore.GREEN}... 和其他 {len(address_networks) - 3} 个网络{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}⚠️ 跳过监控（无交易历史）{Style.RESET_ALL}")
         
@@ -3518,6 +3551,12 @@ esac
             if blocked_networks:
                 self.blocked_networks[address] = blocked_networks
                 print(f"{Fore.RED}❌ 屏蔽网络: {len(blocked_networks)} 个{Style.RESET_ALL} {Fore.YELLOW}(无交易历史){Style.RESET_ALL}")
+            
+            scanned_count += 1
+            
+            # 显示整体进度
+            progress_percent = (scanned_count / total_addresses) * 100
+            print(f"{Fore.MAGENTA}📈 整体进度: {scanned_count}/{total_addresses} ({progress_percent:.1f}%){Style.RESET_ALL}")
         
         elapsed = time.time() - start_ts
         print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
@@ -3530,32 +3569,53 @@ esac
         """监控循环"""
         
         print(f"\n{Fore.CYAN}🚀 开始监控...{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}📝 提示：按 Ctrl+C 可以优雅退出监控{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}🎉 监控已成功启动！{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}📝 提示：按 Ctrl+C 可以优雅退出监控{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}🔄 系统将自动监控所有钱包余额并转账到目标账户{Style.RESET_ALL}")
+        
+        round_count = 0
         
         try:
             while self.monitoring:
                 try:
+                    round_count += 1
+                    print(f"\n{Back.CYAN}{Fore.WHITE} 🔍 第 {round_count} 轮检查开始 {Style.RESET_ALL}")
+                    
+                    total_addresses = len(self.monitored_addresses)
+                    current_address = 0
+                    
                     for address, address_info in self.monitored_addresses.items():
                         if not self.monitoring:
                             break
                         
+                        current_address += 1
                         private_key = self.wallets.get(address)
                         if not private_key:
                             continue
                         
+                        print(f"\n{Fore.MAGENTA}📄 检查地址 ({current_address}/{total_addresses}): {Fore.CYAN}{address[:10]}...{address[-8:]}{Style.RESET_ALL}")
+                        
+                        total_networks = len(address_info['networks'])
+                        current_network = 0
+                        
                         for network in address_info['networks']:
                             if not self.monitoring:
                                 break
+                            
+                            current_network += 1
+                            network_name = self.networks[network]['name']
+                            
+                            print(f"  {Fore.CYAN}🌐 检查网络 ({current_network}/{total_networks}): {network_name}{Style.RESET_ALL}")
                             
                             try:
                                 # 🚀 全链全代币监控 - 获取所有余额
                                 all_balances = self.get_all_balances(address, network)
                                 
                                 if not all_balances:
+                                    print(f"    {Fore.YELLOW}⚠️ 无余额或获取失败{Style.RESET_ALL}")
                                     continue
                                 
                                 # 网络名称颜色化
-                                network_name = self.networks[network]['name']
                                 if '🧪' in network_name:  # 测试网
                                     network_color = f"{Back.YELLOW}{Fore.BLACK}{network_name}{Style.RESET_ALL}"
                                 elif '🔷' in network_name or '🔵' in network_name:  # 主网
@@ -3563,7 +3623,13 @@ esac
                                 else:  # 其他网络
                                     network_color = f"{Back.GREEN}{Fore.BLACK}{network_name}{Style.RESET_ALL}"
                                 
+                                # 显示发现的余额数量
+                                balance_count = len([b for b in all_balances.values() if b['balance'] > 0])
+                                if balance_count > 0:
+                                    print(f"    {Fore.GREEN}💰 发现 {balance_count} 个代币有余额{Style.RESET_ALL}")
+                                
                                 # 处理每个代币余额
+                                transferable_found = False
                                 for token_key, token_info in all_balances.items():
                                     if not self.monitoring:
                                         break
@@ -3572,45 +3638,61 @@ esac
                                     symbol = token_info['symbol']
                                     token_type = token_info['type']
                                     
+                                    if balance <= 0:
+                                        continue
+                                    
                                     # 智能判断是否可以转账
                                     can_transfer, reason = self.can_transfer(address, network, token_type, balance)
                                     
                                     if token_type == 'native' and balance > self.min_transfer_amount and can_transfer:
                                         # 原生代币转账
-                                        print(f"\n{Back.RED}{Fore.WHITE} 💰 原生代币 💰 {Style.RESET_ALL} {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
+                                        transferable_found = True
+                                        print(f"\n    {Back.RED}{Fore.WHITE} 💰 原生代币 💰 {Style.RESET_ALL} {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
                                         
                                         if self.target_wallet:
+                                            print(f"    {Fore.CYAN}🚀 开始转账到目标账户...{Style.RESET_ALL}")
                                             try:
                                                 if self.transfer_funds(address, private_key, self.target_wallet, balance, network):
+                                                    print(f"    {Fore.GREEN}✅ 转账成功！{Style.RESET_ALL}")
                                                     address_info['last_check'] = time.time()
                                                     self.save_state()
+                                                else:
+                                                    print(f"    {Fore.RED}❌ 转账失败{Style.RESET_ALL}")
                                             except KeyboardInterrupt:
                                                 print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
                                                 self.monitoring = False
                                                 return
                                         else:
-                                            print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
+                                            print(f"    {Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
                                     
                                     elif token_type == 'erc20' and balance > 0 and can_transfer:
                                         # ERC20代币转账
-                                        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🪙 ERC20代币 🪙 {Style.RESET_ALL} {Fore.GREEN}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
+                                        transferable_found = True
+                                        print(f"\n    {Back.MAGENTA}{Fore.WHITE} 🪙 ERC20代币 🪙 {Style.RESET_ALL} {Fore.GREEN}{balance:.6f} {symbol}{Style.RESET_ALL} in {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}")
                                         
                                         if self.target_wallet:
+                                            print(f"    {Fore.CYAN}🚀 开始转账ERC20代币...{Style.RESET_ALL}")
                                             try:
                                                 if self.transfer_erc20_token(address, private_key, self.target_wallet, token_key, balance, network):
+                                                    print(f"    {Fore.GREEN}✅ ERC20转账成功！{Style.RESET_ALL}")
                                                     address_info['last_check'] = time.time()
                                                     self.save_state()
+                                                else:
+                                                    print(f"    {Fore.RED}❌ ERC20转账失败{Style.RESET_ALL}")
                                             except KeyboardInterrupt:
                                                 print(f"\n{Fore.YELLOW}⚠️ 用户取消转账，停止监控{Style.RESET_ALL}")
                                                 self.monitoring = False
                                                 return
                                         else:
-                                            print(f"{Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
+                                            print(f"    {Fore.CYAN}💡 未设置目标账户，跳过转账{Style.RESET_ALL}")
                                     
                                     elif balance > 0 and not can_transfer:
                                         # 有余额但不能转账
                                         token_icon = "💎" if token_type == 'native' else "🪙"
-                                        print(f"{Fore.MAGENTA}{token_icon} {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}: {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} {Fore.RED}({reason}){Style.RESET_ALL}")
+                                        print(f"    {Fore.MAGENTA}{token_icon} {Fore.CYAN}{address[:10]}...{Style.RESET_ALL} on {network_color}: {Fore.YELLOW}{balance:.6f} {symbol}{Style.RESET_ALL} {Fore.RED}({reason}){Style.RESET_ALL}")
+                                
+                                if not transferable_found and balance_count == 0:
+                                    print(f"    {Fore.YELLOW}⚠️ 未发现可转账的余额{Style.RESET_ALL}")
                                 
                             except KeyboardInterrupt:
                                 print(f"\n{Fore.YELLOW}⚠️ 监控被中断{Style.RESET_ALL}")
@@ -3631,7 +3713,8 @@ esac
                                     continue
                     
                     # 等待下一次检查（支持中断）
-                    print(f"\n{Fore.CYAN}🕒 等待 {self.monitor_interval} 秒后进行下一轮检查... (按Ctrl+C退出){Style.RESET_ALL}")
+                    print(f"\n{Back.CYAN}{Fore.WHITE} ✨ 第 {round_count} 轮检查完成 ✨ {Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}🕒 等待 {self.monitor_interval} 秒后进行下一轮检查... (按Ctrl+C退出){Style.RESET_ALL}")
                 
                     # 检查是否需要进行内存清理
                     current_time = time.time()
@@ -3675,6 +3758,7 @@ esac
         finally:
             self.monitoring = False
             print(f"\n{Fore.GREEN}✅ 监控已优雅停止{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}📊 总共完成 {round_count} 轮监控检查{Style.RESET_ALL}")
             # 异常退出时确保保存状态
             try:
                 self.save_state()
@@ -3696,8 +3780,20 @@ esac
             print(f"{Fore.YELLOW}⚠️ 未设置目标账户，请先设置目标账户{Style.RESET_ALL}")
             return False
         
-        # 扫描地址
-        self.scan_addresses()
+        # 检查是否有已监控的地址，如果没有或有新地址则扫描
+        if not self.monitored_addresses:
+            # 第一次启动，全量扫描
+            self.scan_addresses(only_new_addresses=False)
+        else:
+            # 检查是否有新地址需要扫描
+            new_addresses = [addr for addr in self.wallets.keys() 
+                           if addr not in self.monitored_addresses and addr not in self.blocked_networks]
+            if new_addresses:
+                print(f"\n{Fore.YELLOW}🔍 发现 {len(new_addresses)} 个新地址，开始扫描...{Style.RESET_ALL}")
+                self.scan_addresses(only_new_addresses=True)
+            else:
+                print(f"\n{Fore.GREEN}✅ 使用已缓存的扫描结果，跳过重复扫描{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}📊 监控地址: {len(self.monitored_addresses)} 个{Style.RESET_ALL}")
         
         if not self.monitored_addresses:
             print(f"{Fore.RED}❌ 没有符合条件的地址可监控{Style.RESET_ALL}")
@@ -3708,6 +3804,8 @@ esac
         self.monitor_thread = threading.Thread(target=self.monitor_loop)
         self.monitor_thread.daemon = True
         self.monitor_thread.start()
+        
+        print(f"\n{Fore.GREEN}🎉 监控已成功启动！{Style.RESET_ALL}")
         
         return True
 
