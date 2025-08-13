@@ -113,21 +113,6 @@ class EVMMonitor:
                     'optimism': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
                     'polygon': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063'
                 }
-            },
-            # 自定义代币
-            'CUSTOM_ARB': {
-                'name': 'Custom Arbitrum Token',
-                'symbol': 'CARB',
-                'contracts': {
-                    'arbitrum': '0x1114982539A2Bfb84e8B9e4e320bbC04532a9e44'
-                }
-            },
-            'CUSTOM_BASE': {
-                'name': 'Custom Base Token',
-                'symbol': 'CBASE',
-                'contracts': {
-                    'base': '0xE014d2A4da6E450f21b5050120D291e63c8940FD'
-                }
             }
         }
         
@@ -221,17 +206,16 @@ class EVMMonitor:
                 'name': '🦀 Cronos',
                 'chain_id': 25,
                 'rpc_urls': [
-                    # 公共RPC (优先)
+                    # 公共节点
                     'https://cronos.publicnode.com',
                     'https://evm.cronos.org',
                     'https://cronos.blockpi.network/v1/rpc/public',
                     'https://cronos.drpc.org',
                     'https://cronos-evm.publicnode.com',
                     'https://rpc.vvs.finance',
-                    'https://cronos.crypto.org',
-                    'https://evm-cronos.crypto.org',
-                    'https://cronos-rpc.gateway.pokt.network',
-                    # Ankr (备用)
+                    # Alchemy
+                    f'https://cronos-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
+                    # Ankr
                     f'https://rpc.ankr.com/cronos/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'CRO',
@@ -625,9 +609,13 @@ class EVMMonitor:
                 'name': '🦈 Manta Pacific',
                 'chain_id': 169,
                 'rpc_urls': [
-                    'https://pacific.manta.network/http',
-                    'https://manta.llamarpc.com',
-                    'https://manta.publicnode.com'
+                    # 公共节点
+                    'https://pacific-rpc.manta.network/http',
+                    'https://manta-pacific.drpc.org',
+                    'https://r1.pacific.manta.systems/http',
+                    'https://manta.public-rpc.com',
+                    # Ankr
+                    f'https://rpc.ankr.com/manta/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'ETH',
                 'explorer': 'https://pacific-explorer.manta.network'
@@ -771,7 +759,7 @@ class EVMMonitor:
                 'name': '🟪 Polygon Mainnet',
                 'chain_id': 137,
                 'rpc_urls': [
-                    # 公共RPC (优先)
+                    # 公共节点
                     'https://polygon.publicnode.com',
                     'https://polygon-rpc.com',
                     'https://polygon.blockpi.network/v1/rpc/public',
@@ -779,10 +767,9 @@ class EVMMonitor:
                     'https://polygon.drpc.org',
                     'https://endpoints.omniatech.io/v1/matic/mainnet/public',
                     'https://1rpc.io/matic',
-                    'https://rpc-mainnet.matic.quiknode.pro',
-                    # ALCHEMY (备用)
+                    # Alchemy
                     f'https://polygon-mainnet.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}',
-                    # Ankr (最后备用)
+                    # Ankr
                     f'https://rpc.ankr.com/polygon/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'POL',
@@ -845,7 +832,7 @@ class EVMMonitor:
             
             'berachain': {
                 'name': '🐻 Berachain',
-                'chain_id': 80084,
+                'chain_id': 80094,
                 'rpc_urls': [
                     'https://rpc.berachain.com',
                     'https://berachain.gateway.tenderly.co'
@@ -1061,8 +1048,13 @@ class EVMMonitor:
                 'name': '🔥 HECO',
                 'chain_id': 128,
                 'rpc_urls': [
+                    # 公共节点
                     'https://http-mainnet.hecochain.com',
-                    'https://http-mainnet-node.huobichain.com'
+                    'https://http-mainnet-node.huobichain.com',
+                    'https://heco-mainnet.gateway.pokt.network/v1/lb/611ad8efd2ae6d0028b2c7dd',
+                    'https://heco.drpc.org',
+                    # Ankr
+                    f'https://rpc.ankr.com/heco/{self.ANKR_API_KEY}'
                 ],
                 'native_currency': 'HT',
                 'explorer': 'https://hecoinfo.com'
@@ -1187,7 +1179,7 @@ class EVMMonitor:
             
             'monad_testnet': {
                 'name': '🧪 Monad Testnet',
-                'chain_id': 41454,
+                'chain_id': 10143,
                 'rpc_urls': [
                     'https://testnet-rpc.monad.xyz',
                     'https://monad-testnet.blockpi.network/v1/rpc/public'
@@ -1266,7 +1258,7 @@ class EVMMonitor:
             
             'hyperliquid': {
                 'name': '💧 Hyperliquid',
-                'chain_id': 998,
+                'chain_id': 999,
                 'rpc_urls': [
                     # 公共RPC (优先)
                     'https://api.hyperliquid.xyz/evm',
@@ -1622,6 +1614,12 @@ class EVMMonitor:
         self.gas_limit = 21000
         self.gas_price_gwei = 20
         
+        # RPC延迟监控配置
+        self.max_rpc_latency = 5.0  # 最大允许延迟（秒）
+        self.rpc_latency_checks = 3  # 连续检查次数
+        self.rpc_latency_history: Dict[str, List[float]] = {}  # URL -> [延迟历史]
+        self.blocked_rpcs: Dict[str, Dict] = {}  # URL -> {reason, blocked_time, network}
+        
         # Telegram通知配置
         self.telegram_bot_token = "7555291517:AAHJGZOs4RZ-QmZvHKVk-ws5zBNcFZHNmkU"
         self.telegram_chat_id = "5963704377"
@@ -1694,6 +1692,10 @@ class EVMMonitor:
             
             # 尝试连接多个RPC端点
             for i, rpc_url in enumerate(network_info['rpc_urls']):
+                # 跳过被屏蔽的RPC
+                if rpc_url in self.blocked_rpcs:
+                    continue
+                    
                 try:
                     w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
                     
@@ -1807,6 +1809,8 @@ class EVMMonitor:
                 'monitored_addresses': self.monitored_addresses,
                 'blocked_networks': self.blocked_networks,
                 'transfer_stats': self.transfer_stats,
+                'rpc_latency_history': self.rpc_latency_history,
+                'blocked_rpcs': self.blocked_rpcs,
                 'last_save': datetime.now().isoformat()
             }
             with open(self.state_file, 'w') as f:
@@ -1828,8 +1832,14 @@ class EVMMonitor:
                 if saved_stats:
                     self.transfer_stats.update(saved_stats)
                 
+                # 加载RPC延迟历史和屏蔽数据
+                self.rpc_latency_history = state.get('rpc_latency_history', {})
+                self.blocked_rpcs = state.get('blocked_rpcs', {})
+                
                 self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
                 self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
+                if self.blocked_rpcs:
+                    self.logger.info(f"恢复屏蔽RPC: {len(self.blocked_rpcs)} 个")
                 self.logger.info(f"恢复转账统计: 成功{self.transfer_stats['successful_transfers']}次 失败{self.transfer_stats['failed_transfers']}次")
         except Exception as e:
             self.logger.error(f"加载状态失败: {e}")
@@ -1854,9 +1864,10 @@ class EVMMonitor:
                     color = Fore.YELLOW
                 elif '🔷' in network_name or '🔵' in network_name:  # 主网
                     color = Fore.BLUE
-                else:
-                    color = Fore.GREEN
-                print(f"{Fore.GREEN}✅ {address[:10]}... 在 {color}{network_name}{Style.RESET_ALL} 有 {Fore.CYAN}{tx_count}{Style.RESET_ALL} 笔交易")
+            else:
+                color = Fore.GREEN
+                
+            print(f"{Fore.GREEN}✅ {address[:10]}... 在 {color}{network_name}{Style.RESET_ALL} 有 {Fore.CYAN}{tx_count}{Style.RESET_ALL} 笔交易")
             # 不显示无交易历史的提示，减少屏幕垃圾
             
             return has_history
@@ -2115,48 +2126,423 @@ class EVMMonitor:
         except Exception:
             return False
 
-    def test_all_rpcs(self) -> Dict[str, Dict]:
-        """测试所有网络的RPC连接状态"""
-        print(f"\n{Back.BLUE}{Fore.WHITE} 🔍 开始RPC连接测试 🔍 {Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}📡 正在测试所有网络的RPC节点连接状态...{Style.RESET_ALL}\n")
+    def test_rpc_concurrent(self, rpc_url: str, expected_chain_id: int, timeout: int = 3) -> tuple:
+        """并发测试单个RPC连接，返回(是否成功, 响应时间, RPC类型)"""
+        import time
+        start_time = time.time()
         
-        results = {}
+        try:
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout}))
+            
+            # 测试连接
+            if not w3.is_connected():
+                return False, time.time() - start_time, self.get_rpc_type(rpc_url)
+            
+            # 验证链ID
+            chain_id = w3.eth.chain_id
+            success = chain_id == expected_chain_id
+            response_time = time.time() - start_time
+            
+            return success, response_time, self.get_rpc_type(rpc_url)
+            
+        except Exception:
+            return False, time.time() - start_time, self.get_rpc_type(rpc_url)
+
+    def get_rpc_type(self, rpc_url: str) -> str:
+        """识别RPC类型"""
+        if 'alchemy.com' in rpc_url:
+            return 'Alchemy'
+        elif 'ankr.com' in rpc_url:
+            return 'Ankr'
+        else:
+            return '公共节点'
+    
+    def is_public_rpc(self, rpc_url: str) -> bool:
+        """判断是否为公共RPC节点"""
+        # 私有/付费节点标识
+        private_indicators = [
+            'alchemy.com', 'ankr.com', 'infura.io', 'moralis.io',
+            'quicknode.com', 'getblock.io', 'nodereal.io'
+        ]
         
-        for network_key, network_info in self.networks.items():
-            print(f"{Back.CYAN}{Fore.BLACK} 🌐 测试 {network_info['name']} {Style.RESET_ALL}")
+        for indicator in private_indicators:
+            if indicator in rpc_url.lower():
+                return False
+        
+        return True
+
+    def get_token_info(self, token_address: str, network_key: str) -> Optional[Dict]:
+        """获取代币信息（名称、符号、精度）"""
+        if network_key not in self.web3_connections:
+            return None
+        
+        web3 = self.web3_connections[network_key]
+        
+        try:
+            # 验证地址格式
+            if not web3.is_address(token_address):
+                return None
             
-            working_rpcs = []
-            failed_rpcs = []
+            # 将地址转换为校验和格式
+            token_address = web3.to_checksum_address(token_address)
             
-            for i, rpc_url in enumerate(network_info['rpc_urls']):
-                print(f"  {Fore.CYAN}[{i+1}/{len(network_info['rpc_urls'])}]{Style.RESET_ALL} 测试: {rpc_url[:50]}...")
-                
-                if self.test_rpc_connection(rpc_url, network_info['chain_id']):
-                    working_rpcs.append(rpc_url)
-                    print(f"    {Fore.GREEN}✅ 连接成功{Style.RESET_ALL}")
-                else:
-                    failed_rpcs.append(rpc_url)
-                    print(f"    {Fore.RED}❌ 连接失败{Style.RESET_ALL}")
+            # 创建代币合约实例
+            token_contract = web3.eth.contract(
+                address=token_address,
+                abi=self.erc20_abi
+            )
             
-            results[network_key] = {
-                'name': network_info['name'],
-                'working_rpcs': working_rpcs,
-                'failed_rpcs': failed_rpcs,
-                'success_rate': len(working_rpcs) / len(network_info['rpc_urls']) * 100 if network_info['rpc_urls'] else 0
+            # 获取代币信息
+            try:
+                name = token_contract.functions.name().call()
+            except:
+                name = "Unknown Token"
+            
+            try:
+                symbol = token_contract.functions.symbol().call()
+            except:
+                symbol = "UNK"
+            
+            try:
+                decimals = token_contract.functions.decimals().call()
+            except:
+                decimals = 18
+            
+            # 尝试获取余额来验证合约是否有效
+            try:
+                # 使用零地址测试
+                zero_address = "0x0000000000000000000000000000000000000000"
+                token_contract.functions.balanceOf(zero_address).call()
+            except:
+                return None
+            
+            return {
+                'name': name,
+                'symbol': symbol,
+                'decimals': decimals,
+                'address': token_address,
+                'network': network_key
             }
             
-            success_rate = results[network_key]['success_rate']
-            if success_rate == 100:
-                status_color = Fore.GREEN
-                status_icon = "🟢"
-            elif success_rate >= 50:
-                status_color = Fore.YELLOW
-                status_icon = "🟡"
-            else:
-                status_color = Fore.RED
-                status_icon = "🔴"
+        except Exception as e:
+            print(f"{Fore.RED}❌ 获取代币信息失败: {e}{Style.RESET_ALL}")
+            return None
+
+    def add_custom_token(self, token_info: Dict) -> bool:
+        """添加自定义代币到tokens配置"""
+        try:
+            symbol = token_info['symbol'].upper()
+            network = token_info['network']
+            address = token_info['address']
             
-            print(f"  {status_icon} {status_color}成功率: {success_rate:.1f}% ({len(working_rpcs)}/{len(network_info['rpc_urls'])}){Style.RESET_ALL}\n")
+            # 检查是否已存在相同符号的代币
+            if symbol in self.tokens:
+                # 如果已存在，添加到该代币的网络配置中
+                if network not in self.tokens[symbol]['contracts']:
+                    self.tokens[symbol]['contracts'][network] = address
+                    print(f"{Fore.GREEN}✅ 已将 {symbol} 添加到 {self.networks[network]['name']}{Style.RESET_ALL}")
+                    return True
+                else:
+                    print(f"{Fore.YELLOW}⚠️ {symbol} 在 {self.networks[network]['name']} 上已存在{Style.RESET_ALL}")
+                    return False
+            else:
+                # 创建新的代币配置
+                self.tokens[symbol] = {
+                    'name': token_info['name'],
+                    'symbol': symbol,
+                    'contracts': {
+                        network: address
+                    }
+                }
+                print(f"{Fore.GREEN}✅ 已添加新代币 {symbol} ({token_info['name']}){Style.RESET_ALL}")
+                return True
+                
+        except Exception as e:
+            print(f"{Fore.RED}❌ 添加自定义代币失败: {e}{Style.RESET_ALL}")
+            return False
+
+    def record_rpc_latency(self, rpc_url: str, latency: float) -> bool:
+        """记录RPC延迟并检查是否需要屏蔽"""
+        if rpc_url not in self.rpc_latency_history:
+            self.rpc_latency_history[rpc_url] = []
+        
+        # 添加延迟记录
+        self.rpc_latency_history[rpc_url].append(latency)
+        
+        # 只保留最近的检查记录
+        if len(self.rpc_latency_history[rpc_url]) > self.rpc_latency_checks:
+            self.rpc_latency_history[rpc_url] = self.rpc_latency_history[rpc_url][-self.rpc_latency_checks:]
+        
+        # 检查是否连续高延迟
+        recent_latencies = self.rpc_latency_history[rpc_url]
+        if len(recent_latencies) >= self.rpc_latency_checks:
+            high_latency_count = sum(1 for lat in recent_latencies if lat > self.max_rpc_latency)
+            
+            # 如果连续检查都是高延迟，则屏蔽
+            if high_latency_count >= self.rpc_latency_checks:
+                self.block_rpc(rpc_url, f"连续{self.rpc_latency_checks}次延迟超过{self.max_rpc_latency}s")
+                return True
+        
+        return False
+
+    def block_rpc(self, rpc_url: str, reason: str):
+        """屏蔽指定的RPC节点"""
+        # 找到该RPC所属的网络
+        network_name = "未知网络"
+        network_key = None
+        for net_key, net_info in self.networks.items():
+            if rpc_url in net_info['rpc_urls']:
+                network_name = net_info['name']
+                network_key = net_key
+                
+                # 检查是否为最后一个RPC，如果是则不屏蔽
+                if len(net_info['rpc_urls']) <= 1:
+                    print(f"{Fore.YELLOW}⚠️ 跳过屏蔽: {network_name} 只剩最后一个RPC{Style.RESET_ALL}")
+                    return
+                
+                # 从网络的RPC列表中移除
+                net_info['rpc_urls'].remove(rpc_url)
+                break
+        
+        # 记录屏蔽信息
+        self.blocked_rpcs[rpc_url] = {
+            'reason': reason,
+            'blocked_time': time.time(),
+            'network': network_name
+        }
+        
+        print(f"{Fore.RED}🚫 已屏蔽高延迟RPC: {network_name}{Style.RESET_ALL}")
+        print(f"   URL: {rpc_url[:50]}...")
+        print(f"   原因: {reason}")
+        self.logger.warning(f"屏蔽RPC节点: {rpc_url} - {reason}")
+
+    def unblock_rpc(self, rpc_url: str, network_key: str) -> bool:
+        """解除RPC节点屏蔽"""
+        if rpc_url not in self.blocked_rpcs:
+            return False
+        
+        if network_key not in self.networks:
+            return False
+        
+        # 重新测试RPC连接
+        if self.test_rpc_connection(rpc_url, self.networks[network_key]['chain_id']):
+            # 恢复到RPC列表
+            self.networks[network_key]['rpc_urls'].append(rpc_url)
+            
+            # 移除屏蔽记录
+            del self.blocked_rpcs[rpc_url]
+            
+            # 清除延迟历史
+            if rpc_url in self.rpc_latency_history:
+                del self.rpc_latency_history[rpc_url]
+            
+            print(f"{Fore.GREEN}✅ 已解除RPC屏蔽: {self.networks[network_key]['name']}{Style.RESET_ALL}")
+            print(f"   URL: {rpc_url[:50]}...")
+            return True
+        
+        return False
+
+    def check_blocked_rpcs_recovery(self):
+        """检查被屏蔽的RPC是否可以恢复"""
+        if not self.blocked_rpcs:
+            return
+        
+        current_time = time.time()
+        recovery_interval = 3600  # 1小时后尝试恢复
+        
+        rpcs_to_check = []
+        for rpc_url, block_info in self.blocked_rpcs.items():
+            if current_time - block_info['blocked_time'] > recovery_interval:
+                rpcs_to_check.append(rpc_url)
+        
+        for rpc_url in rpcs_to_check:
+            # 检查RPC是否仍在屏蔽列表中（可能已被其他地方移除）
+            if rpc_url not in self.blocked_rpcs:
+                continue
+                
+            # 找到对应的网络
+            for net_key, net_info in self.networks.items():
+                if self.blocked_rpcs[rpc_url]['network'] == net_info['name']:
+                    self.unblock_rpc(rpc_url, net_key)
+                    break
+
+    def test_network_concurrent(self, network_key: str, max_workers: int = 10) -> dict:
+        """并发测试单个网络的所有RPC（只对公共节点并发）"""
+        import concurrent.futures
+        import threading
+        
+        if network_key not in self.networks:
+            return {}
+            
+        network_info = self.networks[network_key]
+        results = {
+            'name': network_info['name'],
+            'working_rpcs': [],
+            'failed_rpcs': [],
+            'rpc_details': [],
+            'fastest_rpc': None,
+            'success_rate': 0
+        }
+        
+        def test_single_rpc(rpc_url):
+            return self.test_rpc_concurrent(rpc_url, network_info['chain_id'])
+        
+        # 分离公共节点和私有节点
+        public_rpcs = []
+        private_rpcs = []
+        
+        for rpc_url in network_info['rpc_urls']:
+            if self.is_public_rpc(rpc_url):
+                public_rpcs.append(rpc_url)
+            else:
+                private_rpcs.append(rpc_url)
+        
+        # 并发测试公共节点
+        if public_rpcs:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_rpc = {
+                    executor.submit(test_single_rpc, rpc_url): rpc_url 
+                    for rpc_url in public_rpcs
+                }
+                
+                for future in concurrent.futures.as_completed(future_to_rpc):
+                    rpc_url = future_to_rpc[future]
+                    try:
+                        success, response_time, rpc_type = future.result()
+                        
+                        # 记录延迟并检查是否需要屏蔽
+                        if success:
+                            blocked = self.record_rpc_latency(rpc_url, response_time)
+                            if blocked:
+                                continue  # 跳过已屏蔽的RPC
+                        
+                        rpc_detail = {
+                            'url': rpc_url,
+                            'success': success,
+                            'response_time': response_time,
+                            'type': rpc_type,
+                            'is_public': True
+                        }
+                        
+                        results['rpc_details'].append(rpc_detail)
+                        
+                        if success:
+                            results['working_rpcs'].append(rpc_url)
+                        else:
+                            results['failed_rpcs'].append(rpc_url)
+                            
+                    except Exception as e:
+                        results['failed_rpcs'].append(rpc_url)
+        
+        # 串行测试私有节点（避免频繁请求被限制）
+        for rpc_url in private_rpcs:
+            try:
+                success, response_time, rpc_type = test_single_rpc(rpc_url)
+                
+                # 记录延迟并检查是否需要屏蔽
+                if success:
+                    blocked = self.record_rpc_latency(rpc_url, response_time)
+                    if blocked:
+                        continue  # 跳过已屏蔽的RPC
+                
+                rpc_detail = {
+                    'url': rpc_url,
+                    'success': success,
+                    'response_time': response_time,
+                    'type': rpc_type,
+                    'is_public': False
+                }
+                
+                results['rpc_details'].append(rpc_detail)
+                
+                if success:
+                    results['working_rpcs'].append(rpc_url)
+                else:
+                    results['failed_rpcs'].append(rpc_url)
+                    
+                # 私有节点间添加短暂延迟
+                time.sleep(0.1)
+                    
+            except Exception as e:
+                results['failed_rpcs'].append(rpc_url)
+        
+        # 计算成功率
+        total_rpcs = len(network_info['rpc_urls'])
+        results['success_rate'] = len(results['working_rpcs']) / total_rpcs * 100 if total_rpcs > 0 else 0
+        
+        # 找出最快的RPC
+        working_details = [r for r in results['rpc_details'] if r['success']]
+        if working_details:
+            results['fastest_rpc'] = min(working_details, key=lambda x: x['response_time'])
+        
+        return results
+
+    def test_all_rpcs(self) -> Dict[str, Dict]:
+        """测试所有网络的RPC连接状态（使用并发优化）"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🚀 高速并发RPC连接测试 🚀 {Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📡 正在并发测试所有网络的RPC节点连接状态...{Style.RESET_ALL}\n")
+        
+        import concurrent.futures
+        import time
+        
+        results = {}
+        start_time = time.time()
+        
+        # 并发测试所有网络
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            future_to_network = {
+                executor.submit(self.test_network_concurrent, network_key): network_key 
+                for network_key in self.networks.keys()
+            }
+            
+            completed_count = 0
+            total_networks = len(self.networks)
+            
+            for future in concurrent.futures.as_completed(future_to_network):
+                network_key = future_to_network[future]
+                completed_count += 1
+                
+                try:
+                    result = future.result()
+                    if result:
+                        results[network_key] = result
+                        
+                        # 显示测试结果
+                        success_rate = result['success_rate']
+                        if success_rate == 100:
+                            status_color = Fore.GREEN
+                            status_icon = "🟢"
+                        elif success_rate >= 50:
+                            status_color = Fore.YELLOW
+                            status_icon = "🟡"
+                        else:
+                            status_color = Fore.RED
+                            status_icon = "🔴"
+                        
+                        # 按RPC类型统计
+                        rpc_stats = {'公共节点': 0, 'Alchemy': 0, 'Ankr': 0}
+                        for detail in result['rpc_details']:
+                            if detail['success']:
+                                rpc_stats[detail['type']] += 1
+                        
+                        print(f"{status_icon} {Fore.CYAN}[{completed_count}/{total_networks}]{Style.RESET_ALL} {result['name']}")
+                        print(f"   成功率: {status_color}{success_rate:.1f}%{Style.RESET_ALL} "
+                              f"({len(result['working_rpcs'])}/{len(result['working_rpcs']) + len(result['failed_rpcs'])})")
+                        print(f"   节点类型: 公共节点({rpc_stats['公共节点']}) Alchemy({rpc_stats['Alchemy']}) Ankr({rpc_stats['Ankr']})")
+                        
+                        # 显示最快RPC
+                        if result['fastest_rpc']:
+                            fastest = result['fastest_rpc']
+                            print(f"   最快节点: {Fore.GREEN}{fastest['type']}{Style.RESET_ALL} "
+                                  f"({fastest['response_time']:.3f}s)")
+                        print()
+                        
+                except Exception as e:
+                    print(f"{Fore.RED}❌ {self.networks[network_key]['name']} 测试失败: {e}{Style.RESET_ALL}")
+        
+        elapsed_time = time.time() - start_time
+        print(f"{Fore.GREEN}🎉 并发测试完成！耗时: {elapsed_time:.2f}秒{Style.RESET_ALL}")
         
         return results
 
@@ -2497,7 +2883,7 @@ class EVMMonitor:
                     print(f"  {Fore.GREEN}... 和其他 {len(address_networks) - 5} 个网络{Style.RESET_ALL}")
             else:
                 print(f"{Fore.YELLOW}⚠️ 跳过监控（无交易历史）{Style.RESET_ALL}")
-            
+        
             # 保存被屏蔽的网络列表
             if blocked_networks:
                 self.blocked_networks[address] = blocked_networks
@@ -2612,6 +2998,10 @@ class EVMMonitor:
                     
                     # 等待下一次检查（支持中断）
                     print(f"\n{Fore.CYAN}🕒 等待 {self.monitor_interval} 秒后进行下一轮检查... (按Ctrl+C退出){Style.RESET_ALL}")
+                
+                    # 检查被屏蔽的RPC是否可以恢复
+                    self.check_blocked_rpcs_recovery()
+                    
                     for i in range(self.monitor_interval):
                         if not self.monitoring:
                             break
@@ -2752,6 +3142,7 @@ class EVMMonitor:
             print(f"{Fore.GREEN}8.{Style.RESET_ALL} 🌐 网络连接管理")
             print(f"{Fore.GREEN}9.{Style.RESET_ALL} 🔍 RPC节点检测")
             print(f"{Fore.GREEN}10.{Style.RESET_ALL} ➕ 添加自定义RPC")
+            print(f"{Fore.GREEN}11.{Style.RESET_ALL} 🪙 添加自定义代币")
             
             print(f"\n{Fore.RED}0.{Style.RESET_ALL} 🚪 退出程序")
             print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
@@ -2787,6 +3178,8 @@ class EVMMonitor:
                     self.menu_rpc_testing()
                 elif choice == '10':
                     self.menu_add_custom_rpc()
+                elif choice == '11':
+                    self.menu_add_custom_token()
                 elif choice == '0':
                     self.menu_exit()
                     break
@@ -2858,8 +3251,8 @@ class EVMMonitor:
         else:
             print(f"\n{Fore.GREEN}💼 共有 {len(self.wallets)} 个钱包地址：{Style.RESET_ALL}")
             print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
-            
-            for i, address in enumerate(self.wallets.keys(), 1):
+        
+        for i, address in enumerate(self.wallets.keys(), 1):
                 status = f"{Fore.GREEN}🟢 监控中{Style.RESET_ALL}" if address in self.monitored_addresses else f"{Fore.RED}🔴 未监控{Style.RESET_ALL}"
                 
                 # 显示缩短的地址
@@ -2924,7 +3317,7 @@ class EVMMonitor:
             print(f"\n{Fore.YELLOW}⚠️  取消设置{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
-    
+
     def menu_import_keys(self):
         """菜单：批量导入私钥"""
         print(f"\n{Fore.CYAN}✨ ====== 📁 批量导入私钥 📁 ====== ✨{Style.RESET_ALL}")
@@ -3089,7 +3482,7 @@ class EVMMonitor:
         
         print(f"\n{Fore.YELLOW}📈 网络连接状态：{Style.RESET_ALL}")
         print(f"{Fore.CYAN}─" * 80 + f"{Style.RESET_ALL}")
-        
+            
         for network_key, network_info in self.networks.items():
             if network_key in self.web3_connections:
                 connected_networks.append((network_key, network_info))
@@ -3314,6 +3707,103 @@ class EVMMonitor:
             print(f"   新RPC数量: {Fore.CYAN}{len(self.networks[selected_network]['rpc_urls'])}{Style.RESET_ALL} 个")
         else:
             print(f"\n{Fore.RED}❌ 自定义RPC添加失败{Style.RESET_ALL}")
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
+
+    def menu_add_custom_token(self):
+        """菜单：添加自定义代币"""
+        print(f"\n{Fore.CYAN}✨ ====== 🪙 添加自定义代币 🪙 ====== ✨{Style.RESET_ALL}")
+        print(f"{Back.GREEN}{Fore.BLACK} 🌐 检测并添加ERC20代币到监控列表 {Style.RESET_ALL}")
+        
+        # 步骤1: 选择网络
+        print(f"\n{Fore.YELLOW}📋 步骤1: 选择网络{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}可用网络列表：{Style.RESET_ALL}")
+        
+        network_list = list(self.networks.items())
+        for i, (network_key, network_info) in enumerate(network_list):
+            print(f"  {Fore.GREEN}{i+1:2d}.{Style.RESET_ALL} {network_info['name']}")
+        
+        print(f"\n{Fore.YELLOW}💡 提示：输入网络编号或网络名称{Style.RESET_ALL}")
+        network_input = self.safe_input(f"\n{Fore.CYAN}➜ 请选择网络: {Style.RESET_ALL}").strip()
+        
+        if not network_input:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 解析网络选择
+        selected_network = None
+        try:
+            # 尝试解析为数字
+            network_index = int(network_input) - 1
+            if 0 <= network_index < len(network_list):
+                selected_network = network_list[network_index][0]
+        except ValueError:
+            # 按名称搜索
+            for network_key, network_info in self.networks.items():
+                if network_input.lower() in network_info['name'].lower() or network_input.lower() == network_key.lower():
+                    selected_network = network_key
+                    break
+        
+        if not selected_network:
+            print(f"\n{Fore.RED}❌ 未找到匹配的网络: {network_input}{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        network_info = self.networks[selected_network]
+        print(f"\n{Fore.GREEN}✅ 已选择网络: {network_info['name']}{Style.RESET_ALL}")
+        
+        # 步骤2: 输入代币地址
+        print(f"\n{Fore.YELLOW}📋 步骤2: 输入代币合约地址{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}示例：{Style.RESET_ALL}")
+        print(f"  • USDC: 0xA0b86a33E6417aFD5BF27c23E2a7B0b9bE6C1e67")
+        print(f"  • USDT: 0xdAC17F958D2ee523a2206206994597C13D831ec7") 
+        
+        token_address = self.safe_input(f"\n{Fore.CYAN}➜ 代币合约地址: {Style.RESET_ALL}").strip()
+        
+        if not token_address:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 步骤3: 检测代币信息
+        print(f"\n{Fore.CYAN}🔄 正在检测代币信息...{Style.RESET_ALL}")
+        token_info = self.get_token_info(token_address, selected_network)
+        
+        if not token_info:
+            print(f"\n{Fore.RED}❌ 无法获取代币信息{Style.RESET_ALL}")
+            print(f"   可能原因：")
+            print(f"   • 地址格式错误")
+            print(f"   • 不是有效的ERC20代币合约")
+            print(f"   • 网络连接问题")
+            self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
+            return
+        
+        # 步骤4: 显示代币信息并确认
+        print(f"\n{Fore.GREEN}🎉 成功检测到代币信息！{Style.RESET_ALL}")
+        print(f"\n{Back.BLUE}{Fore.WHITE} 📋 代币详细信息 📋 {Style.RESET_ALL}")
+        print(f"  {Fore.YELLOW}代币名称:{Style.RESET_ALL} {token_info['name']}")
+        print(f"  {Fore.YELLOW}代币符号:{Style.RESET_ALL} {token_info['symbol']}")
+        print(f"  {Fore.YELLOW}小数位数:{Style.RESET_ALL} {token_info['decimals']}")
+        print(f"  {Fore.YELLOW}合约地址:{Style.RESET_ALL} {token_info['address']}")
+        print(f"  {Fore.YELLOW}所在网络:{Style.RESET_ALL} {network_info['name']}")
+        
+        # 确认添加
+        print(f"\n{Fore.YELLOW}❓ 确认添加此代币到监控列表？{Style.RESET_ALL}")
+        confirm = self.safe_input(f"{Fore.CYAN}➜ 输入 'y' 确认添加，其他键取消: {Style.RESET_ALL}").strip().lower()
+        
+        if confirm == 'y':
+            # 添加代币
+            if self.add_custom_token(token_info):
+                print(f"\n{Fore.GREEN}🎉 代币添加成功！{Style.RESET_ALL}")
+                print(f"   现在可以监控 {token_info['symbol']} 在 {network_info['name']} 上的余额了")
+                
+                # 显示当前支持的代币总数
+                print(f"\n{Fore.CYAN}📊 当前支持的代币数量: {len(self.tokens)} 个{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.RED}❌ 代币添加失败{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回主菜单...{Style.RESET_ALL}")
 
