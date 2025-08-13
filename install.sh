@@ -172,13 +172,38 @@ if [ -f "$BASHRC" ]; then
     fi
 fi
 
-# 安装完成，直接启动程序
+# 安装完成
 echo ""
 echo "=================================================="
 echo -e "${GREEN}✅ EVM钱包监控软件安装完成！${NC}"
 echo "=================================================="
-echo -e "${CYAN}正在启动程序...${NC}"
 echo ""
 
-# 直接启动程序
-exec ./start.sh
+# 创建启动器脚本
+cat > /tmp/evm_monitor_launcher.sh << EOF
+#!/bin/bash
+cd "$PROJECT_DIR"
+./start.sh
+EOF
+chmod +x /tmp/evm_monitor_launcher.sh
+
+# 在新的终端会话中启动程序
+if command -v gnome-terminal >/dev/null 2>&1; then
+    echo -e "${CYAN}正在新窗口中启动程序...${NC}"
+    gnome-terminal -- /tmp/evm_monitor_launcher.sh
+elif command -v xterm >/dev/null 2>&1; then
+    echo -e "${CYAN}正在新窗口中启动程序...${NC}"
+    xterm -e /tmp/evm_monitor_launcher.sh
+else
+    echo -e "${CYAN}请手动启动程序：${NC}"
+    echo -e "  ${YELLOW}cd $PROJECT_DIR && ./start.sh${NC}"
+    echo -e "或者使用命令：${NC}"
+    echo -e "  ${YELLOW}evm-monitor${NC}"
+fi
+
+# 清理临时文件
+rm -f /tmp/evm_monitor_launcher.sh
+
+# 刷新当前shell的别名
+echo -e "${YELLOW}提示: 请运行以下命令使快捷方式生效:${NC}"
+echo -e "  ${YELLOW}source ~/.bashrc${NC}"
