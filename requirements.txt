@@ -1,33 +1,26 @@
-# Wallet Monitor Dependencies
-# Core blockchain libraries
-web3>=6.0.0,<7.0.0
-solana>=0.30.0
-solders>=0.20.0
-base58>=2.1.0
-eth-account>=0.8.0
+# EVM Monitor 依赖包列表
+# 核心区块链依赖
+web3==6.11.3
+eth-account==0.10.0
 
-# Cryptography and security
-cryptography>=3.4.8
+# 网络和请求相关
+requests==2.31.0
 
-# HTTP libraries (固定版本避免冲突)
-requests>=2.25.1,<3.0.0
-urllib3>=1.26.0,<2.0.0
-six>=1.16.0
+# 系统和进程监控
+psutil==5.9.6
 
-# Async libraries
-aiohttp>=3.8.0
+# 加密相关
+pycryptodome==3.19.0
 
-# Telegram bot
-python-telegram-bot>=20.0
+# 用户界面和显示
+colorama==0.4.6
 
-# Environment and configuration
-python-dotenv>=0.19.0
+# 配置文件处理 (可选)
+pyyaml==6.0.1
 
-# Terminal colors and UI
-colorama>=0.4.4
+# 异步处理增强 (可选)
+aiohttp==3.9.1
 
-# Optional performance enhancements
-asyncio-throttle>=1.0.2
-
-# Additional utilities
-typing-extensions>=4.0.0
+# 数据处理 (可选但推荐)
+pandas==2.1.4
+numpy==1.24.4
