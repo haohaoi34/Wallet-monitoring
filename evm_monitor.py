@@ -7681,65 +7681,75 @@ esac
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
 
-    def auto_calibrate_network_chain_ids(self):
-        """自动校准现有网络的chain ID"""
-        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准网络Chain ID 🔧 {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}检测并校准所有网络的Chain ID...{Style.RESET_ALL}")
+    def auto_calibrate_network_chain_ids(self, max_workers: int = 8):
+        """自动校准现有网络的chain ID（多线程优化版本）"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准网络Chain ID（多线程加速） 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}检测并校准所有网络的Chain ID...（使用 {max_workers} 个线程并发处理）{Style.RESET_ALL}")
         
         calibration_results = []
         total_networks = len(self.networks)
-        checked_count = 0
         calibrated_count = 0
         
+        # 准备检测任务
+        detection_tasks = []
         for network_key, network_info in self.networks.items():
-            checked_count += 1
-            network_name = network_info['name']
-            configured_chain_id = network_info['chain_id']
-            rpc_urls = network_info.get('rpc_urls', [])
-            
-            print(f"\r{Fore.YELLOW}🔍 检查网络 {checked_count}/{total_networks}: {network_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
+            detection_tasks.append({
+                'network_key': network_key,
+                'network_name': network_info['name'],
+                'configured_chain_id': network_info['chain_id'],
+                'rpc_urls': network_info.get('rpc_urls', [])
+            })
+        
+        def detect_network_chain_id(task):
+            """检测单个网络的chain ID"""
+            network_key = task['network_key']
+            network_name = task['network_name']
+            configured_chain_id = task['configured_chain_id']
+            rpc_urls = task['rpc_urls']
             
             if not rpc_urls:
-                calibration_results.append({
+                return {
                     'network_key': network_key,
                     'network_name': network_name,
                     'status': 'no_rpc',
                     'configured_id': configured_chain_id,
                     'actual_id': None,
                     'message': '无可用RPC'
-                })
-                continue
+                }
             
             # 尝试从前3个RPC获取实际chain ID
             actual_chain_id = None
             working_rpc = None
             
             for rpc_url in rpc_urls[:3]:
-                actual_chain_id = self._get_actual_chain_id(rpc_url, timeout=3)
-                if actual_chain_id is not None:
-                    working_rpc = rpc_url
-                    break
+                try:
+                    actual_chain_id = self._get_actual_chain_id(rpc_url, timeout=3)
+                    if actual_chain_id is not None:
+                        working_rpc = rpc_url
+                        break
+                except Exception:
+                    continue
             
             if actual_chain_id is None:
-                calibration_results.append({
+                return {
                     'network_key': network_key,
                     'network_name': network_name,
                     'status': 'connection_failed',
                     'configured_id': configured_chain_id,
                     'actual_id': None,
                     'message': '所有RPC连接失败'
-                })
+                }
             elif actual_chain_id == configured_chain_id:
-                calibration_results.append({
+                return {
                     'network_key': network_key,
                     'network_name': network_name,
                     'status': 'correct',
                     'configured_id': configured_chain_id,
                     'actual_id': actual_chain_id,
                     'message': 'Chain ID正确'
-                })
+                }
             else:
-                calibration_results.append({
+                return {
                     'network_key': network_key,
                     'network_name': network_name,
                     'status': 'mismatch',
@@ -7747,7 +7757,33 @@ esac
                     'actual_id': actual_chain_id,
                     'working_rpc': working_rpc,
                     'message': f'ID不匹配：配置 {configured_chain_id} ≠ 实际 {actual_chain_id}'
-                })
+                }
+        
+        # 使用线程池并发检测
+        completed_count = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_task = {executor.submit(detect_network_chain_id, task): task for task in detection_tasks}
+            
+            # 处理完成的任务
+            for future in as_completed(future_to_task):
+                completed_count += 1
+                print(f"\r{Fore.YELLOW}🚀 检查进度: {completed_count}/{total_networks} ({completed_count*100//total_networks}%)...{Style.RESET_ALL}", end='', flush=True)
+                
+                try:
+                    result = future.result()
+                    calibration_results.append(result)
+                except Exception as e:
+                    # 处理异常情况
+                    task = future_to_task[future]
+                    calibration_results.append({
+                        'network_key': task['network_key'],
+                        'network_name': task['network_name'],
+                        'status': 'error',
+                        'configured_id': task['configured_chain_id'],
+                        'actual_id': None,
+                        'message': f'检测出错: {str(e)}'
+                    })
         
         print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 检查完成 📊 {Style.RESET_ALL}")
         
@@ -8642,72 +8678,119 @@ esac
             print(f"\n{Fore.RED}❌ 读取文件失败: {e}{Style.RESET_ALL}")
             return None
     
-    def _auto_calibrate_chain_ids(self, chainlist_data: list) -> list:
-        """自动校准ChainList数据中的chain ID"""
-        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准Chain ID 🔧 {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}正在验证和校准链条ID...{Style.RESET_ALL}")
+    def _auto_calibrate_chain_ids(self, chainlist_data: list, max_workers: int = 8) -> list:
+        """自动校准ChainList数据中的chain ID（多线程优化版本）"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准Chain ID（多线程加速） 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在验证和校准链条ID...（使用 {max_workers} 个线程并发处理）{Style.RESET_ALL}")
         
+        # 预处理数据，提取需要验证的链条
+        validation_tasks = []
+        direct_append = []
+        
+        for i, chain_data in enumerate(chainlist_data):
+            original_chain_id = chain_data.get('chainId')
+            chain_name = chain_data.get('name', '')
+            rpc_list = chain_data.get('rpc', [])
+            
+            if not original_chain_id or not rpc_list:
+                direct_append.append(chain_data)
+                continue
+            
+            # 提取第一个有效的RPC URL用于验证
+            test_rpc_url = None
+            for rpc_entry in rpc_list[:3]:  # 只测试前3个RPC
+                if isinstance(rpc_entry, dict):
+                    url = rpc_entry.get('url', '')
+                elif isinstance(rpc_entry, str):
+                    url = rpc_entry
+                else:
+                    continue
+                
+                if url and self._is_valid_rpc_url(url):
+                    test_rpc_url = url
+                    break
+            
+            if test_rpc_url:
+                validation_tasks.append({
+                    'index': i,
+                    'chain_data': chain_data,
+                    'rpc_url': test_rpc_url,
+                    'original_chain_id': original_chain_id,
+                    'chain_name': chain_name
+                })
+            else:
+                direct_append.append(chain_data)
+        
+        # 多线程处理验证任务
         calibrated_data = []
         calibration_count = 0
         validation_count = 0
+        completed_count = 0
         
-        for i, chain_data in enumerate(chainlist_data):
+        def validate_chain_id(task):
             try:
-                original_chain_id = chain_data.get('chainId')
-                chain_name = chain_data.get('name', '')
-                rpc_list = chain_data.get('rpc', [])
-                
-                if not original_chain_id or not rpc_list:
-                    continue
-                
-                # 提取第一个有效的RPC URL用于验证
-                test_rpc_url = None
-                for rpc_entry in rpc_list[:3]:  # 只测试前3个RPC
-                    if isinstance(rpc_entry, dict):
-                        url = rpc_entry.get('url', '')
-                    elif isinstance(rpc_entry, str):
-                        url = rpc_entry
-                    else:
-                        continue
-                    
-                    if url and self._is_valid_rpc_url(url):
-                        test_rpc_url = url
-                        break
-                
-                if not test_rpc_url:
-                    # 没有有效RPC，保持原始数据
-                    calibrated_data.append(chain_data)
-                    continue
-                
-                # 验证chain ID
-                print(f"\r{Fore.YELLOW}🔍 验证链条 {i+1}/{len(chainlist_data)}: {chain_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
-                
-                actual_chain_id = self._get_actual_chain_id(test_rpc_url)
-                validation_count += 1
-                
-                if actual_chain_id is None:
-                    # 无法获取实际chain ID，保持原始数据
-                    calibrated_data.append(chain_data)
-                elif actual_chain_id != original_chain_id:
-                    # chain ID不匹配，进行校准
-                    calibrated_chain_data = chain_data.copy()
-                    calibrated_chain_data['chainId'] = actual_chain_id
-                    calibrated_chain_data['_calibrated'] = True
-                    calibrated_chain_data['_original_chain_id'] = original_chain_id
-                    calibrated_data.append(calibrated_chain_data)
-                    calibration_count += 1
-                    print(f"\n  🔧 {Fore.YELLOW}校准{Style.RESET_ALL}: {chain_name} ID {original_chain_id} → {actual_chain_id}")
-                else:
-                    # chain ID正确，保持原始数据
-                    calibrated_data.append(chain_data)
-                    
+                actual_chain_id = self._get_actual_chain_id(task['rpc_url'], timeout=3)
+                return {
+                    'task': task,
+                    'actual_chain_id': actual_chain_id,
+                    'success': True
+                }
             except Exception as e:
-                # 出错时保持原始数据
-                calibrated_data.append(chain_data)
-                self.logger.warning(f"校准链条ID时出错: {e}")
-                continue
+                return {
+                    'task': task,
+                    'actual_chain_id': None,
+                    'success': False,
+                    'error': str(e)
+                }
         
-        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 校准完成 📊 {Style.RESET_ALL}")
+        # 使用线程池并发执行
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_task = {executor.submit(validate_chain_id, task): task for task in validation_tasks}
+            
+            # 处理完成的任务
+            for future in as_completed(future_to_task):
+                task = future_to_task[future]
+                completed_count += 1
+                
+                # 更新进度
+                print(f"\r{Fore.YELLOW}🚀 验证进度: {completed_count}/{len(validation_tasks)} ({completed_count*100//len(validation_tasks)}%)...{Style.RESET_ALL}", end='', flush=True)
+                
+                try:
+                    result = future.result()
+                    chain_data = result['task']['chain_data']
+                    original_chain_id = result['task']['original_chain_id']
+                    chain_name = result['task']['chain_name']
+                    actual_chain_id = result['actual_chain_id']
+                    
+                    validation_count += 1
+                    
+                    if actual_chain_id is None:
+                        # 无法获取实际chain ID，保持原始数据
+                        calibrated_data.append(chain_data)
+                    elif actual_chain_id != original_chain_id:
+                        # chain ID不匹配，进行校准
+                        calibrated_chain_data = chain_data.copy()
+                        calibrated_chain_data['chainId'] = actual_chain_id
+                        calibrated_chain_data['_calibrated'] = True
+                        calibrated_chain_data['_original_chain_id'] = original_chain_id
+                        calibrated_data.append(calibrated_chain_data)
+                        calibration_count += 1
+                        print(f"\n  🔧 {Fore.YELLOW}校准{Style.RESET_ALL}: {chain_name[:40]} ID {original_chain_id} → {actual_chain_id}")
+                    else:
+                        # chain ID正确，保持原始数据
+                        calibrated_data.append(chain_data)
+                        
+                except Exception as e:
+                    # 出错时保持原始数据
+                    calibrated_data.append(result['task']['chain_data'])
+                    self.logger.warning(f"处理校准结果时出错: {e}")
+        
+        # 添加直接追加的数据
+        calibrated_data.extend(direct_append)
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 多线程校准完成 📊 {Style.RESET_ALL}")
+        print(f"⚡ 使用线程: {Fore.MAGENTA}{max_workers}{Style.RESET_ALL} 个")
         print(f"🔍 验证链条: {Fore.CYAN}{validation_count}{Style.RESET_ALL} 个")
         print(f"🔧 校准链条: {Fore.GREEN}{calibration_count}{Style.RESET_ALL} 个")
         print(f"✅ 处理完成: {Fore.CYAN}{len(calibrated_data)}{Style.RESET_ALL} 个链条数据")
@@ -8715,39 +8798,75 @@ esac
         return calibrated_data
     
     def _get_actual_chain_id(self, rpc_url: str, timeout: int = 2) -> int:
-        """获取RPC实际的chain ID"""
+        """获取RPC实际的chain ID（单线程版本）"""
         try:
             from web3 import Web3
-            import signal
             
-            def timeout_handler(signum, frame):
-                raise TimeoutError("RPC调用超时")
+            # 根据URL类型选择提供者
+            if rpc_url.startswith(('ws://', 'wss://')):
+                provider = Web3.WebsocketProvider(rpc_url, websocket_kwargs={'timeout': timeout})
+            else:
+                provider = Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout})
             
-            # 设置超时
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
+            w3 = Web3(provider)
             
-            try:
-                # 根据URL类型选择提供者
-                if rpc_url.startswith(('ws://', 'wss://')):
-                    provider = Web3.WebsocketProvider(rpc_url, websocket_kwargs={'timeout': timeout})
-                else:
-                    provider = Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout})
-                
-                w3 = Web3(provider)
-                
-                # 测试连接并获取chain ID
-                if w3.is_connected():
-                    chain_id = w3.eth.chain_id
-                    return chain_id
-                else:
-                    return None
-                    
-            finally:
-                signal.alarm(0)  # 取消超时
+            # 测试连接并获取chain ID
+            if w3.is_connected():
+                chain_id = w3.eth.chain_id
+                return chain_id
+            else:
+                return None
                 
         except Exception:
             return None
+
+    def _get_chain_id_batch(self, rpc_urls: List[str], timeout: int = 3, max_workers: int = 5) -> Dict[str, int]:
+        """批量获取多个RPC的chain ID（多线程版本）"""
+        results = {}
+        
+        def get_chain_id_worker(rpc_url):
+            try:
+                chain_id = self._get_actual_chain_id(rpc_url, timeout)
+                return rpc_url, chain_id
+            except Exception:
+                return rpc_url, None
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_rpc = {executor.submit(get_chain_id_worker, rpc): rpc for rpc in rpc_urls}
+            
+            for future in as_completed(future_to_rpc):
+                rpc_url = future_to_rpc[future]
+                try:
+                    rpc_url, chain_id = future.result()
+                    results[rpc_url] = chain_id
+                except Exception:
+                    results[rpc_url] = None
+        
+        return results
+
+    def _test_rpc_batch(self, rpc_urls: List[str], timeout: int = 3, max_workers: int = 8, quick_test: bool = False) -> Dict[str, bool]:
+        """批量测试多个RPC的连通性（多线程版本）"""
+        results = {}
+        
+        def test_rpc_worker(rpc_url):
+            try:
+                is_valid = self._is_valid_rpc_url(rpc_url, timeout=timeout, quick_test=quick_test)
+                return rpc_url, is_valid
+            except Exception:
+                return rpc_url, False
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_rpc = {executor.submit(test_rpc_worker, rpc): rpc for rpc in rpc_urls}
+            
+            for future in as_completed(future_to_rpc):
+                rpc_url = future_to_rpc[future]
+                try:
+                    rpc_url, is_valid = future.result()
+                    results[rpc_url] = is_valid
+                except Exception:
+                    results[rpc_url] = False
+        
+        return results
 
     def _process_chainlist_data(self, chainlist_data: list):
         """处理ChainList数据并导入RPC"""
@@ -8878,48 +8997,110 @@ esac
         
         for network_key, rpc_urls in matched_networks.items():
             network_name = self.networks[network_key]['name']
-            print(f"\n{Fore.CYAN}🔄 处理网络: {network_name}{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}🔄 处理网络: {network_name}（使用多线程加速）{Style.RESET_ALL}")
             
-            success_count = 0
-            failed_count = 0
+            # 过滤需要测试的RPC
+            test_rpcs = []
             skipped_count = 0
             
-            for i, rpc_url in enumerate(rpc_urls, 1):
-                print(f"  {i}/{len(rpc_urls)} 测试: {rpc_url[:60]}...", end=" ", flush=True)
-                
+            for rpc_url in rpc_urls:
                 # 检查是否已存在
                 if rpc_url in self.networks[network_key]['rpc_urls']:
-                    print(f"{Fore.YELLOW}跳过(已存在){Style.RESET_ALL}")
                     skipped_count += 1
                     continue
                 
                 # 检查是否已被拉黑
                 if rpc_url in self.blocked_rpcs:
-                    print(f"{Fore.RED}跳过(已拉黑){Style.RESET_ALL}")
                     skipped_count += 1
                     continue
                 
-                # 使用快速测试模式（1秒超时）
+                test_rpcs.append(rpc_url)
+            
+            if not test_rpcs:
+                print(f"  {Fore.YELLOW}⏭️ 所有RPC已存在或被拉黑，跳过测试{Style.RESET_ALL}")
+                import_summary[network_key] = {
+                    'name': network_name,
+                    'success': 0,
+                    'failed': 0,
+                    'skipped': skipped_count
+                }
+                total_skipped += skipped_count
+                continue
+            
+            print(f"  📊 准备测试: {len(test_rpcs)} 个RPC（跳过 {skipped_count} 个）")
+            
+            # 多线程批量测试RPC
+            success_count = 0
+            failed_count = 0
+            
+            def test_and_add_rpc(rpc_url):
+                """测试并添加单个RPC"""
                 import time
                 start_time = time.time()
                 
-                if self.add_custom_rpc(network_key, rpc_url, quick_test=True):
+                try:
+                    if self._is_valid_rpc_url(rpc_url, timeout=3, quick_test=True):
+                        # 添加到网络配置
+                        self.networks[network_key]['rpc_urls'].append(rpc_url)
+                        elapsed = time.time() - start_time
+                        return {
+                            'rpc_url': rpc_url,
+                            'success': True,
+                            'elapsed': elapsed,
+                            'message': f"成功({elapsed:.2f}s)"
+                        }
+                    else:
+                        elapsed = time.time() - start_time
+                        return {
+                            'rpc_url': rpc_url,
+                            'success': False,
+                            'elapsed': elapsed,
+                            'message': f"失败({elapsed:.2f}s)"
+                        }
+                except Exception as e:
                     elapsed = time.time() - start_time
-                    print(f"{Fore.GREEN}成功({elapsed:.2f}s){Style.RESET_ALL}")
-                    success_count += 1
-                else:
-                    elapsed = time.time() - start_time
-                    print(f"{Fore.RED}失败({elapsed:.2f}s){Style.RESET_ALL}")
-                    
-                    # 自动拉黑失败的RPC（包括超时的）
-                    reason = "超过3秒超时" if elapsed >= 3.0 else "连接失败"
-                    self.blocked_rpcs[rpc_url] = {
-                        'reason': f'ChainList批量导入时{reason}',
-                        'blocked_time': time.time(),
-                        'network': network_key,
-                        'test_duration': elapsed
+                    return {
+                        'rpc_url': rpc_url,
+                        'success': False,
+                        'elapsed': elapsed,
+                        'message': f"异常({elapsed:.2f}s): {str(e)[:20]}"
                     }
-                    failed_count += 1
+            
+            # 使用线程池并发测试（限制线程数避免过载）
+            completed_count = 0
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_rpc = {executor.submit(test_and_add_rpc, rpc): rpc for rpc in test_rpcs}
+                
+                for future in as_completed(future_to_rpc):
+                    completed_count += 1
+                    rpc_url = future_to_rpc[future]
+                    
+                    # 更新进度
+                    print(f"\r  🚀 测试进度: {completed_count}/{len(test_rpcs)} ({completed_count*100//len(test_rpcs)}%)...", end='', flush=True)
+                    
+                    try:
+                        result = future.result()
+                        
+                        if result['success']:
+                            success_count += 1
+                            print(f"\n    ✅ {rpc_url[:50]}... {Fore.GREEN}{result['message']}{Style.RESET_ALL}")
+                        else:
+                            failed_count += 1
+                            # 自动拉黑失败的RPC
+                            reason = "超过3秒超时" if result['elapsed'] >= 3.0 else "连接失败"
+                            self.blocked_rpcs[rpc_url] = {
+                                'reason': f'ChainList批量导入时{reason}',
+                                'blocked_time': time.time(),
+                                'network': network_key,
+                                'test_duration': result['elapsed']
+                            }
+                            print(f"\n    ❌ {rpc_url[:50]}... {Fore.RED}{result['message']}{Style.RESET_ALL}")
+                            
+                    except Exception as e:
+                        failed_count += 1
+                        print(f"\n    💥 {rpc_url[:50]}... {Fore.RED}处理异常: {str(e)[:30]}{Style.RESET_ALL}")
+            
+            print(f"\n  📊 {network_name}: ✅{success_count} ❌{failed_count} ⏭️{skipped_count}")
             
             import_summary[network_key] = {
                 'name': network_name,
@@ -8931,8 +9112,6 @@ esac
             total_success += success_count
             total_failed += failed_count
             total_skipped += skipped_count
-            
-            print(f"  📊 {network_name}: ✅{success_count} ❌{failed_count} ⏭️{skipped_count}")
         
         # 显示导入总结
         print(f"\n{Back.GREEN}{Fore.BLACK} 📋 导入完成总结 📋 {Style.RESET_ALL}")
