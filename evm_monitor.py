@@ -15,6 +15,8 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict, deque
 import asyncio
+import difflib
+from functools import lru_cache
 
 # 第三方库导入
 try:
@@ -788,18 +790,18 @@ class EVMMonitor:
                 'explorer': 'https://explorer.harmony.one'
             },
             
-            'heco': {
-                'name': '🔥 Huobi ECO Chain',
-                'chain_id': 128,
-                'rpc_urls': [
-                    'https://http-mainnet.hecochain.com',
-                    'https://http-mainnet-node.huobichain.com',
-                    'https://hecoapi.terminet.io/rpc',
-                    'https://heco.drpc.org'
-                ],
-                'native_currency': 'HT',
-                'explorer': 'https://hecoinfo.com'
-            },
+            # 'heco': {  # ❌ 禁用：所有RPC节点失效（2024-12检测）
+            #     'name': '🔥 Huobi ECO Chain',
+            #     'chain_id': 128,
+            #     'rpc_urls': [
+            #         'https://http-mainnet.hecochain.com',  # 连接失败
+            #         'https://http-mainnet-node.huobichain.com',  # 连接失败
+            #         'https://hecoapi.terminet.io/rpc',  # 连接失败
+            #         'https://heco.drpc.org'  # HTTP 400
+            #     ],
+            #     'native_currency': 'HT',
+            #     'explorer': 'https://hecoinfo.com'
+            # },
             
             'kava': {
                 'name': '🌋 Kava EVM',
@@ -829,16 +831,16 @@ class EVMMonitor:
                 'explorer': 'https://scope.klaytn.com'
             },
             
-            'mantra': {
-                'name': '🕉️ MANTRA',
-                'chain_id': 3370,
-                'rpc_urls': [
-                    'https://rpc.mantrachain.io',
-                    'https://evm-rpc.mantrachain.io'
-                ],
-                'native_currency': 'OM',
-                'explorer': 'https://explorer.mantrachain.io'
-            },
+            # 'mantra': {  # ❌ 禁用：不支持标准EVM eth_chainId方法（2024-12检测）
+            #     'name': '🕉️ MANTRA',
+            #     'chain_id': 3370,
+            #     'rpc_urls': [
+            #         'https://rpc.mantrachain.io',  # Method not found
+            #         'https://evm-rpc.mantrachain.io'  # 连接失败
+            #     ],
+            #     'native_currency': 'OM',
+            #     'explorer': 'https://explorer.mantrachain.io'
+            # },
             
             'moonbeam': {
                 'name': '🌙 Moonbeam',
@@ -984,7 +986,7 @@ class EVMMonitor:
             
             'skale': {
                 'name': '⚙️ Skale Europa',
-                'chain_id': 2046399126,  # ✅ 测试确认实际ID
+                'chain_id': 1564830818,  # ✅ 更新正确链ID
                 'rpc_urls': [
                     'https://mainnet.skalenodes.com/v1/elated-tan-skat'  # ✅ 测试可用
                 ],
@@ -1027,9 +1029,10 @@ class EVMMonitor:
                 'name': '💫 Canto',
                 'chain_id': 7700,
                 'rpc_urls': [
-                    'https://canto.gravitychain.io',  # ✅ 测试可用
-                    'https://canto.evm.chandrastation.com',
-                    'https://mainnode.plexnode.org:8545'
+                    'https://canto-rpc.ansybl.io',  # ✅ 2024测试可用
+                    'https://canto.gravitychain.io',  # 备用
+                    'https://canto.evm.chandrastation.com',  # 备用
+                    'https://mainnode.plexnode.org:8545'  # 备用
                 ],
                 'native_currency': 'CANTO',
                 'explorer': 'https://cantoscan.com'
@@ -1355,7 +1358,7 @@ class EVMMonitor:
             
             'callisto': {
                 'name': '🌙 Callisto Network',
-                'chain_id': 820,
+                'chain_id': 207,  # ✅ 更新正确链ID
                 'rpc_urls': [
                     'https://clo-geth.0xinfra.com'
                 ],
@@ -1964,7 +1967,7 @@ class EVMMonitor:
             
             'skale': {
                 'name': '⚙️ Skale',
-                'chain_id': 1351057110,
+                'chain_id': 1564830818,  # ✅ 更新正确链ID
                 'rpc_urls': [
                     'https://mainnet.skalenodes.com'
                 ],
@@ -2110,7 +2113,7 @@ class EVMMonitor:
             
             'sonic': {
                 'name': '🎵 Sonic',
-                'chain_id': 64165,
+                'chain_id': 146,
                 'rpc_urls': [
                     'https://rpc.sonic.fantom.network',
                     # Alchemy (付费)
@@ -2142,7 +2145,7 @@ class EVMMonitor:
             
             'unichain': {
                 'name': '🦄 Unichain',
-                'chain_id': 1301,
+                'chain_id': 130,  # ✅ 更新正确链ID
                 'rpc_urls': [
                     'https://rpc.unichain.org'
                 ],
@@ -2153,7 +2156,7 @@ class EVMMonitor:
             # ==== 🌈 LAYER 2 网络 (按首字母排序) ====
             'abstract': {
                 'name': '🔮 Abstract',
-                'chain_id': 11124,
+                'chain_id': 1113,  # ✅ 更新正确链ID
                 'rpc_urls': [
                     'https://api.abstract.xyz/rpc'
                 ],
@@ -7626,9 +7629,10 @@ esac
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
         print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🔧 自动校准Chain ID（解决ID不匹配问题）")
+        print(f"  {Fore.MAGENTA}6.{Style.RESET_ALL} 🤖 AI智能全自动校准（从ChainList智能匹配所有链条）")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-5): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-6): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -7670,6 +7674,10 @@ esac
             elif choice == '5':
                 # 自动校准Chain ID
                 self.auto_calibrate_network_chain_ids()
+                
+            elif choice == '6':
+                # AI智能全自动校准
+                self.ai_smart_calibrate_from_chainlist()
                 
             elif choice == '0':
                 return
@@ -7836,6 +7844,55 @@ esac
                 print(f"  • {Fore.CYAN}{result['network_name']}{Style.RESET_ALL}: {result['message']}")
         
         return calibration_results
+
+    def ai_smart_calibrate_from_chainlist(self):
+        """AI智能从ChainList全自动校准所有链条"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🤖 AI智能全自动校准系统 🤖 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在启动AI智能校准系统，自动从ChainList匹配和校准所有链条...{Style.RESET_ALL}")
+        
+        # 读取ChainList数据
+        chainlist_data = self._read_chainlist_file()
+        if not chainlist_data:
+            print(f"{Fore.RED}❌ 无法读取ChainList数据，请确保chainlist.txt文件存在{Style.RESET_ALL}")
+            return
+        
+        print(f"📊 ChainList数据: {Fore.CYAN}{len(chainlist_data)}{Style.RESET_ALL} 个链条")
+        print(f"🏠 本地网络: {Fore.CYAN}{len(self.networks)}{Style.RESET_ALL} 个链条")
+        
+        # 执行AI全自动校准
+        try:
+            results = self._ai_auto_calibrate_all_chains(chainlist_data, max_workers=8)
+            
+            # 显示最终统计
+            print(f"\n{Back.GREEN}{Fore.BLACK} 📊 AI校准完成统计 📊 {Style.RESET_ALL}")
+            
+            updated_chains = results.get('updated', [])
+            correct_chains = results.get('already_correct', [])
+            no_match_chains = results.get('no_match', [])
+            pending_chains = results.get('pending_updates', [])
+            
+            print(f"🎉 已更新: {Fore.GREEN}{len(updated_chains)}{Style.RESET_ALL} 个链条")
+            print(f"✅ 已正确: {Fore.CYAN}{len(correct_chains)}{Style.RESET_ALL} 个链条")
+            print(f"⏸️  待更新: {Fore.YELLOW}{len(pending_chains)}{Style.RESET_ALL} 个链条")
+            print(f"❓ 无匹配: {Fore.RED}{len(no_match_chains)}{Style.RESET_ALL} 个链条")
+            
+            # 显示无匹配的链条（可能需要手动处理）
+            if no_match_chains:
+                print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 以下链条在ChainList中未找到匹配 ⚠️ {Style.RESET_ALL}")
+                for chain in no_match_chains[:5]:  # 只显示前5个
+                    print(f"  • {chain['local_name']} (Chain ID: {chain['local_chain_id']})")
+                if len(no_match_chains) > 5:
+                    print(f"  ... 还有 {len(no_match_chains) - 5} 个")
+            
+            if updated_chains:
+                print(f"\n{Fore.GREEN}💡 建议：重新启动程序或初始化网络连接以应用Chain ID更改{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ AI校准过程中出错: {e}{Style.RESET_ALL}")
+            import traceback
+            traceback.print_exc()
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
 
     def initialize_server_connections(self):
         """初始化服务器连接 - 检测所有网络并建立最佳连接"""
@@ -8678,6 +8735,106 @@ esac
             print(f"\n{Fore.RED}❌ 读取文件失败: {e}{Style.RESET_ALL}")
             return None
     
+    def _ai_auto_calibrate_all_chains(self, chainlist_data: list, max_workers: int = 8) -> Dict[str, dict]:
+        """AI全自动链条校准系统 - 智能匹配所有链条并自动校准Chain ID"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🚀 AI全自动链条校准系统 🚀 {Style.RESET_ALL}")
+        
+        # 第一步：AI智能匹配
+        matching_results = self._ai_enhanced_chain_matching(chainlist_data, max_workers)
+        
+        # 第二步：自动校准需要更新的链条
+        calibration_results = {}
+        chains_to_update = []
+        chains_already_correct = []
+        chains_no_match = []
+        
+        print(f"\n{Back.BLUE}{Fore.WHITE} 📋 分析匹配结果 📋 {Style.RESET_ALL}")
+        
+        for network_key, match_result in matching_results.items():
+            best_match = match_result['best_match']
+            local_info = match_result['local_info']
+            local_chain_id = local_info.get('chain_id')
+            
+            if not best_match:
+                chains_no_match.append({
+                    'network_key': network_key,
+                    'local_name': local_info.get('name', network_key),
+                    'local_chain_id': local_chain_id
+                })
+                continue
+            
+            chainlist_chain_id = best_match['chain_data'].get('chainId')
+            chainlist_name = best_match['chainlist_name']
+            similarity = best_match['similarity']
+            
+            if local_chain_id == chainlist_chain_id:
+                chains_already_correct.append({
+                    'network_key': network_key,
+                    'local_name': local_info.get('name', network_key),
+                    'chainlist_name': chainlist_name,
+                    'chain_id': local_chain_id,
+                    'similarity': similarity
+                })
+            else:
+                chains_to_update.append({
+                    'network_key': network_key,
+                    'local_name': local_info.get('name', network_key),
+                    'chainlist_name': chainlist_name,
+                    'old_chain_id': local_chain_id,
+                    'new_chain_id': chainlist_chain_id,
+                    'similarity': similarity,
+                    'match_type': best_match['match_type'],
+                    'chain_data': best_match['chain_data']
+                })
+        
+        print(f"✅ 已正确: {Fore.GREEN}{len(chains_already_correct)}{Style.RESET_ALL} 个")
+        print(f"🔧 需要更新: {Fore.YELLOW}{len(chains_to_update)}{Style.RESET_ALL} 个")
+        print(f"❓ 无匹配: {Fore.RED}{len(chains_no_match)}{Style.RESET_ALL} 个")
+        
+        # 显示需要更新的链条详情
+        if chains_to_update:
+            print(f"\n{Back.YELLOW}{Fore.BLACK} 🔧 需要更新的链条 🔧 {Style.RESET_ALL}")
+            for i, chain in enumerate(chains_to_update[:10], 1):  # 只显示前10个
+                match_type_emoji = {"exact_id": "🎯", "high_similarity": "🔥", "medium_similarity": "📊"}.get(chain['match_type'], "❓")
+                print(f"  {i}. {chain['local_name']} → {chain['chainlist_name']}")
+                print(f"     {match_type_emoji} Chain ID: {Fore.RED}{chain['old_chain_id']}{Style.RESET_ALL} → {Fore.GREEN}{chain['new_chain_id']}{Style.RESET_ALL} (相似度: {chain['similarity']:.2%})")
+            
+            if len(chains_to_update) > 10:
+                print(f"     ... 还有 {len(chains_to_update) - 10} 个链条需要更新")
+        
+        # 第三步：询问是否自动应用更新
+        if chains_to_update:
+            print(f"\n{Fore.CYAN}🤖 AI建议自动应用这些Chain ID更新{Style.RESET_ALL}")
+            confirm = self.safe_input(f"{Fore.YELLOW}➜ 是否自动应用所有更新？(Y/n): {Style.RESET_ALL}").strip().lower()
+            
+            if confirm in ['', 'y', 'yes']:
+                print(f"\n{Back.GREEN}{Fore.BLACK} 🚀 正在自动应用更新... 🚀 {Style.RESET_ALL}")
+                
+                updated_count = 0
+                for chain in chains_to_update:
+                    network_key = chain['network_key']
+                    old_id = chain['old_chain_id']
+                    new_id = chain['new_chain_id']
+                    
+                    # 更新网络配置
+                    self.networks[network_key]['chain_id'] = new_id
+                    updated_count += 1
+                    
+                    print(f"  ✅ {chain['local_name']}: {old_id} → {new_id}")
+                
+                print(f"\n{Fore.GREEN}🎉 自动更新完成！已更新 {updated_count} 个链条的Chain ID{Style.RESET_ALL}")
+                
+                calibration_results['updated'] = chains_to_update
+            else:
+                print(f"\n{Fore.YELLOW}⚠️ 用户取消了自动更新{Style.RESET_ALL}")
+                calibration_results['pending_updates'] = chains_to_update
+        
+        calibration_results['already_correct'] = chains_already_correct
+        calibration_results['no_match'] = chains_no_match
+        calibration_results['total_processed'] = len(matching_results)
+        
+        return calibration_results
+
     def _auto_calibrate_chain_ids(self, chainlist_data: list, max_workers: int = 8) -> list:
         """自动校准ChainList数据中的chain ID（多线程优化版本）"""
         print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准Chain ID（多线程加速） 🔧 {Style.RESET_ALL}")
@@ -8820,6 +8977,37 @@ esac
         except Exception:
             return None
 
+    def _diagnose_rpc_failure(self, rpc_url: str, timeout: int = 5) -> str:
+        """诊断RPC失败的具体原因"""
+        try:
+            import requests
+            response = requests.post(rpc_url, 
+                json={'jsonrpc': '2.0', 'method': 'eth_chainId', 'params': [], 'id': 1},
+                timeout=timeout,
+                headers={'Content-Type': 'application/json'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'error' in data:
+                    error_msg = data['error'].get('message', 'Unknown RPC error')
+                    if 'method not found' in error_msg.lower():
+                        return "不支持eth_chainId方法（非标准EVM）"
+                    else:
+                        return f"RPC错误: {error_msg}"
+                else:
+                    return "响应格式异常"
+            else:
+                return f"HTTP错误: {response.status_code}"
+                
+        except requests.exceptions.Timeout:
+            return f"超时 (>{timeout}s)"
+        except requests.exceptions.ConnectionError:
+            return "连接失败"
+        except requests.exceptions.SSLError:
+            return "SSL证书错误"
+        except Exception as e:
+            return f"异常: {str(e)[:30]}"
+
     def _get_chain_id_batch(self, rpc_urls: List[str], timeout: int = 3, max_workers: int = 5) -> Dict[str, int]:
         """批量获取多个RPC的chain ID（多线程版本）"""
         results = {}
@@ -8843,6 +9031,155 @@ esac
                     results[rpc_url] = None
         
         return results
+
+    @lru_cache(maxsize=1000)
+    def _normalize_chain_name(self, name: str) -> str:
+        """标准化链条名称，用于智能匹配"""
+        if not name:
+            return ""
+        
+        # 移除emoji和特殊字符
+        normalized = re.sub(r'[^\w\s]', '', name)
+        # 转换为小写
+        normalized = normalized.lower()
+        # 移除常见的后缀词
+        suffixes_to_remove = ['mainnet', 'network', 'chain', 'protocol', 'hub', 'labs', 'evm', 'testnet']
+        words = normalized.split()
+        filtered_words = [word for word in words if word not in suffixes_to_remove]
+        # 如果过滤后为空，保留原始单词
+        if not filtered_words:
+            filtered_words = words
+        return ' '.join(filtered_words)
+
+    def _calculate_name_similarity(self, name1: str, name2: str) -> float:
+        """计算两个链条名称的相似度"""
+        norm1 = self._normalize_chain_name(name1)
+        norm2 = self._normalize_chain_name(name2)
+        
+        # 完全匹配
+        if norm1 == norm2:
+            return 1.0
+        
+        # 使用序列匹配器计算相似度
+        similarity = difflib.SequenceMatcher(None, norm1, norm2).ratio()
+        
+        # 检查关键词匹配
+        words1 = set(norm1.split())
+        words2 = set(norm2.split())
+        
+        if words1 and words2:
+            # 计算词汇交集比例
+            intersection = len(words1.intersection(words2))
+            union = len(words1.union(words2))
+            word_similarity = intersection / union if union > 0 else 0
+            
+            # 综合相似度
+            similarity = max(similarity, word_similarity)
+        
+        return similarity
+
+    def _smart_match_chain(self, local_name: str, chainlist_data: List[dict], min_similarity: float = 0.6) -> List[dict]:
+        """AI智能匹配链条"""
+        matches = []
+        
+        for chain_data in chainlist_data:
+            chainlist_name = chain_data.get('name', '')
+            if not chainlist_name:
+                continue
+            
+            similarity = self._calculate_name_similarity(local_name, chainlist_name)
+            
+            if similarity >= min_similarity:
+                matches.append({
+                    'chain_data': chain_data,
+                    'similarity': similarity,
+                    'chainlist_name': chainlist_name,
+                    'local_name': local_name
+                })
+        
+        # 按相似度排序
+        matches.sort(key=lambda x: x['similarity'], reverse=True)
+        return matches
+
+    def _ai_enhanced_chain_matching(self, chainlist_data: List[dict], max_workers: int = 8) -> Dict[str, List[dict]]:
+        """AI增强的全自动链条匹配系统"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🤖 AI智能链条匹配系统 🤖 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在使用AI算法智能匹配所有链条...（{max_workers}线程并发）{Style.RESET_ALL}")
+        
+        matching_results = {}
+        total_local_chains = len(self.networks)
+        processed_count = 0
+        
+        def match_single_chain(network_item):
+            network_key, network_info = network_item
+            local_name = network_info.get('name', network_key)
+            local_chain_id = network_info.get('chain_id')
+            
+            # 智能匹配
+            matches = self._smart_match_chain(local_name, chainlist_data)
+            
+            # 过滤匹配结果
+            filtered_matches = []
+            for match in matches[:5]:  # 只取前5个最佳匹配
+                chainlist_chain_id = match['chain_data'].get('chainId')
+                
+                # 如果Chain ID匹配，优先级更高
+                if chainlist_chain_id == local_chain_id:
+                    match['match_type'] = 'exact_id'
+                    match['priority'] = 1
+                elif match['similarity'] >= 0.8:
+                    match['match_type'] = 'high_similarity'
+                    match['priority'] = 2
+                elif match['similarity'] >= 0.6:
+                    match['match_type'] = 'medium_similarity'
+                    match['priority'] = 3
+                else:
+                    continue
+                
+                filtered_matches.append(match)
+            
+            # 按优先级排序
+            filtered_matches.sort(key=lambda x: (x['priority'], -x['similarity']))
+            
+            return network_key, {
+                'local_info': network_info,
+                'matches': filtered_matches,
+                'best_match': filtered_matches[0] if filtered_matches else None
+            }
+        
+        # 多线程处理匹配
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            network_items = list(self.networks.items())
+            future_to_network = {executor.submit(match_single_chain, item): item for item in network_items}
+            
+            for future in as_completed(future_to_network):
+                processed_count += 1
+                print(f"\r{Fore.YELLOW}🤖 AI匹配进度: {processed_count}/{total_local_chains} ({processed_count*100//total_local_chains}%)...{Style.RESET_ALL}", end='', flush=True)
+                
+                try:
+                    network_key, result = future.result()
+                    matching_results[network_key] = result
+                except Exception as e:
+                    network_item = future_to_network[future]
+                    print(f"\n⚠️ 匹配 {network_item[0]} 时出错: {e}")
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 🎯 AI匹配完成 🎯 {Style.RESET_ALL}")
+        
+        # 统计匹配结果
+        exact_matches = sum(1 for result in matching_results.values() 
+                          if result['best_match'] and result['best_match']['match_type'] == 'exact_id')
+        high_similarity = sum(1 for result in matching_results.values() 
+                            if result['best_match'] and result['best_match']['match_type'] == 'high_similarity')
+        medium_similarity = sum(1 for result in matching_results.values() 
+                              if result['best_match'] and result['best_match']['match_type'] == 'medium_similarity')
+        no_matches = sum(1 for result in matching_results.values() if not result['best_match'])
+        
+        print(f"🎯 精确匹配 (Chain ID相同): {Fore.GREEN}{exact_matches}{Style.RESET_ALL} 个")
+        print(f"🔥 高相似度匹配 (>80%): {Fore.YELLOW}{high_similarity}{Style.RESET_ALL} 个")
+        print(f"📊 中等相似度匹配 (>60%): {Fore.CYAN}{medium_similarity}{Style.RESET_ALL} 个")
+        print(f"❓ 未找到匹配: {Fore.RED}{no_matches}{Style.RESET_ALL} 个")
+        
+        return matching_results
 
     def _test_rpc_batch(self, rpc_urls: List[str], timeout: int = 3, max_workers: int = 8, quick_test: bool = False) -> Dict[str, bool]:
         """批量测试多个RPC的连通性（多线程版本）"""
