@@ -7884,22 +7884,37 @@ esac
         print(f"\n{Back.MAGENTA}{Fore.WHITE} 🤖 AI智能ChainList导入系统 🤖 {Style.RESET_ALL}")
         print(f"{Fore.CYAN}集成功能：AI智能匹配 + 自动校准Chain ID + 批量导入RPC{Style.RESET_ALL}")
         
-        # 询问用户是否要指定特定文件
-        print(f"\n{Fore.YELLOW}📂 文件选择：{Style.RESET_ALL}")
+        # 询问用户选择文件查找方式
+        print(f"\n{Fore.YELLOW}📂 文件选择方式：{Style.RESET_ALL}")
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🤖 智能自动查找（推荐）")
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📝 手动指定文件名")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📋 从候选文件中选择")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🌐 直接网络下载")
         
-        choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择 (1-2，默认1): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择 (1-4，默认1): {Style.RESET_ALL}").strip()
         
         chainlist_data = None
+        
         if choice == '2':
-            filename = self.safe_input(f"{Fore.CYAN}➜ 请输入文件名 (如 1.txt): {Style.RESET_ALL}").strip()
+            # 手动指定文件名
+            filename = self.safe_input(f"{Fore.CYAN}➜ 请输入文件名或完整路径: {Style.RESET_ALL}").strip()
             if filename:
                 chainlist_data = self._read_chainlist_file(filename)
         
+        elif choice == '3':
+            # 交互式选择候选文件
+            chainlist_data = self._interactive_file_selection()
+            
+        elif choice == '4':
+            # 直接网络下载
+            print(f"\n{Fore.CYAN}🌐 正在从网络下载ChainList数据...{Style.RESET_ALL}")
+            file_path = self._download_chainlist_fallback()
+            if file_path:
+                chainlist_data = self._read_chainlist_file(os.path.basename(file_path))
+        
         # 如果用户没有选择或指定文件失败，使用智能查找
         if not chainlist_data:
-            print(f"\n{Fore.CYAN}🤖 使用智能自动查找...{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}🤖 使用增强版智能自动查找...{Style.RESET_ALL}")
             chainlist_data = self._read_chainlist_file()
             
         if not chainlist_data:
@@ -8855,42 +8870,562 @@ esac
             return None
     
     def _smart_find_chainlist_file(self, filename: str = None) -> str:
-        """智能查找ChainList文件"""
-        # 默认文件名列表，按优先级排序
+        """增强版智能查找ChainList文件 - 支持递归搜索、模糊匹配、内容检测"""
+        print(f"\n{Fore.CYAN}🔍 增强版智能搜索ChainList文件...{Style.RESET_ALL}")
+        
+        # 第一阶段：精确匹配指定文件名
+        if filename:
+            print(f"{Back.BLUE}{Fore.WHITE} 第一阶段：精确搜索指定文件 {Style.RESET_ALL}")
+            result = self._search_exact_file(filename)
+            if result:
+                return result
+        
+        # 第二阶段：默认文件名搜索
+        print(f"{Back.BLUE}{Fore.WHITE} 第二阶段：默认文件名搜索 {Style.RESET_ALL}")
         default_filenames = [
-            filename if filename else None,
-            'chainlist.txt',  # 优先使用chainlist.txt
-            'chainlist.json',
-            'chains.json',
-            '1.txt'  # 最后尝试1.txt
+            'chainlist.txt', 'chainlist.json', 'chains.json', 
+            '1.txt', '2.txt', '3.txt', 'network.json', 'networks.json',
+            'rpc.json', 'rpc_list.json', 'blockchain.json'
         ]
         
-        # 过滤掉None值
-        filenames = [f for f in default_filenames if f]
+        for fname in default_filenames:
+            print(f"  🔍 搜索: {fname}")
+            result = self._search_exact_file(fname)
+            if result:
+                return result
         
-        # 搜索路径列表
+        # 第三阶段：模糊文件名匹配
+        print(f"{Back.BLUE}{Fore.WHITE} 第三阶段：模糊文件名匹配 {Style.RESET_ALL}")
+        result = self._search_fuzzy_filename()
+        if result:
+            return result
+        
+        # 第四阶段：内容特征检测
+        print(f"{Back.BLUE}{Fore.WHITE} 第四阶段：智能内容检测 {Style.RESET_ALL}")
+        result = self._search_by_content()
+        if result:
+            return result
+        
+        # 第五阶段：压缩文件搜索
+        print(f"{Back.BLUE}{Fore.WHITE} 第五阶段：压缩文件搜索 {Style.RESET_ALL}")
+        result = self._search_compressed_files()
+        if result:
+            return result
+        
+        # 第六阶段：网络下载备用方案
+        print(f"{Back.BLUE}{Fore.WHITE} 第六阶段：网络下载备用方案 {Style.RESET_ALL}")
+        result = self._download_chainlist_fallback()
+        if result:
+            return result
+        
+        print(f"  {Fore.RED}❌ 所有搜索方式均未找到ChainList文件{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}💡 建议解决方案：{Style.RESET_ALL}")
+        print(f"  1. 检查文件是否放在正确位置（当前目录、Downloads、Desktop、Documents）")
+        print(f"  2. 确认文件名包含关键词：chain、network、rpc、blockchain等")
+        print(f"  3. 尝试手动指定完整文件路径")
+        print(f"  4. 下载最新的ChainList数据：chainlist.org")
+        return None
+    
+    def _search_exact_file(self, filename: str) -> str:
+        """精确搜索指定文件名"""
+        # 扩展的搜索路径
         search_paths = [
             '.',  # 当前目录
-            os.path.expanduser('~/Downloads'),  # Downloads目录
-            os.path.expanduser('~/Desktop'),    # 桌面
-            os.path.expanduser('~/Documents'),  # 文档目录
-            '/tmp',  # 临时目录
+            os.path.expanduser('~'),  # 用户主目录
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+            os.path.expanduser('~/Downloads/chainlist'),
+            os.path.expanduser('~/Desktop/chainlist'),
+            '/tmp', '/var/tmp',
+            '/home', '/root',  # Linux系统目录
+            '/Users', '/Users/Shared',  # macOS系统目录
+            'C:\\Users', 'C:\\Downloads', 'C:\\temp',  # Windows系统目录
         ]
         
-        print(f"\n{Fore.CYAN}🔍 智能搜索ChainList文件...{Style.RESET_ALL}")
+        # 添加常见的项目目录
+        project_dirs = ['chainlist', 'blockchain', 'web3', 'ethereum', 'networks', 'rpc']
+        for base_path in [os.path.expanduser('~'), '.']:
+            for project_dir in project_dirs:
+                search_paths.append(os.path.join(base_path, project_dir))
         
-        for filename in filenames:
-            print(f"  搜索文件: {filename}")
-            
-            for search_path in search_paths:
-                file_path = os.path.join(search_path, filename)
-                if os.path.isfile(file_path):
-                    file_size = os.path.getsize(file_path)
+        # 1. 直接路径搜索
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+                
+            file_path = os.path.join(search_path, filename)
+            if os.path.isfile(file_path):
+                file_size = os.path.getsize(file_path)
+                if file_size > 0:  # 确保文件不为空
                     print(f"  {Fore.GREEN}✅ 找到文件: {file_path} ({file_size//1024} KB){Style.RESET_ALL}")
                     return file_path
         
-        print(f"  {Fore.RED}❌ 未找到任何ChainList文件{Style.RESET_ALL}")
+        # 2. 递归搜索（限制深度避免性能问题）
+        recursive_paths = [
+            '.',
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+        ]
+        
+        for base_path in recursive_paths:
+            if not os.path.exists(base_path):
+                continue
+            try:
+                result = self._recursive_file_search(base_path, filename, max_depth=3)
+                if result:
+                    file_size = os.path.getsize(result)
+                    print(f"  {Fore.GREEN}✅ 递归找到: {result} ({file_size//1024} KB){Style.RESET_ALL}")
+                    return result
+            except Exception:
+                continue
+        
         return None
+    
+    def _recursive_file_search(self, base_path: str, target_filename: str, max_depth: int = 3, current_depth: int = 0) -> str:
+        """递归搜索文件"""
+        if current_depth >= max_depth:
+            return None
+        
+        try:
+            for item in os.listdir(base_path):
+                if item.startswith('.'):  # 跳过隐藏文件/目录
+                    continue
+                
+                item_path = os.path.join(base_path, item)
+                
+                if os.path.isfile(item_path) and item == target_filename:
+                    if os.path.getsize(item_path) > 0:
+                        return item_path
+                elif os.path.isdir(item_path):
+                    result = self._recursive_file_search(item_path, target_filename, max_depth, current_depth + 1)
+                    if result:
+                        return result
+        except (PermissionError, OSError):
+            pass
+        
+        return None
+    
+    def _search_fuzzy_filename(self) -> str:
+        """模糊文件名匹配"""
+        # 关键词模式
+        keywords = ['chain', 'network', 'rpc', 'blockchain', 'eth', 'list']
+        extensions = ['.json', '.txt', '.csv', '.log']
+        
+        search_paths = [
+            '.',
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+        ]
+        
+        candidates = []
+        
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+            
+            try:
+                for filename in os.listdir(search_path):
+                    if os.path.isfile(os.path.join(search_path, filename)):
+                        # 检查文件名是否包含关键词
+                        filename_lower = filename.lower()
+                        for keyword in keywords:
+                            if keyword in filename_lower:
+                                for ext in extensions:
+                                    if filename_lower.endswith(ext):
+                                        file_path = os.path.join(search_path, filename)
+                                        file_size = os.path.getsize(file_path)
+                                        if file_size > 100:  # 至少100字节
+                                            candidates.append((file_path, filename, file_size))
+                                        break
+                                break
+            except (PermissionError, OSError):
+                continue
+        
+        # 按文件大小排序，优先检查大文件
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        
+        print(f"  📋 找到 {len(candidates)} 个可能的文件:")
+        for i, (file_path, filename, file_size) in enumerate(candidates[:5]):  # 只显示前5个
+            print(f"    {i+1}. {filename} ({file_size//1024} KB)")
+        
+        # 验证候选文件
+        for file_path, filename, file_size in candidates:
+            if self._verify_chainlist_content(file_path):
+                print(f"  {Fore.GREEN}✅ 通过内容验证: {file_path}{Style.RESET_ALL}")
+                return file_path
+        
+        return None
+    
+    def _search_by_content(self) -> str:
+        """基于文件内容特征检测ChainList文件"""
+        search_paths = [
+            '.',
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+        ]
+        
+        candidates = []
+        
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+            
+            try:
+                for filename in os.listdir(search_path):
+                    file_path = os.path.join(search_path, filename)
+                    if os.path.isfile(file_path):
+                        # 只检查可能的文件类型
+                        if any(filename.lower().endswith(ext) for ext in ['.json', '.txt', '.csv']):
+                            file_size = os.path.getsize(file_path)
+                            if 1000 < file_size < 100*1024*1024:  # 1KB到100MB之间
+                                candidates.append((file_path, filename, file_size))
+            except (PermissionError, OSError):
+                continue
+        
+        print(f"  📋 扫描 {len(candidates)} 个文件的内容特征...")
+        
+        # 并发检测文件内容
+        valid_files = []
+        
+        def check_file(file_info):
+            file_path, filename, file_size = file_info
+            try:
+                if self._verify_chainlist_content(file_path):
+                    return file_path
+            except:
+                pass
+            return None
+        
+        # 使用并发检测提高速度
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_file = {executor.submit(check_file, candidate): candidate for candidate in candidates[:20]}  # 限制检查数量
+            
+            for future in as_completed(future_to_file):
+                result = future.result()
+                if result:
+                    valid_files.append(result)
+        
+        if valid_files:
+            # 返回第一个有效文件
+            best_file = valid_files[0]
+            file_size = os.path.getsize(best_file)
+            print(f"  {Fore.GREEN}✅ 内容检测发现: {best_file} ({file_size//1024} KB){Style.RESET_ALL}")
+            return best_file
+        
+        return None
+    
+    def _verify_chainlist_content(self, file_path: str) -> bool:
+        """验证文件是否为ChainList格式"""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # 读取前几KB检查特征
+                content = f.read(8192)  # 8KB应该足够检测特征
+            
+            content_lower = content.lower()
+            
+            # ChainList特征检测
+            chainlist_indicators = [
+                'chainid',
+                'chain_id', 
+                '"rpc"',
+                'explorers',
+                'nativecurrency',
+                'ethereum',
+                'polygon',
+                'binance',
+                'avalanche'
+            ]
+            
+            # 检查JSON结构特征
+            json_structure_score = 0
+            if content.strip().startswith('[') and ']' in content:
+                json_structure_score += 2
+            if content.strip().startswith('{') and '}' in content:
+                json_structure_score += 1
+            
+            # 检查ChainList特征
+            feature_score = sum(1 for indicator in chainlist_indicators if indicator in content_lower)
+            
+            # 检查数字模式（可能的Chain ID）
+            import re
+            chain_id_pattern = r'"chainid"\s*:\s*\d+|"chain_id"\s*:\s*\d+'
+            if re.search(chain_id_pattern, content_lower):
+                feature_score += 2
+            
+            # 综合评分
+            total_score = json_structure_score + feature_score
+            
+            # 如果评分足够高，认为是ChainList文件
+            return total_score >= 3
+            
+        except Exception:
+            return False
+    
+    def _search_compressed_files(self) -> str:
+        """搜索压缩文件中的ChainList数据"""
+        import zipfile
+        import tarfile
+        import tempfile
+        
+        search_paths = [
+            '.',
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+        ]
+        
+        compressed_files = []
+        
+        # 查找压缩文件
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+            
+            try:
+                for filename in os.listdir(search_path):
+                    file_path = os.path.join(search_path, filename)
+                    if os.path.isfile(file_path):
+                        if any(filename.lower().endswith(ext) for ext in ['.zip', '.tar', '.tar.gz', '.tgz']):
+                            file_size = os.path.getsize(file_path)
+                            if 1000 < file_size < 500*1024*1024:  # 1KB到500MB
+                                compressed_files.append((file_path, filename, file_size))
+            except (PermissionError, OSError):
+                continue
+        
+        if not compressed_files:
+            print(f"  📋 未找到压缩文件")
+            return None
+        
+        print(f"  📋 检查 {len(compressed_files)} 个压缩文件...")
+        
+        for file_path, filename, file_size in compressed_files:
+            print(f"  🔍 检查: {filename}")
+            
+            try:
+                # 创建临时目录
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    extracted_files = []
+                    
+                    # 解压文件
+                    if filename.lower().endswith('.zip'):
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                            for member in zip_ref.namelist():
+                                if any(ext in member.lower() for ext in ['.json', '.txt']):
+                                    if member.size < 100*1024*1024:  # 限制单文件大小
+                                        zip_ref.extract(member, temp_dir)
+                                        extracted_files.append(os.path.join(temp_dir, member))
+                    
+                    elif filename.lower().endswith(('.tar', '.tar.gz', '.tgz')):
+                        with tarfile.open(file_path, 'r:*') as tar_ref:
+                            for member in tar_ref.getmembers():
+                                if member.isfile() and any(ext in member.name.lower() for ext in ['.json', '.txt']):
+                                    if member.size < 100*1024*1024:  # 限制单文件大小
+                                        tar_ref.extract(member, temp_dir)
+                                        extracted_files.append(os.path.join(temp_dir, member.name))
+                    
+                    # 检查解压出的文件
+                    for extracted_file in extracted_files:
+                        if os.path.exists(extracted_file) and self._verify_chainlist_content(extracted_file):
+                            # 复制到当前目录
+                            import shutil
+                            target_filename = f"chainlist_extracted_{int(time.time())}.json"
+                            target_path = os.path.join('.', target_filename)
+                            shutil.copy2(extracted_file, target_path)
+                            print(f"  {Fore.GREEN}✅ 从压缩文件提取: {target_path}{Style.RESET_ALL}")
+                            return target_path
+                            
+            except Exception as e:
+                print(f"    ❌ 解压失败: {e}")
+                continue
+        
+        return None
+    
+    def _download_chainlist_fallback(self) -> str:
+        """网络下载ChainList数据作为备用方案"""
+        print(f"  🌐 尝试从网络下载ChainList数据...")
+        
+        # ChainList数据源
+        chainlist_urls = [
+            'https://chainlist.org/rpcs.json',
+            'https://raw.githubusercontent.com/ethereum-lists/chains/master/_data/chains/eip155-1.json',
+            'https://raw.githubusercontent.com/DefiLlama/chainlist/main/constants/chainIds.json',
+            'https://api.chainlist.org/chains',
+        ]
+        
+        for i, url in enumerate(chainlist_urls, 1):
+            try:
+                print(f"    {i}. 尝试下载: {url}")
+                
+                response = requests.get(url, timeout=10, headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; EVM-Monitor/1.0)'
+                })
+                
+                if response.status_code == 200:
+                    content = response.text
+                    
+                    # 验证内容
+                    if len(content) > 1000 and ('chainId' in content or 'chain_id' in content):
+                        # 保存到本地
+                        filename = f"chainlist_downloaded_{int(time.time())}.json"
+                        filepath = os.path.join('.', filename)
+                        
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                        
+                        # 验证文件
+                        if self._verify_chainlist_content(filepath):
+                            print(f"    {Fore.GREEN}✅ 下载成功: {filepath} ({len(content)//1024} KB){Style.RESET_ALL}")
+                            return filepath
+                        else:
+                            os.remove(filepath)
+                            print(f"    ❌ 下载的文件格式验证失败")
+                    else:
+                        print(f"    ❌ 下载的内容不符合ChainList格式")
+                else:
+                    print(f"    ❌ HTTP错误: {response.status_code}")
+                    
+            except Exception as e:
+                print(f"    ❌ 下载失败: {e}")
+                continue
+        
+        print(f"  {Fore.RED}❌ 所有网络下载尝试均失败{Style.RESET_ALL}")
+        
+        # 提供手动下载指导
+        print(f"\n{Fore.YELLOW}💡 手动下载指导：{Style.RESET_ALL}")
+        print(f"  1. 访问 https://chainlist.org")
+        print(f"  2. 导出或下载ChainList数据")
+        print(f"  3. 保存为 chainlist.json 到当前目录")
+        print(f"  4. 或者将文件拖拽到以下任一目录：")
+        print(f"     • 当前目录")
+        print(f"     • Downloads文件夹")
+        print(f"     • Desktop桌面")
+        print(f"     • Documents文档")
+        
+        return None
+    
+    def _interactive_file_selection(self) -> list:
+        """交互式文件选择功能"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 📋 交互式文件选择 📋 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在扫描可能的ChainList文件...{Style.RESET_ALL}")
+        
+        # 快速扫描所有可能的文件
+        candidates = []
+        search_paths = [
+            '.',
+            os.path.expanduser('~/Downloads'),
+            os.path.expanduser('~/Desktop'),
+            os.path.expanduser('~/Documents'),
+        ]
+        
+        # 1. 扫描精确匹配的文件
+        exact_matches = ['chainlist.txt', 'chainlist.json', 'chains.json', '1.txt', '2.txt', '3.txt']
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+            for filename in exact_matches:
+                file_path = os.path.join(search_path, filename)
+                if os.path.isfile(file_path):
+                    file_size = os.path.getsize(file_path)
+                    if file_size > 100:
+                        candidates.append({
+                            'path': file_path,
+                            'name': filename,
+                            'size': file_size,
+                            'type': 'exact',
+                            'verified': False
+                        })
+        
+        # 2. 扫描模糊匹配的文件
+        keywords = ['chain', 'network', 'rpc', 'blockchain', 'eth']
+        for search_path in search_paths:
+            if not os.path.exists(search_path):
+                continue
+            try:
+                for filename in os.listdir(search_path):
+                    if any(filename.lower().endswith(ext) for ext in ['.json', '.txt', '.csv']):
+                        if any(keyword in filename.lower() for keyword in keywords):
+                            file_path = os.path.join(search_path, filename)
+                            if os.path.isfile(file_path):
+                                file_size = os.path.getsize(file_path)
+                                if 1000 < file_size < 100*1024*1024:
+                                    # 检查是否已经在候选列表中
+                                    if not any(c['path'] == file_path for c in candidates):
+                                        candidates.append({
+                                            'path': file_path,
+                                            'name': filename,
+                                            'size': file_size,
+                                            'type': 'fuzzy',
+                                            'verified': False
+                                        })
+            except (PermissionError, OSError):
+                continue
+        
+        if not candidates:
+            print(f"  {Fore.RED}❌ 未找到任何候选文件{Style.RESET_ALL}")
+            return None
+        
+        # 3. 验证候选文件（并发）
+        print(f"  📋 验证 {len(candidates)} 个候选文件...")
+        
+        def verify_candidate(candidate):
+            try:
+                if self._verify_chainlist_content(candidate['path']):
+                    candidate['verified'] = True
+                    return candidate
+            except:
+                pass
+            return None
+        
+        verified_candidates = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_candidate = {executor.submit(verify_candidate, candidate): candidate for candidate in candidates}
+            
+            for future in as_completed(future_to_candidate):
+                result = future.result()
+                if result and result['verified']:
+                    verified_candidates.append(result)
+        
+        # 4. 显示选项
+        all_candidates = verified_candidates + [c for c in candidates if not c['verified']]
+        
+        print(f"\n{Fore.YELLOW}📋 找到以下文件：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}✅ 已验证为ChainList格式{Style.RESET_ALL}")
+        print(f"  {Fore.YELLOW}⚠️  未验证，但可能包含链条数据{Style.RESET_ALL}")
+        
+        for i, candidate in enumerate(all_candidates[:10], 1):  # 最多显示10个
+            status_icon = "✅" if candidate['verified'] else "⚠️ "
+            type_text = "精确匹配" if candidate['type'] == 'exact' else "模糊匹配"
+            size_text = f"{candidate['size']//1024} KB" if candidate['size'] > 1024 else f"{candidate['size']} B"
+            
+            print(f"  {Fore.CYAN}{i}.{Style.RESET_ALL} {status_icon} {candidate['name']} ({type_text}, {size_text})")
+            print(f"       📁 {candidate['path']}")
+        
+        if len(all_candidates) > 10:
+            print(f"       ... 还有 {len(all_candidates) - 10} 个文件")
+        
+        # 5. 用户选择
+        while True:
+            choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择文件编号 (1-{min(len(all_candidates), 10)})，或按回车取消: {Style.RESET_ALL}").strip()
+            
+            if not choice:
+                return None
+            
+            try:
+                index = int(choice) - 1
+                if 0 <= index < min(len(all_candidates), 10):
+                    selected_file = all_candidates[index]
+                    print(f"\n{Fore.GREEN}✅ 已选择: {selected_file['name']}{Style.RESET_ALL}")
+                    
+                    # 读取文件
+                    return self._read_chainlist_file(os.path.basename(selected_file['path']))
+                else:
+                    print(f"{Fore.RED}❌ 无效的选择，请输入 1-{min(len(all_candidates), 10)}{Style.RESET_ALL}")
+            except ValueError:
+                print(f"{Fore.RED}❌ 请输入数字{Style.RESET_ALL}")
 
     def _read_chainlist_file(self, filename: str = None) -> list:
         """读取ChainList文件（智能查找版本）"""
