@@ -7884,10 +7884,26 @@ esac
         print(f"\n{Back.MAGENTA}{Fore.WHITE} 🤖 AI智能ChainList导入系统 🤖 {Style.RESET_ALL}")
         print(f"{Fore.CYAN}集成功能：AI智能匹配 + 自动校准Chain ID + 批量导入RPC{Style.RESET_ALL}")
         
-        # 读取ChainList数据
-        chainlist_data = self._read_chainlist_file()
+        # 询问用户是否要指定特定文件
+        print(f"\n{Fore.YELLOW}📂 文件选择：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🤖 智能自动查找（推荐）")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📝 手动指定文件名")
+        
+        choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择 (1-2，默认1): {Style.RESET_ALL}").strip()
+        
+        chainlist_data = None
+        if choice == '2':
+            filename = self.safe_input(f"{Fore.CYAN}➜ 请输入文件名 (如 1.txt): {Style.RESET_ALL}").strip()
+            if filename:
+                chainlist_data = self._read_chainlist_file(filename)
+        
+        # 如果用户没有选择或指定文件失败，使用智能查找
         if not chainlist_data:
-            print(f"{Fore.RED}❌ 无法读取ChainList数据，请确保chainlist.txt文件存在{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}🤖 使用智能自动查找...{Style.RESET_ALL}")
+            chainlist_data = self._read_chainlist_file()
+            
+        if not chainlist_data:
+            print(f"{Fore.RED}❌ 无法读取ChainList数据{Style.RESET_ALL}")
             return
         
         print(f"📊 ChainList数据: {Fore.CYAN}{len(chainlist_data)}{Style.RESET_ALL} 个链条")
@@ -8843,10 +8859,10 @@ esac
         # 默认文件名列表，按优先级排序
         default_filenames = [
             filename if filename else None,
-            '1.txt',
-            'chainlist.txt',
+            'chainlist.txt',  # 优先使用chainlist.txt
+            'chainlist.json',
             'chains.json',
-            'chainlist.json'
+            '1.txt'  # 最后尝试1.txt
         ]
         
         # 过滤掉None值
@@ -8876,20 +8892,24 @@ esac
         print(f"  {Fore.RED}❌ 未找到任何ChainList文件{Style.RESET_ALL}")
         return None
 
-    def _read_chainlist_file(self, file_path: str = None) -> list:
+    def _read_chainlist_file(self, filename: str = None) -> list:
         """读取ChainList文件（智能查找版本）"""
-        # 如果没有提供路径，智能查找
-        if not file_path:
+        # 如果提供了文件名，使用智能查找查找该文件
+        if filename:
+            file_path = self._smart_find_chainlist_file(filename)
+        else:
+            # 没有提供文件名，使用默认智能查找
             file_path = self._smart_find_chainlist_file()
-            if not file_path:
-                print(f"\n{Fore.RED}❌ 无法找到ChainList文件{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}💡 请确保以下任一文件存在：{Style.RESET_ALL}")
-                print(f"  • 1.txt")
-                print(f"  • chainlist.txt") 
-                print(f"  • chains.json")
-                print(f"  • chainlist.json")
-                print(f"{Fore.YELLOW}📂 搜索目录：当前目录、Downloads、Desktop、Documents{Style.RESET_ALL}")
-                return None
+            
+        if not file_path:
+            print(f"\n{Fore.RED}❌ 无法找到ChainList文件{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 请确保以下任一文件存在：{Style.RESET_ALL}")
+            print(f"  • chainlist.txt")
+            print(f"  • chainlist.json") 
+            print(f"  • chains.json")
+            print(f"  • 1.txt")
+            print(f"{Fore.YELLOW}📂 搜索目录：当前目录、Downloads、Desktop、Documents{Style.RESET_ALL}")
+            return None
         try:
             print(f"\n{Fore.CYAN}📖 正在读取文件: {file_path}{Style.RESET_ALL}")
             
