@@ -43,7 +43,13 @@ check_python() {
         
         if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 7 ]; then
             echo -e "${GREEN}${CHECKMARK} Python版本检查通过: $PYTHON_VERSION${NC}"
-            PYTHON_CMD="python3"
+            # 优先使用虚拟环境的Python
+            if [ -f "$HOME/.venvs/evm_monitor/bin/python" ]; then
+                PYTHON_CMD="$HOME/.venvs/evm_monitor/bin/python"
+                echo -e "${GREEN}${CHECKMARK} 使用虚拟环境Python: $PYTHON_CMD${NC}"
+            else
+                PYTHON_CMD="python3"
+            fi
             return 0
         else
             echo -e "${RED}${CROSSMARK} Python版本过低: $PYTHON_VERSION (需要 >= 3.7)${NC}"
