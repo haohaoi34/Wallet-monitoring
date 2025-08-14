@@ -8233,14 +8233,18 @@ esac
                             status_icon = "❌"
                             status_text = "无可用RPC"
                         
-                        # 实时显示每个网络的连接状态
+                        # 实时显示每个网络的连接状态（包含Chain ID）
                         progress = f"[{completed_count:2d}/{total_networks}]"
-                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_info['name']:<35}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
+                        chain_id = network_info.get('chain_id', 'N/A')
+                        network_display = f"{network_info['name']:<30} (ID:{chain_id})"
+                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {status_color}{status_icon} {network_display:<40}{Style.RESET_ALL} {status_color}{status_text}{Style.RESET_ALL}")
                         
                     except (concurrent.futures.TimeoutError, Exception) as e:
                         failed_connections += 1
                         progress = f"[{completed_count:2d}/{total_networks}]"
-                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {Fore.RED}❌ {network_info['name']:<35}{Style.RESET_ALL} {Fore.RED}异常: {str(e)[:30]}{Style.RESET_ALL}")
+                        chain_id = network_info.get('chain_id', 'N/A')
+                        network_display = f"{network_info['name']:<30} (ID:{chain_id})"
+                        print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {Fore.RED}❌ {network_display:<40}{Style.RESET_ALL} {Fore.RED}异常: {str(e)[:30]}{Style.RESET_ALL}")
             except concurrent.futures.TimeoutError:
                 # 处理未完成的futures
                 for future, network_key in future_to_network.items():
@@ -8248,7 +8252,9 @@ esac
                         future.cancel()
                         failed_connections += 1
                         network_info = self.networks[network_key]
-                        print(f"  {Fore.CYAN}[--/--]{Style.RESET_ALL} {Fore.YELLOW}⚠️ {network_info['name']:<35}{Style.RESET_ALL} {Fore.YELLOW}测试超时，已取消{Style.RESET_ALL}")
+                        chain_id = network_info.get('chain_id', 'N/A')
+                        network_display = f"{network_info['name']:<30} (ID:{chain_id})"
+                        print(f"  {Fore.CYAN}[--/--]{Style.RESET_ALL} {Fore.YELLOW}⚠️ {network_display:<40}{Style.RESET_ALL} {Fore.YELLOW}测试超时，已取消{Style.RESET_ALL}")
         
         # 步骤2: 显示连接总结
         elapsed_time = time.time() - start_time
@@ -8257,6 +8263,29 @@ esac
         print(f"✅ 成功连接: {Fore.GREEN}{successful_connections}{Style.RESET_ALL} 个网络")
         print(f"❌ 连接失败: {Fore.RED}{failed_connections}{Style.RESET_ALL} 个网络")
         print(f"📊 成功率: {Fore.YELLOW}{successful_connections/total_networks*100:.1f}%{Style.RESET_ALL}")
+        
+        # 收集失败的网络，提供手动修改Chain ID的功能
+        failed_networks = []
+        
+        # 检查连接状态，收集失败的网络
+        for network_key, network_info in self.networks.items():
+            # 检查该网络是否有有效连接
+            if not hasattr(self, 'connections') or not self.connections.get(network_key):
+                failed_networks.append({
+                    'key': network_key,
+                    'name': network_info['name'],
+                    'chain_id': network_info.get('chain_id', 'N/A')
+                })
+        
+        # 如果有失败的网络，询问是否要手动修改Chain ID
+        if failed_networks:
+            print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 连接失败的网络 ⚠️ {Style.RESET_ALL}")
+            print(f"{Fore.CYAN}可能的原因：Chain ID不正确、RPC节点问题等{Style.RESET_ALL}")
+            
+            modify_chains = self.safe_input(f"\n{Fore.YELLOW}🔧 是否要手动修改失败网络的Chain ID？(y/N): {Style.RESET_ALL}").strip().lower()
+            
+            if modify_chains == 'y':
+                self._manual_chain_id_modification(failed_networks)
         
         # 步骤3: 询问是否直接开始扫描
         if successful_connections > 0:
@@ -8292,6 +8321,111 @@ esac
             print(f"\n{Fore.RED}❌ 所有网络连接都失败了，请检查网络设置或RPC配置{Style.RESET_ALL}")
             print(f"{Fore.CYAN}💡 建议使用菜单选项 4 → 2 管理无可用RPC的链条{Style.RESET_ALL}")
     
+    def _manual_chain_id_modification(self, failed_networks: list):
+        """手动修改失败网络的Chain ID"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 🔧 手动修改Chain ID 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}以下网络连接失败，可能需要修改Chain ID：{Style.RESET_ALL}")
+        
+        # 显示失败的网络列表
+        for i, network in enumerate(failed_networks[:10], 1):  # 最多显示10个
+            print(f"  {Fore.YELLOW}{i}.{Style.RESET_ALL} {network['name']:<30} (当前ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL})")
+        
+        if len(failed_networks) > 10:
+            print(f"     ... 还有 {len(failed_networks) - 10} 个网络")
+        
+        print(f"\n{Fore.CYAN}💡 常见Chain ID参考：{Style.RESET_ALL}")
+        common_chain_ids = {
+            'Ethereum': 1,
+            'BSC': 56,
+            'Polygon': 137,
+            'Avalanche': 43114,
+            'Fantom': 250,
+            'Arbitrum One': 42161,
+            'Optimism': 10,
+            'Core': 1116,
+            'Harmony': 1666600000,
+            'Klaytn': 8217
+        }
+        
+        for name, chain_id in list(common_chain_ids.items())[:5]:
+            print(f"  • {name}: {chain_id}")
+        print(f"  • 更多信息: https://chainlist.org")
+        
+        # 手动修改流程
+        modified_count = 0
+        for i, network in enumerate(failed_networks, 1):
+            if i > 10:  # 限制修改数量
+                break
+                
+            print(f"\n--- 网络 {i}: {network['name']} ---")
+            print(f"当前Chain ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL}")
+            
+            modify = self.safe_input(f"是否修改此网络的Chain ID？(y/N/q退出): ").strip().lower()
+            
+            if modify == 'q':
+                break
+            elif modify == 'y':
+                while True:
+                    try:
+                        new_chain_id = self.safe_input(f"请输入新的Chain ID: ").strip()
+                        if not new_chain_id:
+                            break
+                        
+                        new_id = int(new_chain_id)
+                        if new_id <= 0:
+                            print(f"{Fore.RED}❌ Chain ID必须为正整数{Style.RESET_ALL}")
+                            continue
+                        
+                        # 更新Chain ID
+                        old_id = self.networks[network['key']]['chain_id']
+                        self.networks[network['key']]['chain_id'] = new_id
+                        
+                        print(f"{Fore.GREEN}✅ Chain ID已更新: {old_id} → {new_id}{Style.RESET_ALL}")
+                        modified_count += 1
+                        
+                        # 尝试重新测试连接
+                        print(f"🔄 正在测试新配置...")
+                        test_result = self.test_network_concurrent(network['key'])
+                        if test_result and test_result['working_rpcs']:
+                            print(f"{Fore.GREEN}✅ 连接测试成功！{Style.RESET_ALL}")
+                        else:
+                            print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要检查RPC配置{Style.RESET_ALL}")
+                        break
+                        
+                    except ValueError:
+                        print(f"{Fore.RED}❌ 请输入有效的数字{Style.RESET_ALL}")
+                    except Exception as e:
+                        print(f"{Fore.RED}❌ 更新失败: {e}{Style.RESET_ALL}")
+                        break
+        
+        # 保存修改
+        if modified_count > 0:
+            print(f"\n{Back.BLUE}{Fore.WHITE} 💾 保存修改 💾 {Style.RESET_ALL}")
+            try:
+                self.save_state()
+                self.save_wallets()
+                print(f"  ✅ 已保存 {modified_count} 个网络的Chain ID修改")
+                
+                # 清除缓存
+                if hasattr(self, 'cache') and self.cache:
+                    self.cache.clear_category('network_info')
+                    self.cache.clear_category('rpc_status')
+                    print(f"  ✅ 缓存已清理")
+                
+                print(f"\n{Fore.GREEN}💡 建议：重新运行'初始化服务器连接'以验证修改效果{Style.RESET_ALL}")
+                
+                # 询问是否重新初始化
+                reinit = self.safe_input(f"\n{Fore.YELLOW}🔄 是否立即重新初始化服务器连接？(Y/n): {Style.RESET_ALL}").strip().lower()
+                if reinit in ['', 'y', 'yes']:
+                    print(f"\n{Fore.CYAN}🔄 重新初始化中...{Style.RESET_ALL}")
+                    self.initialize_server_connections()
+                    return
+                    
+            except Exception as e:
+                print(f"  {Fore.RED}❌ 保存失败: {e}{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}💡 没有进行任何修改{Style.RESET_ALL}")
+
     def establish_single_connection(self, network_key: str, rpc_url: str) -> bool:
         """建立单个网络的连接"""
         try:
