@@ -6203,8 +6203,8 @@ esac
                 print(f"{Fore.YELLOW}1️⃣ 添加钱包私钥 → 2️⃣ 初始化RPC连接 → 3️⃣ 开始监控{Style.RESET_ALL}")
                 print(f"{Back.GREEN}{Fore.WHITE} 💡 建议：点击选项 1 开始设置 {Style.RESET_ALL}")
             elif not self.web3_connections:
-                print(f"\n{Back.ORANGE}{Fore.WHITE} 🔗 下一步操作 {Style.RESET_ALL}")
-                print(f"{Fore.ORANGE}建议：选择选项 4 初始化网络连接以继续{Style.RESET_ALL}")
+                print(f"\n{Back.YELLOW}{Fore.BLACK} 🔗 下一步操作 {Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}建议：选择选项 4 初始化网络连接以继续{Style.RESET_ALL}")
             elif not self.monitoring:
                 print(f"\n{Back.GREEN}{Fore.WHITE} ✅ 准备就绪 {Style.RESET_ALL}")
                 print(f"{Fore.GREEN}所有设置完成！可以输入 'q' 快速启动监控{Style.RESET_ALL}")
