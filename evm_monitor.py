@@ -7625,9 +7625,10 @@ esac
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🔧 管理无可用RPC的链条（单独管理）")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
         print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🔧 自动校准Chain ID（解决ID不匹配问题）")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-5): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -7666,6 +7667,10 @@ esac
                 # 管理被拉黑的RPC
                 self.manage_blocked_rpcs()
                 
+            elif choice == '5':
+                # 自动校准Chain ID
+                self.auto_calibrate_network_chain_ids()
+                
             elif choice == '0':
                 return
             else:
@@ -7675,6 +7680,126 @@ esac
             print(f"\n{Fore.RED}❌ 操作失败: {e}{Style.RESET_ALL}")
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+
+    def auto_calibrate_network_chain_ids(self):
+        """自动校准现有网络的chain ID"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准网络Chain ID 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}检测并校准所有网络的Chain ID...{Style.RESET_ALL}")
+        
+        calibration_results = []
+        total_networks = len(self.networks)
+        checked_count = 0
+        calibrated_count = 0
+        
+        for network_key, network_info in self.networks.items():
+            checked_count += 1
+            network_name = network_info['name']
+            configured_chain_id = network_info['chain_id']
+            rpc_urls = network_info.get('rpc_urls', [])
+            
+            print(f"\r{Fore.YELLOW}🔍 检查网络 {checked_count}/{total_networks}: {network_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
+            
+            if not rpc_urls:
+                calibration_results.append({
+                    'network_key': network_key,
+                    'network_name': network_name,
+                    'status': 'no_rpc',
+                    'configured_id': configured_chain_id,
+                    'actual_id': None,
+                    'message': '无可用RPC'
+                })
+                continue
+            
+            # 尝试从前3个RPC获取实际chain ID
+            actual_chain_id = None
+            working_rpc = None
+            
+            for rpc_url in rpc_urls[:3]:
+                actual_chain_id = self._get_actual_chain_id(rpc_url, timeout=3)
+                if actual_chain_id is not None:
+                    working_rpc = rpc_url
+                    break
+            
+            if actual_chain_id is None:
+                calibration_results.append({
+                    'network_key': network_key,
+                    'network_name': network_name,
+                    'status': 'connection_failed',
+                    'configured_id': configured_chain_id,
+                    'actual_id': None,
+                    'message': '所有RPC连接失败'
+                })
+            elif actual_chain_id == configured_chain_id:
+                calibration_results.append({
+                    'network_key': network_key,
+                    'network_name': network_name,
+                    'status': 'correct',
+                    'configured_id': configured_chain_id,
+                    'actual_id': actual_chain_id,
+                    'message': 'Chain ID正确'
+                })
+            else:
+                calibration_results.append({
+                    'network_key': network_key,
+                    'network_name': network_name,
+                    'status': 'mismatch',
+                    'configured_id': configured_chain_id,
+                    'actual_id': actual_chain_id,
+                    'working_rpc': working_rpc,
+                    'message': f'ID不匹配：配置 {configured_chain_id} ≠ 实际 {actual_chain_id}'
+                })
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 检查完成 📊 {Style.RESET_ALL}")
+        
+        # 分类显示结果
+        correct_networks = [r for r in calibration_results if r['status'] == 'correct']
+        mismatch_networks = [r for r in calibration_results if r['status'] == 'mismatch']
+        failed_networks = [r for r in calibration_results if r['status'] in ['connection_failed', 'no_rpc']]
+        
+        print(f"✅ Chain ID正确: {Fore.GREEN}{len(correct_networks)}{Style.RESET_ALL} 个")
+        print(f"⚠️  Chain ID不匹配: {Fore.YELLOW}{len(mismatch_networks)}{Style.RESET_ALL} 个")
+        print(f"❌ 无法检测: {Fore.RED}{len(failed_networks)}{Style.RESET_ALL} 个")
+        
+        # 显示不匹配的详情
+        if mismatch_networks:
+            print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ Chain ID不匹配的网络 ⚠️ {Style.RESET_ALL}")
+            for result in mismatch_networks:
+                print(f"  • {Fore.CYAN}{result['network_name']}{Style.RESET_ALL}: "
+                      f"配置 {Fore.RED}{result['configured_id']}{Style.RESET_ALL} → "
+                      f"实际 {Fore.GREEN}{result['actual_id']}{Style.RESET_ALL}")
+            
+            # 询问是否自动校准
+            print(f"\n{Fore.YELLOW}🔧 是否自动校准这些网络的Chain ID？{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}⚠️ 警告：这将修改网络配置，建议先备份{Style.RESET_ALL}")
+            
+            confirm = self.safe_input(f"\n{Fore.CYAN}➜ 确认自动校准？(y/N): {Style.RESET_ALL}").strip().lower()
+            
+            if confirm == 'y':
+                # 执行自动校准
+                for result in mismatch_networks:
+                    network_key = result['network_key']
+                    old_id = result['configured_id']
+                    new_id = result['actual_id']
+                    
+                    # 更新网络配置
+                    self.networks[network_key]['chain_id'] = new_id
+                    
+                    print(f"  🔧 {Fore.GREEN}已校准{Style.RESET_ALL}: {result['network_name']} "
+                          f"ID {old_id} → {new_id}")
+                    calibrated_count += 1
+                
+                print(f"\n{Fore.GREEN}✅ 已校准 {calibrated_count} 个网络的Chain ID{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}💡 建议重新初始化网络连接以应用更改{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.YELLOW}⚠️ 校准操作已取消{Style.RESET_ALL}")
+        
+        # 显示失败的网络
+        if failed_networks:
+            print(f"\n{Back.RED}{Fore.WHITE} ❌ 无法检测的网络 ❌ {Style.RESET_ALL}")
+            for result in failed_networks:
+                print(f"  • {Fore.CYAN}{result['network_name']}{Style.RESET_ALL}: {result['message']}")
+        
+        return calibration_results
 
     def initialize_server_connections(self):
         """初始化服务器连接 - 检测所有网络并建立最佳连接"""
@@ -8517,9 +8642,119 @@ esac
             print(f"\n{Fore.RED}❌ 读取文件失败: {e}{Style.RESET_ALL}")
             return None
     
+    def _auto_calibrate_chain_ids(self, chainlist_data: list) -> list:
+        """自动校准ChainList数据中的chain ID"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔧 自动校准Chain ID 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在验证和校准链条ID...{Style.RESET_ALL}")
+        
+        calibrated_data = []
+        calibration_count = 0
+        validation_count = 0
+        
+        for i, chain_data in enumerate(chainlist_data):
+            try:
+                original_chain_id = chain_data.get('chainId')
+                chain_name = chain_data.get('name', '')
+                rpc_list = chain_data.get('rpc', [])
+                
+                if not original_chain_id or not rpc_list:
+                    continue
+                
+                # 提取第一个有效的RPC URL用于验证
+                test_rpc_url = None
+                for rpc_entry in rpc_list[:3]:  # 只测试前3个RPC
+                    if isinstance(rpc_entry, dict):
+                        url = rpc_entry.get('url', '')
+                    elif isinstance(rpc_entry, str):
+                        url = rpc_entry
+                    else:
+                        continue
+                    
+                    if url and self._is_valid_rpc_url(url):
+                        test_rpc_url = url
+                        break
+                
+                if not test_rpc_url:
+                    # 没有有效RPC，保持原始数据
+                    calibrated_data.append(chain_data)
+                    continue
+                
+                # 验证chain ID
+                print(f"\r{Fore.YELLOW}🔍 验证链条 {i+1}/{len(chainlist_data)}: {chain_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
+                
+                actual_chain_id = self._get_actual_chain_id(test_rpc_url)
+                validation_count += 1
+                
+                if actual_chain_id is None:
+                    # 无法获取实际chain ID，保持原始数据
+                    calibrated_data.append(chain_data)
+                elif actual_chain_id != original_chain_id:
+                    # chain ID不匹配，进行校准
+                    calibrated_chain_data = chain_data.copy()
+                    calibrated_chain_data['chainId'] = actual_chain_id
+                    calibrated_chain_data['_calibrated'] = True
+                    calibrated_chain_data['_original_chain_id'] = original_chain_id
+                    calibrated_data.append(calibrated_chain_data)
+                    calibration_count += 1
+                    print(f"\n  🔧 {Fore.YELLOW}校准{Style.RESET_ALL}: {chain_name} ID {original_chain_id} → {actual_chain_id}")
+                else:
+                    # chain ID正确，保持原始数据
+                    calibrated_data.append(chain_data)
+                    
+            except Exception as e:
+                # 出错时保持原始数据
+                calibrated_data.append(chain_data)
+                self.logger.warning(f"校准链条ID时出错: {e}")
+                continue
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 校准完成 📊 {Style.RESET_ALL}")
+        print(f"🔍 验证链条: {Fore.CYAN}{validation_count}{Style.RESET_ALL} 个")
+        print(f"🔧 校准链条: {Fore.GREEN}{calibration_count}{Style.RESET_ALL} 个")
+        print(f"✅ 处理完成: {Fore.CYAN}{len(calibrated_data)}{Style.RESET_ALL} 个链条数据")
+        
+        return calibrated_data
+    
+    def _get_actual_chain_id(self, rpc_url: str, timeout: int = 2) -> int:
+        """获取RPC实际的chain ID"""
+        try:
+            from web3 import Web3
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("RPC调用超时")
+            
+            # 设置超时
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout)
+            
+            try:
+                # 根据URL类型选择提供者
+                if rpc_url.startswith(('ws://', 'wss://')):
+                    provider = Web3.WebsocketProvider(rpc_url, websocket_kwargs={'timeout': timeout})
+                else:
+                    provider = Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': timeout})
+                
+                w3 = Web3(provider)
+                
+                # 测试连接并获取chain ID
+                if w3.is_connected():
+                    chain_id = w3.eth.chain_id
+                    return chain_id
+                else:
+                    return None
+                    
+            finally:
+                signal.alarm(0)  # 取消超时
+                
+        except Exception:
+            return None
+
     def _process_chainlist_data(self, chainlist_data: list):
         """处理ChainList数据并导入RPC"""
         print(f"\n{Fore.CYAN}🔄 正在分析ChainList数据...{Style.RESET_ALL}")
+        
+        # 自动校准chain ID
+        calibrated_data = self._auto_calibrate_chain_ids(chainlist_data)
         
         matched_networks = {}  # network_key -> [rpc_urls]
         unmatched_chains = []
@@ -8543,7 +8778,7 @@ esac
                     continue
                 name_map.setdefault(normalized, set()).add(network_key)
         
-        for chain_data in chainlist_data:
+        for chain_data in calibrated_data:
             try:
                 chain_id = chain_data.get('chainId')
                 chain_name = chain_data.get('name', '')
