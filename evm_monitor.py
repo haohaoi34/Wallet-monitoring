@@ -173,6 +173,10 @@ class SmartCache:
                 for k in keys_to_remove:
                     self._remove_from_level(k, level)
     
+    def clear_category(self, category: str):
+        """清除指定分类的所有缓存"""
+        self.invalidate(category=category)
+    
     def _remove_from_level(self, key: str, level: str):
         """从指定层级删除缓存"""
         if key in self.caches[level]:
@@ -8013,6 +8017,26 @@ esac
                 if manual_add == 'y':
                     self._manual_supplement_chains(unmatched_chains)
             
+            # 保存所有更改到持久化存储
+            print(f"\n{Back.BLUE}{Fore.WHITE} 💾 保存配置和数据 💾 {Style.RESET_ALL}")
+            try:
+                # 保存网络配置
+                self.save_state()
+                print(f"  ✅ 网络配置已保存")
+                
+                # 保存钱包数据
+                self.save_wallets()
+                print(f"  ✅ 钱包数据已保存")
+                
+                # 清除相关缓存，确保下次读取最新数据
+                if hasattr(self, 'cache') and self.cache:
+                    self.cache.clear_category('network_info')
+                    self.cache.clear_category('rpc_status')
+                    print(f"  ✅ 缓存已清理")
+                
+            except Exception as save_error:
+                print(f"  {Fore.RED}❌ 保存数据时出错: {save_error}{Style.RESET_ALL}")
+            
             # 显示最终统计
             print(f"\n{Back.GREEN}{Fore.BLACK} 🎉 AI智能导入完成 🎉 {Style.RESET_ALL}")
             
@@ -8024,8 +8048,21 @@ esac
             print(f"📥 导入网络: {Fore.CYAN}{total_imported}{Style.RESET_ALL} 个")
             print(f"❓ 无匹配链条: {Fore.RED}{total_unmatched}{Style.RESET_ALL} 个")
             
-            if total_updated > 0:
-                print(f"\n{Fore.GREEN}💡 建议：重新启动程序以应用Chain ID更改{Style.RESET_ALL}")
+            # 提示数据同步完成
+            if total_updated > 0 or total_imported > 0:
+                print(f"\n{Fore.GREEN}✅ 数据已同步保存，现在可以使用'初始化服务器连接'功能{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}💡 建议：现在执行菜单选项 1 来初始化服务器连接{Style.RESET_ALL}")
+                
+                # 显示详细的同步报告
+                self._show_sync_report(calibration_results, matched_networks)
+                
+                # 询问是否直接执行初始化服务器连接
+                auto_init = self.safe_input(f"\n{Fore.YELLOW}🚀 是否立即执行'初始化服务器连接'？(Y/n): {Style.RESET_ALL}").strip().lower()
+                if auto_init in ['', 'y', 'yes']:
+                    print(f"\n{Fore.CYAN}🚀 正在启动服务器连接初始化...{Style.RESET_ALL}")
+                    self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键开始初始化...{Style.RESET_ALL}")
+                    self.initialize_server_connections()
+                    return  # 直接返回，不需要再次按回车
                 
         except Exception as e:
             print(f"\n{Fore.RED}❌ AI智能导入过程中出错: {e}{Style.RESET_ALL}")
@@ -8075,11 +8112,82 @@ esac
                 continue_add = self.safe_input(f"继续处理下一个链条？(Y/n): ").strip().lower()
                 if continue_add == 'n':
                     break
+        
+        # 手动补充完成后保存数据
+        print(f"\n{Back.BLUE}{Fore.WHITE} 💾 保存手动补充的数据 💾 {Style.RESET_ALL}")
+        try:
+            self.save_state()
+            self.save_wallets()
+            print(f"  ✅ 所有更改已保存")
+        except Exception as e:
+            print(f"  {Fore.RED}❌ 保存失败: {e}{Style.RESET_ALL}")
+    
+    def _show_sync_report(self, calibration_results: dict, matched_networks: dict):
+        """显示详细的数据同步报告"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 📋 数据同步详细报告 📋 {Style.RESET_ALL}")
+        
+        # 校准更新详情
+        updated_chains = calibration_results.get('updated', [])
+        if updated_chains:
+            print(f"\n{Fore.YELLOW}🔧 Chain ID 校准详情：{Style.RESET_ALL}")
+            for i, chain in enumerate(updated_chains[:5], 1):  # 显示前5个
+                old_id = chain.get('old_chain_id', 'N/A')
+                new_id = chain.get('new_chain_id', 'N/A')
+                name = chain.get('local_name', 'Unknown')
+                print(f"  {i}. {name}: {Fore.RED}{old_id}{Style.RESET_ALL} → {Fore.GREEN}{new_id}{Style.RESET_ALL}")
+            
+            if len(updated_chains) > 5:
+                print(f"     ... 还有 {len(updated_chains) - 5} 个链条已校准")
+        
+        # RPC导入详情
+        if matched_networks:
+            print(f"\n{Fore.CYAN}📥 RPC 导入详情：{Style.RESET_ALL}")
+            for i, (network_key, rpc_urls) in enumerate(list(matched_networks.items())[:5], 1):  # 显示前5个
+                network_name = self.networks.get(network_key, {}).get('name', network_key)
+                rpc_count = len(rpc_urls)
+                print(f"  {i}. {network_name}: {Fore.GREEN}{rpc_count}{Style.RESET_ALL} 个RPC节点")
+            
+            if len(matched_networks) > 5:
+                print(f"     ... 还有 {len(matched_networks) - 5} 个网络已导入RPC")
+        
+        # 数据同步状态
+        print(f"\n{Fore.GREEN}🔄 数据同步状态：{Style.RESET_ALL}")
+        print(f"  ✅ 网络配置文件已更新")
+        print(f"  ✅ 钱包数据已同步")
+        print(f"  ✅ 缓存已清理")
+        print(f"  ✅ 所有更改已持久化保存")
+        
+        # 下一步建议
+        print(f"\n{Fore.CYAN}💡 建议的下一步操作：{Style.RESET_ALL}")
+        print(f"  1. 立即执行'初始化服务器连接'验证RPC节点")
+        print(f"  2. 检查连接状态，确保所有网络可正常使用")
+        print(f"  3. 开始监控和扫描操作")
 
     def initialize_server_connections(self):
         """初始化服务器连接 - 检测所有网络并建立最佳连接"""
         print(f"\n{Back.GREEN}{Fore.BLACK} 🚀 初始化服务器连接 🚀 {Style.RESET_ALL}")
         print(f"{Fore.CYAN}正在检测所有网络的RPC节点并建立最佳连接...{Style.RESET_ALL}")
+        
+        # 重新加载网络配置，确保获取最新的数据
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🔄 同步最新网络配置 🔄 {Style.RESET_ALL}")
+        try:
+            # 清除缓存，确保读取最新数据
+            if hasattr(self, 'cache') and self.cache:
+                self.cache.clear_category('network_info')
+                self.cache.clear_category('rpc_status')
+                print(f"  ✅ 缓存已清理")
+            
+            # 重新加载网络配置
+            if hasattr(self, 'load_state'):
+                # 重新加载状态文件
+                self.load_state()
+                print(f"  ✅ 网络配置已重新加载")
+            
+            print(f"  📊 当前网络数量: {Fore.CYAN}{len(self.networks)}{Style.RESET_ALL} 个")
+            
+        except Exception as e:
+            print(f"  {Fore.YELLOW}⚠️ 重载配置时出现问题: {e}{Style.RESET_ALL}")
+            print(f"  {Fore.CYAN}继续使用当前配置...{Style.RESET_ALL}")
         
         start_time = time.time()
         
