@@ -3073,9 +3073,22 @@ class EVMMonitor:
         self.monitoring = False
         self.monitor_thread = None
         
+        # 网络连接状态管理
+        self.connections: Dict[str, Dict] = {}  # network_key -> {web3: Web3实例, rpc_url: str, status: str, last_test: timestamp}
+        self.connection_status: Dict[str, bool] = {}  # network_key -> 连接状态
+        self.active_rpcs: Dict[str, str] = {}  # network_key -> 当前使用的RPC URL
+        
         # 智能调速控制器 - 全自动启用
         self.throttler = SmartThrottler()
         self.throttler_enabled = True  # 默认启用，全自动模式
+        
+        # 智能缓存系统
+        self.cache = SmartCache()
+        
+        # 数据同步锁 - 确保多线程安全
+        self._data_lock = threading.RLock()
+        self._connection_lock = threading.RLock()
+        self._wallet_lock = threading.RLock()
         
         # 启动时自动优化
         self._auto_optimize_on_startup()
@@ -3203,10 +3216,13 @@ class EVMMonitor:
         # 设置日志
         self.setup_logging()
         
-        # Web3连接
+        # Web3连接 - 保持向后兼容性
         self.web3_connections: Dict[str, Web3] = {}
         # 不在初始化时自动连接网络，由用户手动管理
         # self.init_web3_connections()
+        
+        # 确保所有必要的数据结构都存在
+        self._ensure_data_structures()
         
         # 智能默认值系统
         self.smart_defaults = {
@@ -3359,7 +3375,8 @@ class EVMMonitor:
         
         return base_tips[:3]  # 最多显示3个提示
     
-    def enhanced_input(self, prompt: str, default: str = "", choices: list = None, menu_name: str = "", timeout: int = None) -> str:
+    def enhanced_input(self, prompt: str, default: str = "", choices: list = None, menu_name: str = "", 
+                      timeout: int = None, validation_func=None, error_message: str = None, allow_empty: bool = False) -> str:
         """增强的输入函数（性能优化版本）"""
         
         # 性能优化：缓存智能默认值
@@ -3399,14 +3416,42 @@ class EVMMonitor:
                 result = user_input if user_input else default
                 
                 # 验证输入
-                if choices and result not in choices and result != default:
-                    print(f"{Fore.RED}❌ 无效选择，请从 {choices} 中选择{Style.RESET_ALL}")
+                validation_passed = True
+                error_msg = None
+                
+                # 空值检查
+                if not allow_empty and not result:
+                    validation_passed = False
+                    error_msg = "输入不能为空"
+                
+                # 选择验证
+                elif choices and result not in choices and result != default:
+                    validation_passed = False
+                    error_msg = f"无效选择，请从 {choices} 中选择"
+                
+                # 自定义验证函数
+                elif validation_func and result:
+                    try:
+                        if not validation_func(result):
+                            validation_passed = False
+                            error_msg = error_message or "输入验证失败"
+                    except Exception as e:
+                        validation_passed = False
+                        error_msg = f"验证出错: {str(e)}"
+                
+                if not validation_passed:
+                    print(f"{Fore.RED}❌ {error_msg}{Style.RESET_ALL}")
                     retry_count += 1
                     if retry_count < max_retries:
+                        print(f"{Fore.CYAN}💡 还有 {max_retries - retry_count} 次重试机会{Style.RESET_ALL}")
                         continue
                     else:
-                        print(f"{Fore.YELLOW}使用默认值: {default}{Style.RESET_ALL}")
-                        result = default
+                        if default:
+                            print(f"{Fore.YELLOW}使用默认值: {default}{Style.RESET_ALL}")
+                            result = default
+                        else:
+                            print(f"{Fore.RED}❌ 多次输入无效，操作取消{Style.RESET_ALL}")
+                            return ""
                 
                 # 记录选择
                 if menu_name and result:
@@ -3498,20 +3543,98 @@ class EVMMonitor:
         except Exception as e:
             self.logger.error(f"内存清理失败: {e}")
     
-    def handle_error(self, error: Exception, context: str = ""):
-        """统一的错误处理"""
+    def handle_error(self, error: Exception, context: str = "", critical: bool = False):
+        """增强的统一错误处理器"""
         self.error_count += 1
-        error_msg = f"错误[{self.error_count}] {context}: {error}"
+        error_msg = f"错误[{self.error_count}] in {context}: {str(error)}"
+        
         self.logger.error(error_msg)
         
-        # 如果错误数量过多，触发内存清理
-        if self.error_count >= self.max_errors:
-            print(f"{Fore.YELLOW}⚠️ 错误数量过多({self.error_count})，执行内存清理...{Style.RESET_ALL}")
-            self.cleanup_memory()
+        # 错误分类和处理
+        if isinstance(error, (ConnectionError, TimeoutError)):
+            # 网络相关错误
+            print(f"{Fore.YELLOW}🌐 网络连接问题: {error}{Style.RESET_ALL}")
+            self._handle_network_error(context)
+        elif isinstance(error, (ValueError, TypeError)):
+            # 数据类型错误
+            print(f"{Fore.RED}📊 数据错误: {error}{Style.RESET_ALL}")
+            self._handle_data_error(context)
+        elif isinstance(error, FileNotFoundError):
+            # 文件问题
+            print(f"{Fore.YELLOW}📁 文件问题: {error}{Style.RESET_ALL}")
+            self._handle_file_error(context)
+        elif critical:
+            # 关键错误，立即处理
+            print(f"{Fore.RED}🚨 严重错误: {error}{Style.RESET_ALL}")
+            self._handle_critical_error(context)
         
-        # 如果是严重错误且在守护进程模式，考虑重启
-        if self.daemon_mode and self.error_count >= self.max_errors * 2:
-            self.request_restart("错误数量过多")
+        # 如果错误过多，触发清理
+        if self.error_count > self.max_errors:
+            print(f"{Fore.YELLOW}⚠️ 错误过多，正在清理内存...{Style.RESET_ALL}")
+            self.cleanup_memory()
+            self.error_count = 0  # 重置错误计数
+        
+        # 关键错误可能需要重启
+        if self.error_count > self.max_errors // 2:
+            print(f"{Fore.RED}⚠️ 系统不稳定，建议重启{Style.RESET_ALL}")
+            self.request_restart("频繁错误")
+    
+    def _handle_network_error(self, context: str):
+        """处理网络相关错误"""
+        # 清理网络缓存
+        if hasattr(self, 'cache'):
+            self.cache.clear_category('rpc_status')
+            self.cache.clear_category('network_info')
+        
+        # 重置连接状态
+        with self._connection_lock:
+            for network_key in list(self.connection_status.keys()):
+                if not self.is_network_connected(network_key):
+                    self.connection_status.pop(network_key, None)
+    
+    def _handle_data_error(self, context: str):
+        """处理数据相关错误"""
+        # 确保数据结构完整性
+        self._ensure_data_structures()
+        
+        # 清理可能损坏的缓存
+        if hasattr(self, 'cache'):
+            self.cache.invalidate()
+    
+    def _handle_file_error(self, context: str):
+        """处理文件相关错误"""
+        # 检查关键文件
+        if not os.path.exists(self.wallet_file):
+            print(f"{Fore.YELLOW}💡 创建空白钱包文件{Style.RESET_ALL}")
+            try:
+                self.save_wallets()
+            except Exception as e:
+                self.logger.error(f"创建钱包文件失败: {e}")
+        
+        if not os.path.exists(self.state_file):
+            print(f"{Fore.YELLOW}💡 创建空白状态文件{Style.RESET_ALL}")
+            try:
+                self.save_state()
+            except Exception as e:
+                self.logger.error(f"创建状态文件失败: {e}")
+    
+    def _handle_critical_error(self, context: str):
+        """处理严重错误"""
+        print(f"{Fore.RED}🚨 正在执行紧急恢复程序...{Style.RESET_ALL}")
+        
+        # 保存当前状态
+        try:
+            self.save_state()
+            self.save_wallets()
+            print(f"{Fore.GREEN}✅ 紧急保存完成{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ 紧急保存失败: {e}{Style.RESET_ALL}")
+        
+        # 建议用户操作
+        print(f"{Fore.CYAN}💡 建议操作：{Style.RESET_ALL}")
+        print(f"  1. 重启程序")
+        print(f"  2. 检查网络连接")
+        print(f"  3. 清理缓存文件")
     
     def request_restart(self, reason: str):
         """请求重启程序"""
@@ -3817,66 +3940,82 @@ esac
             return None
 
     def save_wallets(self) -> bool:
-        """保存钱包到JSON文件"""
-        try:
-            data = {
-                'wallets': self.wallets,
-                'target_wallet': self.target_wallet
-            }
-            
-            with open(self.wallet_file, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            self.logger.info(f"钱包已保存: {len(self.wallets)} 个地址")
-            return True
-        except Exception as e:
-            print(f"{Fore.RED}❌ 保存钱包失败: {e}{Style.RESET_ALL}")
-            return False
+        """保存钱包到JSON文件 - 线程安全版本"""
+        with self._wallet_lock:
+            try:
+                data = {
+                    'wallets': self.wallets,
+                    'target_wallet': self.target_wallet
+                }
+                
+                with open(self.wallet_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                self.logger.info(f"钱包已保存: {len(self.wallets)} 个地址")
+                return True
+            except Exception as e:
+                print(f"{Fore.RED}❌ 保存钱包失败: {e}{Style.RESET_ALL}")
+                return False
 
     def load_wallets(self) -> bool:
-        """从JSON文件加载钱包"""
-        try:
-            if not os.path.exists(self.wallet_file):
-                print(f"{Fore.YELLOW}⚠️ 钱包文件不存在，将创建新的钱包{Style.RESET_ALL}")
+        """从JSON文件加载钱包 - 线程安全版本"""
+        with self._wallet_lock:
+            try:
+                if not os.path.exists(self.wallet_file):
+                    print(f"{Fore.YELLOW}⚠️ 钱包文件不存在，将创建新的钱包{Style.RESET_ALL}")
+                    return True
+                
+                with open(self.wallet_file, 'r') as f:
+                    data = json.load(f)
+                
+                self.wallets = data.get('wallets', {})
+                self.target_wallet = data.get('target_wallet', '')
+                
+                print(f"{Fore.GREEN}✅ 成功加载 {len(self.wallets)} 个钱包{Style.RESET_ALL}")
                 return True
-            
-            with open(self.wallet_file, 'r') as f:
-                data = json.load(f)
-            
-            self.wallets = data.get('wallets', {})
-            self.target_wallet = data.get('target_wallet', '')
-            
-            print(f"{Fore.GREEN}✅ 成功加载 {len(self.wallets)} 个钱包{Style.RESET_ALL}")
-            return True
-        except Exception as e:
-            print(f"{Fore.RED}❌ 加载钱包失败: {e}{Style.RESET_ALL}")
-            return False
+            except Exception as e:
+                print(f"{Fore.RED}❌ 加载钱包失败: {e}{Style.RESET_ALL}")
+                return False
 
     def save_state(self):
-        """保存监控状态"""
-        try:
-            state = {
-                'monitored_addresses': self.monitored_addresses,
-                'blocked_networks': self.blocked_networks,
-                'transfer_stats': self.transfer_stats,
-                'rpc_latency_history': self.rpc_latency_history,
-                'blocked_rpcs': self.blocked_rpcs,
-                'token_metadata_cache': self.token_metadata_cache,
-                'active_tokens': self.active_tokens,
-                'user_added_tokens': list(self.user_added_tokens),
-                'address_full_scan_done': self.address_full_scan_done,
-                'last_full_scan_time': self.last_full_scan_time,
-                'rpc_stats': self.rpc_stats,
-                'rpc_test_cache': self.rpc_test_cache,
-                'last_save': datetime.now().isoformat()
-            }
-            with open(self.state_file, 'w') as f:
-                json.dump(state, f, indent=2)
-            
-            # 检查是否需要备份
-            self._maybe_backup_state()
-        except Exception as e:
-            self.logger.error(f"保存状态失败: {e}")
+        """保存监控状态 - 线程安全版本"""
+        with self._data_lock:
+            try:
+                # 准备连接状态数据（排除不可序列化的web3实例）
+                serializable_connections = {}
+                for network_key, conn_info in self.connections.items():
+                    serializable_connections[network_key] = {
+                        'rpc_url': conn_info.get('rpc_url'),
+                        'status': conn_info.get('status'),
+                        'last_test': conn_info.get('last_test')
+                    }
+                
+                state = {
+                    'monitored_addresses': self.monitored_addresses,
+                    'blocked_networks': self.blocked_networks,
+                    'transfer_stats': self.transfer_stats,
+                    'rpc_latency_history': self.rpc_latency_history,
+                    'blocked_rpcs': self.blocked_rpcs,
+                    'token_metadata_cache': self.token_metadata_cache,
+                    'active_tokens': self.active_tokens,
+                    'user_added_tokens': list(self.user_added_tokens),
+                    'address_full_scan_done': self.address_full_scan_done,
+                    'last_full_scan_time': self.last_full_scan_time,
+                    'rpc_stats': self.rpc_stats,
+                    'rpc_test_cache': self.rpc_test_cache,
+                    'connection_status': self.connection_status,
+                    'active_rpcs': self.active_rpcs,
+                    'serializable_connections': serializable_connections,
+                    'networks': self.networks,  # 保存网络配置变更
+                    'last_save': datetime.now().isoformat()
+                }
+                with open(self.state_file, 'w') as f:
+                    json.dump(state, f, indent=2)
+                
+                # 检查是否需要备份
+                self._maybe_backup_state()
+            except Exception as e:
+                self.logger.error(f"保存状态失败: {e}")
 
     def _maybe_backup_state(self):
         """如果需要则创建状态文件备份"""
@@ -3908,41 +4047,172 @@ esac
             pass
 
     def load_state(self):
-        """加载监控状态"""
-        try:
-            if os.path.exists(self.state_file):
-                with open(self.state_file, 'r') as f:
-                    state = json.load(f)
-                self.monitored_addresses = state.get('monitored_addresses', {})
-                self.blocked_networks = state.get('blocked_networks', {})
-                
-                # 加载转账统计，保持兼容性
-                saved_stats = state.get('transfer_stats', {})
-                if saved_stats:
-                    self.transfer_stats.update(saved_stats)
-                
-                # 加载RPC延迟历史和屏蔽数据
-                self.rpc_latency_history = state.get('rpc_latency_history', {})
-                self.blocked_rpcs = state.get('blocked_rpcs', {})
-                self.token_metadata_cache = state.get('token_metadata_cache', {})
-                self.active_tokens = state.get('active_tokens', {})
-                self.user_added_tokens = set(state.get('user_added_tokens', []))
-                self.address_full_scan_done = state.get('address_full_scan_done', {})
-                # 兼容性：如果存在旧的full_scan_done，迁移到新格式
-                if 'full_scan_done' in state and state['full_scan_done']:
-                    for addr in self.monitored_addresses.keys():
-                        self.address_full_scan_done[addr] = True
-                self.last_full_scan_time = state.get('last_full_scan_time', 0.0)
-                self.rpc_stats = state.get('rpc_stats', {})
-                self.rpc_test_cache = state.get('rpc_test_cache', {})
-                
-                self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
-                self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
-                if self.blocked_rpcs:
-                    self.logger.info(f"恢复屏蔽RPC: {len(self.blocked_rpcs)} 个")
-                self.logger.info(f"恢复转账统计: 成功{self.transfer_stats['successful_transfers']}次 失败{self.transfer_stats['failed_transfers']}次")
-        except Exception as e:
-            self.logger.error(f"加载状态失败: {e}")
+        """加载监控状态 - 线程安全版本"""
+        with self._data_lock:
+            try:
+                if os.path.exists(self.state_file):
+                    with open(self.state_file, 'r') as f:
+                        state = json.load(f)
+                    self.monitored_addresses = state.get('monitored_addresses', {})
+                    self.blocked_networks = state.get('blocked_networks', {})
+                    
+                    # 加载转账统计，保持兼容性
+                    saved_stats = state.get('transfer_stats', {})
+                    if saved_stats:
+                        self.transfer_stats.update(saved_stats)
+                    
+                    # 加载RPC延迟历史和屏蔽数据
+                    self.rpc_latency_history = state.get('rpc_latency_history', {})
+                    self.blocked_rpcs = state.get('blocked_rpcs', {})
+                    self.token_metadata_cache = state.get('token_metadata_cache', {})
+                    self.active_tokens = state.get('active_tokens', {})
+                    self.user_added_tokens = set(state.get('user_added_tokens', []))
+                    self.address_full_scan_done = state.get('address_full_scan_done', {})
+                    # 兼容性：如果存在旧的full_scan_done，迁移到新格式
+                    if 'full_scan_done' in state and state['full_scan_done']:
+                        for addr in self.monitored_addresses.keys():
+                            self.address_full_scan_done[addr] = True
+                    self.last_full_scan_time = state.get('last_full_scan_time', 0.0)
+                    self.rpc_stats = state.get('rpc_stats', {})
+                    self.rpc_test_cache = state.get('rpc_test_cache', {})
+                    
+                    # 加载连接状态和网络配置
+                    self.connection_status = state.get('connection_status', {})
+                    self.active_rpcs = state.get('active_rpcs', {})
+                    
+                    # 加载网络配置更新（如果有）
+                    saved_networks = state.get('networks')
+                    if saved_networks:
+                        # 合并保存的网络配置，保留用户添加的RPC
+                        for network_key, network_config in saved_networks.items():
+                            if network_key in self.networks:
+                                # 合并RPC列表，保留新增的RPC (统一使用rpc_urls字段)
+                                saved_rpcs = network_config.get('rpc_urls', network_config.get('rpcs', []))
+                                if saved_rpcs and saved_rpcs != self.networks[network_key].get('rpc_urls', []):
+                                    # 更新RPC列表
+                                    self.networks[network_key]['rpc_urls'] = saved_rpcs
+                                
+                                # 更新其他可能被修改的字段
+                                if 'chain_id' in network_config:
+                                    self.networks[network_key]['chain_id'] = network_config['chain_id']
+                    
+                    # 恢复连接状态（不包含web3实例）
+                    serializable_connections = state.get('serializable_connections', {})
+                    for network_key, conn_info in serializable_connections.items():
+                        self.connections[network_key] = {
+                            'web3': None,  # web3实例需要重新创建
+                            'rpc_url': conn_info.get('rpc_url'),
+                            'status': conn_info.get('status'),
+                            'last_test': conn_info.get('last_test')
+                        }
+                    
+                    self.logger.info(f"恢复监控状态: {len(self.monitored_addresses)} 个地址")
+                    self.logger.info(f"恢复屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个")
+                    if self.blocked_rpcs:
+                        self.logger.info(f"恢复屏蔽RPC: {len(self.blocked_rpcs)} 个")
+                    self.logger.info(f"恢复转账统计: 成功{self.transfer_stats['successful_transfers']}次 失败{self.transfer_stats['failed_transfers']}次")
+                    self.logger.info(f"恢复连接状态: {len(self.connections)} 个网络")
+            except Exception as e:
+                self.logger.error(f"加载状态失败: {e}")
+                # 确保基本数据结构存在
+                if not hasattr(self, 'connection_status'):
+                    self.connection_status = {}
+                if not hasattr(self, 'active_rpcs'):
+                    self.active_rpcs = {}
+    
+    def update_connection_status(self, network_key: str, status: bool, rpc_url: str = None, web3_instance=None):
+        """更新网络连接状态 - 线程安全版本"""
+        with self._connection_lock:
+            self.connection_status[network_key] = status
+            
+            if status and rpc_url:
+                self.active_rpcs[network_key] = rpc_url
+                self.connections[network_key] = {
+                    'web3': web3_instance,
+                    'rpc_url': rpc_url,
+                    'status': 'connected',
+                    'last_test': time.time()
+                }
+            elif not status:
+                self.connections[network_key] = {
+                    'web3': None,
+                    'rpc_url': rpc_url,
+                    'status': 'failed',
+                    'last_test': time.time()
+                }
+            
+            # 更新缓存
+            self.cache.invalidate(category='rpc_status')
+            self.cache.invalidate(category='network_info')
+    
+    def get_connection_status(self, network_key: str) -> Dict:
+        """获取网络连接状态 - 线程安全版本"""
+        with self._connection_lock:
+            return {
+                'connected': self.connection_status.get(network_key, False),
+                'rpc_url': self.active_rpcs.get(network_key),
+                'connection_info': self.connections.get(network_key, {})
+            }
+    
+    def is_network_connected(self, network_key: str) -> bool:
+        """检查网络是否已连接"""
+        return self.connection_status.get(network_key, False)
+    
+    def get_connected_networks(self) -> List[str]:
+        """获取所有已连接的网络列表"""
+        with self._connection_lock:
+            return [network_key for network_key, status in self.connection_status.items() if status]
+    
+    def _ensure_data_structures(self):
+        """确保所有必要的数据结构都存在，防止AttributeError"""
+        # 基本数据结构
+        required_attrs = {
+            'transfer_stats': defaultdict(int),
+            'token_metadata_cache': {},
+            'active_tokens': {},
+            'user_added_tokens': set(),
+            'address_full_scan_done': {},
+            'last_full_scan_time': 0.0,
+            'rpc_stats': defaultdict(dict),
+            'rpc_test_cache': {},
+            'rpc_latency_history': {},
+            'blocked_rpcs': {},
+            'user_preferences': {
+                'smart_defaults': True,
+                'quick_navigation': True,
+                'auto_save': True,
+                'detailed_logs': False
+            },
+            'choice_history': defaultdict(list),
+            'operation_timers': {},
+            'performance_stats': {
+                'operations_count': 0,
+                'avg_response_time': 0.0,
+                'cache_hit_rate': 0.0
+            },
+            'backup_max_files': 10,
+            'backup_interval_hours': 24,
+            'last_backup_time': 0
+        }
+        
+        # 确保所有属性存在
+        for attr_name, default_value in required_attrs.items():
+            if not hasattr(self, attr_name):
+                setattr(self, attr_name, default_value)
+        
+        # 确保智能缓存系统正常工作
+        if not hasattr(self, 'smart_cache'):
+            self.smart_cache = self.cache
+        
+        # 确保连接状态数据结构存在
+        if not hasattr(self, 'connection_status'):
+            self.connection_status = {}
+        if not hasattr(self, 'active_rpcs'):
+            self.active_rpcs = {}
+        if not hasattr(self, 'connections'):
+            self.connections = {}
+        
+        self.logger.info("数据结构完整性检查完成")
 
     def check_transaction_history(self, address: str, network: str) -> bool:
         """检查地址在指定网络上是否有交易历史"""
@@ -8389,7 +8659,20 @@ esac
                         if test_result and test_result['working_rpcs']:
                             print(f"{Fore.GREEN}✅ 连接测试成功！{Style.RESET_ALL}")
                         else:
-                            print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要检查RPC配置{Style.RESET_ALL}")
+                            print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要添加更多RPC节点{Style.RESET_ALL}")
+                            
+                            # 询问是否要添加RPC节点
+                            add_rpc = self.safe_input(f"是否要为此网络添加RPC节点？(y/N): ").strip().lower()
+                            if add_rpc == 'y':
+                                added_count = self._smart_add_rpc_nodes(network['key'], network['name'])
+                                if added_count > 0:
+                                    print(f"{Fore.GREEN}✅ 已添加 {added_count} 个RPC节点，重新测试中...{Style.RESET_ALL}")
+                                    # 重新测试
+                                    test_result = self.test_network_concurrent(network['key'])
+                                    if test_result and test_result['working_rpcs']:
+                                        print(f"{Fore.GREEN}✅ 添加RPC后连接测试成功！{Style.RESET_ALL}")
+                                    else:
+                                        print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要进一步检查{Style.RESET_ALL}")
                         break
                         
                     except ValueError:
@@ -8425,9 +8708,282 @@ esac
                 print(f"  {Fore.RED}❌ 保存失败: {e}{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.YELLOW}💡 没有进行任何修改{Style.RESET_ALL}")
+    
+    def _smart_add_rpc_nodes(self, network_key: str, network_name: str) -> int:
+        """智能添加RPC节点 - 支持多种格式解析"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 🌐 智能RPC节点添加 🌐 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}为网络 '{network_name}' 添加RPC节点{Style.RESET_ALL}")
+        
+        print(f"\n{Fore.YELLOW}📋 支持的输入格式：{Style.RESET_ALL}")
+        print(f"  1. 单个URL: https://rpc.example.com")
+        print(f"  2. 多个URL (每行一个)")
+        print(f"  3. 表格数据 (自动提取URL)")
+        print(f"  4. JSON格式")
+        print(f"  5. 混合格式 (智能识别)")
+        
+        print(f"\n{Fore.CYAN}💡 请粘贴RPC数据 (输入完成后按两次回车):{Style.RESET_ALL}")
+        
+        # 收集用户输入
+        rpc_input = []
+        empty_line_count = 0
+        
+        while True:
+            line = self.safe_input("")
+            if not line.strip():
+                empty_line_count += 1
+                if empty_line_count >= 2:
+                    break
+            else:
+                empty_line_count = 0
+                rpc_input.append(line)
+        
+        if not rpc_input:
+            print(f"{Fore.YELLOW}💡 没有输入任何数据{Style.RESET_ALL}")
+            return 0
+        
+        # 合并所有输入
+        raw_data = '\n'.join(rpc_input)
+        print(f"\n{Fore.CYAN}🔍 正在智能解析RPC数据...{Style.RESET_ALL}")
+        
+        # 智能解析RPC URL
+        extracted_rpcs = self._extract_rpc_urls(raw_data)
+        
+        if not extracted_rpcs:
+            print(f"{Fore.RED}❌ 未能识别到有效的RPC URL{Style.RESET_ALL}")
+            return 0
+        
+        # 显示识别到的RPC
+        print(f"\n{Fore.GREEN}✅ 智能识别到 {len(extracted_rpcs)} 个RPC URL:{Style.RESET_ALL}")
+        for i, rpc in enumerate(extracted_rpcs[:10], 1):  # 只显示前10个
+            print(f"  {i}. {rpc}")
+        
+        if len(extracted_rpcs) > 10:
+            print(f"     ... 还有 {len(extracted_rpcs) - 10} 个RPC")
+        
+        # 询问是否添加
+        confirm = self.safe_input(f"\n{Fore.YELLOW}➜ 是否添加这些RPC节点？(Y/n): {Style.RESET_ALL}").strip().lower()
+        if confirm in ['n', 'no']:
+            print(f"{Fore.YELLOW}💡 已取消添加{Style.RESET_ALL}")
+            return 0
+        
+        # 批量测试和添加RPC
+        return self._batch_test_and_add_rpcs(network_key, extracted_rpcs)
+    
+    def _extract_rpc_urls(self, raw_data: str) -> list:
+        """从原始数据中智能提取RPC URL"""
+        import re
+        
+        urls = []
+        
+        # RPC URL 正则模式 (支持http/https/ws/wss)
+        url_patterns = [
+            r'https?://[^\s\n\r\t]+',  # HTTP/HTTPS URLs
+            r'wss?://[^\s\n\r\t]+',   # WebSocket URLs
+        ]
+        
+        # 合并所有模式
+        combined_pattern = '|'.join(f'({pattern})' for pattern in url_patterns)
+        
+        # 查找所有匹配的URL
+        matches = re.findall(combined_pattern, raw_data, re.IGNORECASE)
+        
+        for match in matches:
+            # match是一个元组，找到非空的分组
+            for group in match:
+                if group:
+                    # 清理URL (移除可能的末尾字符)
+                    clean_url = re.sub(r'[,;)\]\}"\'\s]*$', '', group)
+                    
+                    # 验证URL格式
+                    if self._is_valid_rpc_url(clean_url):
+                        urls.append(clean_url)
+                    break
+        
+        # 去重并保持顺序
+        seen = set()
+        unique_urls = []
+        for url in urls:
+            if url not in seen:
+                seen.add(url)
+                unique_urls.append(url)
+        
+        # 按URL类型排序：WebSocket优先，然后是HTTPS，最后是HTTP
+        def url_priority(url):
+            if url.startswith('wss://'):
+                return 0
+            elif url.startswith('ws://'):
+                return 1
+            elif url.startswith('https://'):
+                return 2
+            elif url.startswith('http://'):
+                return 3
+            else:
+                return 4
+        
+        unique_urls.sort(key=url_priority)
+        
+        return unique_urls
+    
+    def _is_valid_rpc_url(self, url: str) -> bool:
+        """验证RPC URL的有效性"""
+        import re
+        
+        # 基本URL格式检查
+        url_pattern = r'^(https?|wss?)://[a-zA-Z0-9\-._~:/?#[\]@!$&\'()*+,;=%]+$'
+        if not re.match(url_pattern, url):
+            return False
+        
+        # 过滤明显不是RPC的URL
+        exclude_patterns = [
+            r'\.jpg$', r'\.png$', r'\.gif$', r'\.css$', r'\.js$',  # 静态文件
+            r'\.pdf$', r'\.doc$', r'\.zip$',  # 文档文件
+            r'twitter\.com', r'facebook\.com', r'github\.com',  # 社交媒体
+            r'blog\.|news\.|forum\.',  # 博客/新闻站点
+        ]
+        
+        for pattern in exclude_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                return False
+        
+        # 检查长度
+        if len(url) < 10 or len(url) > 200:
+            return False
+        
+        return True
+    
+    def _batch_test_and_add_rpcs(self, network_key: str, rpc_urls: list) -> int:
+        """批量测试和添加RPC节点"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🧪 批量测试RPC节点 🧪 {Style.RESET_ALL}")
+        
+        added_count = 0
+        valid_rpcs = []
+        
+        # 并发测试RPC
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_url = {
+                executor.submit(self._test_single_rpc, network_key, url): url 
+                for url in rpc_urls
+            }
+            
+            completed_count = 0
+            for future in as_completed(future_to_url, timeout=60):
+                url = future_to_url[future]
+                completed_count += 1
+                
+                try:
+                    result = future.result(timeout=15)
+                    if result['success']:
+                        valid_rpcs.append({
+                            'url': url,
+                            'response_time': result['response_time'],
+                            'chain_id': result.get('chain_id')
+                        })
+                        status = f"{Fore.GREEN}✅ 有效 ({result['response_time']:.2f}s){Style.RESET_ALL}"
+                    else:
+                        status = f"{Fore.RED}❌ 无效 ({result['error'][:30]}){Style.RESET_ALL}"
+                    
+                    progress = f"[{completed_count:2d}/{len(rpc_urls)}]"
+                    url_display = f"{url[:50]}..." if len(url) > 50 else url
+                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {url_display:<55} {status}")
+                    
+                except Exception as e:
+                    progress = f"[{completed_count:2d}/{len(rpc_urls)}]"
+                    url_display = f"{url[:50]}..." if len(url) > 50 else url
+                    print(f"  {Fore.CYAN}{progress}{Style.RESET_ALL} {url_display:<55} {Fore.RED}❌ 测试异常{Style.RESET_ALL}")
+        
+        # 按响应时间排序
+        valid_rpcs.sort(key=lambda x: x['response_time'])
+        
+        if valid_rpcs:
+            print(f"\n{Fore.GREEN}✅ 找到 {len(valid_rpcs)} 个有效的RPC节点{Style.RESET_ALL}")
+            
+            # 显示最快的几个
+            print(f"{Fore.CYAN}🚀 最快的RPC节点：{Style.RESET_ALL}")
+            for i, rpc in enumerate(valid_rpcs[:5], 1):
+                print(f"  {i}. {rpc['url']} ({rpc['response_time']:.2f}s)")
+            
+            # 添加到网络配置 - 统一使用rpc_urls字段
+            network_config = self.networks[network_key]
+            if 'rpc_urls' not in network_config:
+                network_config['rpc_urls'] = []
+            
+            # 添加新的RPC (避免重复)
+            existing_rpcs = set(network_config['rpc_urls'])
+            for rpc in valid_rpcs:
+                if rpc['url'] not in existing_rpcs:
+                    network_config['rpc_urls'].append(rpc['url'])
+                    added_count += 1
+            
+            if added_count > 0:
+                print(f"{Fore.GREEN}✅ 已添加 {added_count} 个新的RPC节点到网络配置{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}💡 所有有效RPC已存在于配置中{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}❌ 没有找到有效的RPC节点{Style.RESET_ALL}")
+        
+        return added_count
+    
+    def _test_single_rpc(self, network_key: str, rpc_url: str) -> dict:
+        """测试单个RPC节点"""
+        start_time = time.time()
+        
+        try:
+            # 基本连接测试
+            w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
+            
+            if not w3.is_connected():
+                return {
+                    'success': False,
+                    'error': '连接失败',
+                    'response_time': time.time() - start_time
+                }
+            
+            # 获取链ID验证
+            chain_id = w3.eth.chain_id
+            expected_chain_id = self.networks[network_key].get('chain_id')
+            
+            response_time = time.time() - start_time
+            
+            if expected_chain_id and chain_id != expected_chain_id:
+                return {
+                    'success': False,
+                    'error': f'Chain ID不匹配: {chain_id} != {expected_chain_id}',
+                    'response_time': response_time,
+                    'chain_id': chain_id
+                }
+            
+            # 尝试获取最新区块
+            try:
+                latest_block = w3.eth.block_number
+                if latest_block <= 0:
+                    return {
+                        'success': False,
+                        'error': '无法获取区块高度',
+                        'response_time': response_time
+                    }
+            except:
+                return {
+                    'success': False,
+                    'error': '区块查询失败',
+                    'response_time': response_time
+                }
+            
+            return {
+                'success': True,
+                'response_time': response_time,
+                'chain_id': chain_id,
+                'block_height': latest_block
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'response_time': time.time() - start_time
+            }
 
     def establish_single_connection(self, network_key: str, rpc_url: str) -> bool:
-        """建立单个网络的连接"""
+        """建立单个网络的连接 - 使用新的连接管理系统"""
         try:
             network_info = self.networks[network_key]
             w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 10}))
@@ -8436,10 +8992,26 @@ esac
                 # 验证链ID
                 chain_id = w3.eth.chain_id
                 if chain_id == network_info['chain_id']:
+                    # 使用新的连接管理系统
+                    self.update_connection_status(network_key, True, rpc_url, w3)
+                    
+                    # 保持向后兼容性
+                    if not hasattr(self, 'web3_connections'):
+                        self.web3_connections = {}
                     self.web3_connections[network_key] = w3
+                    
                     return True
-            return False
-        except Exception:
+                else:
+                    # Chain ID不匹配
+                    self.update_connection_status(network_key, False, rpc_url)
+                    return False
+            else:
+                # 连接失败
+                self.update_connection_status(network_key, False, rpc_url)
+                return False
+        except Exception as e:
+            # 连接异常
+            self.update_connection_status(network_key, False, rpc_url)
             return False
     
     def scan_addresses_with_detailed_display(self):
@@ -8607,53 +9179,7 @@ esac
             print(f"\n{Fore.YELLOW}⚠️ 没有可监控的地址，请先添加钱包或重新扫描{Style.RESET_ALL}")
             return False
     
-    def handle_error(self, error: Exception, context: str = "", critical: bool = False) -> None:
-        """统一错误处理方法"""
-        try:
-            self.error_count += 1
-            error_msg = str(error)
-            error_type = type(error).__name__
-            
-            # 记录错误日志
-            self.logger.error(f"[{context}] {error_type}: {error_msg}")
-            
-            # 错误分类和处理
-            if any(keyword in error_msg.lower() for keyword in ['connection', 'timeout', 'network']):
-                # 网络相关错误 - 非关键
-                if not critical:
-                    print(f"{Fore.YELLOW}⚠️ 网络错误: {error_msg[:50]}...{Style.RESET_ALL}")
-            elif any(keyword in error_msg.lower() for keyword in ['rpc', 'json-rpc', 'web3']):
-                # RPC相关错误
-                print(f"{Fore.RED}🔗 RPC错误: {error_msg[:50]}...{Style.RESET_ALL}")
-            elif critical:
-                # 关键错误
-                print(f"{Fore.RED}❌ 严重错误 [{context}]: {error_msg}{Style.RESET_ALL}")
-                
-                # 发送Telegram通知
-                if self.telegram_enabled:
-                    notification = f"""
-🚨 *系统严重错误*
 
-📍 上下文: {context}
-❌ 错误类型: {error_type}
-📝 错误信息: {error_msg[:200]}
-🕒 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-📊 累计错误: {self.error_count}
-"""
-                    self.send_telegram_notification(notification)
-            else:
-                # 一般错误
-                print(f"{Fore.YELLOW}⚠️ 错误 [{context}]: {error_msg[:50]}...{Style.RESET_ALL}")
-            
-            # 错误计数管理
-            if self.error_count > self.max_errors and self.daemon_mode:
-                print(f"{Fore.RED}❌ 错误过多({self.error_count})，请求重启{Style.RESET_ALL}")
-                self.request_restart(f"累计错误过多: {self.error_count}")
-                
-        except Exception as e:
-            # 错误处理本身出错，使用最基本的记录
-            self.logger.critical(f"错误处理失败: {e}")
-            print(f"{Fore.RED}❌ 错误处理失败{Style.RESET_ALL}")
     
     def wait_for_double_enter(self) -> str:
         """等待用户双击回车，返回输入内容（空字符串表示双击回车）"""
@@ -11235,6 +11761,9 @@ def main():
         
         # 加载监控状态
         monitor.load_state()
+        
+        # 确保数据结构完整性
+        monitor._ensure_data_structures()
         
         # 显示欢迎信息
         print(f"\n{Fore.GREEN}🎉 欢迎使用EVM监控软件！{Style.RESET_ALL}")
