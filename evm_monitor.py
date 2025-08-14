@@ -6960,7 +6960,9 @@ esac
                 cached_results = cache_entry['results']
                 working_rpcs = [url for url, status in cached_results.items() if status]
                 failed_rpcs = [url for url, status in cached_results.items() if not status]
-                print(f"{Fore.GREEN}📋 使用缓存数据: {network_info['name']} ({len(working_rpcs)}/{len(cached_results)} 可用){Style.RESET_ALL}")
+                last_test_time = cache_entry['last_test']
+                time_ago = int(current_time - last_test_time)
+                print(f"{Fore.GREEN}📋 使用缓存数据: {network_info['name']} ({len(working_rpcs)}/{len(cached_results)} 可用) - {time_ago}秒前检测{Style.RESET_ALL}")
             else:
                 # 需要重新测试
                 print(f"{Fore.CYAN}🔄 检测网络 {network_info['name']} 的RPC状态...{Style.RESET_ALL}")
@@ -7606,10 +7608,26 @@ esac
     def manage_zero_rpc_chains(self):
         """专门管理无可用RPC的链条"""
         print(f"\n{Back.RED}{Fore.WHITE} 🚨 管理无可用RPC的链条 🚨 {Style.RESET_ALL}")
-        print(f"{Fore.CYAN}正在检测完全没有可用RPC的网络...{Style.RESET_ALL}")
         
-        # 获取RPC检测结果
-        rpc_results = self.get_cached_rpc_results(force_refresh=True)
+        # 检查是否有缓存数据
+        cache_exists = bool(self.rpc_test_cache)
+        if cache_exists:
+            print(f"{Fore.GREEN}📋 检测到上次的RPC测试缓存{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}选择检测模式：{Style.RESET_ALL}")
+            print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 📋 使用缓存数据 (快速，推荐)")
+            print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🔄 重新检测所有网络 (较慢)")
+            
+            choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择 (1-2，默认1): {Style.RESET_ALL}").strip() or "1"
+            
+            if choice == "2":
+                print(f"{Fore.CYAN}🔄 重新检测所有网络的RPC状态...{Style.RESET_ALL}")
+                rpc_results = self.get_cached_rpc_results(force_refresh=True)
+            else:
+                print(f"{Fore.CYAN}📋 使用缓存数据检测无可用RPC的网络...{Style.RESET_ALL}")
+                rpc_results = self.get_cached_rpc_results(force_refresh=False)
+        else:
+            print(f"{Fore.CYAN}🔄 首次检测网络RPC状态...{Style.RESET_ALL}")
+            rpc_results = self.get_cached_rpc_results(force_refresh=True)
         
         # 只筛选出完全没有可用RPC的网络
         zero_rpc_networks = []
@@ -7645,18 +7663,19 @@ esac
         
         # 管理选项
         print(f"\n{Fore.YELLOW}🛠️ 管理选项：{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔧 选择单个网络添加RPC")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🔧 选择单个网络添加RPC (添加后继续处理其他网络)")
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🚀 为所有无RPC网络批量添加RPC")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 📋 查看详细的失效RPC信息")
         print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🔄 重新测试所有失效的RPC")
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🔄 刷新检测结果 (重新检测所有网络)")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回RPC管理菜单")
         
         action = self.safe_input(f"\n{Fore.CYAN}➜ 请选择操作: {Style.RESET_ALL}").strip()
         
         try:
             if action == '1':
-                # 选择单个网络添加RPC
-                self._select_and_add_rpc_for_zero_chains(zero_rpc_networks)
+                # 选择单个网络添加RPC (增量模式)
+                self._select_and_add_rpc_incremental(zero_rpc_networks)
             elif action == '2':
                 # 批量为所有网络添加RPC
                 self._batch_add_rpc_for_zero_chains(zero_rpc_networks)
@@ -7666,6 +7685,11 @@ esac
             elif action == '4':
                 # 重新测试失效RPC
                 self._retest_zero_rpc_chains(zero_rpc_networks)
+            elif action == '5':
+                # 刷新检测结果
+                print(f"{Fore.CYAN}🔄 正在重新检测所有网络...{Style.RESET_ALL}")
+                self.manage_zero_rpc_chains()  # 递归调用，但会强制刷新
+                return
             elif action == '0':
                 return
             else:
@@ -7694,6 +7718,51 @@ esac
         selected_chain = zero_rpc_networks[int(choice) - 1]
         print(f"\n{Fore.CYAN}🎯 为网络 {Fore.YELLOW}{selected_chain['name']}{Style.RESET_ALL} 添加RPC")
         self._add_rpc_for_chain(selected_chain['network_key'], selected_chain['name'])
+
+    def _select_and_add_rpc_incremental(self, zero_rpc_networks: list):
+        """增量模式：选择单个网络添加RPC，添加后继续处理其他网络"""
+        while zero_rpc_networks:
+            print(f"\n{Fore.CYAN}🔧 选择要添加RPC的网络 (剩余 {len(zero_rpc_networks)} 个无RPC网络)：{Style.RESET_ALL}")
+            
+            for i, chain in enumerate(zero_rpc_networks, 1):
+                print(f"  {Fore.GREEN}{i}.{Style.RESET_ALL} {chain['name']} ({chain['currency']})")
+            print(f"  {Fore.YELLOW}0.{Style.RESET_ALL} 🔙 完成添加，返回菜单")
+            
+            choice = self.safe_input(f"\n{Fore.YELLOW}请选择网络编号 (0-{len(zero_rpc_networks)}): {Style.RESET_ALL}").strip()
+            
+            if choice == '0':
+                print(f"{Fore.GREEN}✅ 增量添加已完成{Style.RESET_ALL}")
+                break
+                
+            if not choice.isdigit() or not (1 <= int(choice) <= len(zero_rpc_networks)):
+                print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                continue
+            
+            selected_chain = zero_rpc_networks[int(choice) - 1]
+            print(f"\n{Fore.CYAN}🎯 为网络 {Fore.YELLOW}{selected_chain['name']}{Style.RESET_ALL} 添加RPC")
+            
+            # 添加RPC
+            success = self._add_rpc_for_chain(selected_chain['network_key'], selected_chain['name'])
+            
+            if success:
+                # 重新检测这个网络的RPC状态
+                print(f"{Fore.CYAN}🔄 重新检测 {selected_chain['name']} 的RPC状态...{Style.RESET_ALL}")
+                updated_result = self.get_cached_rpc_results(network_key=selected_chain['network_key'], force_refresh=True)
+                
+                if updated_result[selected_chain['network_key']]['available_count'] > 0:
+                    print(f"{Fore.GREEN}🎉 {selected_chain['name']} 现在有可用的RPC了！从列表中移除...{Style.RESET_ALL}")
+                    zero_rpc_networks.remove(selected_chain)
+                else:
+                    print(f"{Fore.YELLOW}⚠️ {selected_chain['name']} 仍然没有可用的RPC，可能需要添加更多RPC{Style.RESET_ALL}")
+            
+            # 询问是否继续
+            if zero_rpc_networks:
+                continue_choice = self.safe_input(f"\n{Fore.CYAN}是否继续为其他网络添加RPC？(Y/n): {Style.RESET_ALL}").strip().lower()
+                if continue_choice == 'n':
+                    break
+        
+        if not zero_rpc_networks:
+            print(f"\n{Fore.GREEN}🎉 太好了！所有网络都有可用的RPC了！{Style.RESET_ALL}")
 
     def _batch_add_rpc_for_zero_chains(self, zero_rpc_networks: list):
         """批量为所有无RPC网络添加RPC"""
@@ -7913,14 +7982,14 @@ esac
         
         if not lines:
             print(f"{Fore.YELLOW}⚠️ 未输入任何内容，跳过为 {network_name} 添加RPC{Style.RESET_ALL}")
-            return
+            return False
         
         # 智能提取RPC地址
         extracted_rpcs = self._extract_rpcs_from_text(lines)
         
         if not extracted_rpcs:
             print(f"{Fore.RED}❌ 未识别到有效的RPC地址{Style.RESET_ALL}")
-            return
+            return False
         
         # 显示识别结果
         print(f"\n{Fore.CYAN}🔍 智能识别结果：{Style.RESET_ALL}")
@@ -7934,7 +8003,7 @@ esac
         confirm = self.safe_input(f"\n{Fore.YELLOW}确认批量添加这些RPC？(Y/n): {Style.RESET_ALL}").strip().lower()
         if confirm and confirm != 'y':
             print(f"{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
-            return
+            return False
         
         # 批量添加和测试
         print(f"\n{Fore.CYAN}🚀 开始批量添加和测试RPC...{Style.RESET_ALL}")
@@ -7975,6 +8044,9 @@ esac
         
         if success_count > 0:
             print(f"\n{Fore.GREEN}🎉 成功为网络 {network_name} 添加了 {success_count} 个新的RPC节点！{Style.RESET_ALL}")
+            return True
+        else:
+            return False
     
     def _extract_rpcs_from_text(self, lines: List[str]) -> List[str]:
         """从文本中智能提取RPC地址"""
