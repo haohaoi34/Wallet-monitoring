@@ -6,12 +6,14 @@ import threading
 import hashlib
 import base64
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
 import signal
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict, deque
+import asyncio
 
 # 第三方库导入
 try:
@@ -45,6 +47,250 @@ def _global_signal_handler(signum, frame):
         import os as _os
         code = 130 if signum == signal.SIGINT else 143
         _os._exit(code)
+
+class SmartThrottler:
+    """智能调速控制器 - 根据网络情况自动调整并发和频率"""
+    
+    def __init__(self):
+        # API调用限制配置
+        self.api_limits = {
+            'ankr': {
+                'daily_limit': 5000,
+                'calls_today': 0,
+                'reset_time': datetime.now() + timedelta(days=1),
+                'min_interval': 0.1,  # 最小调用间隔(秒)
+                'priority': 3  # 优先级: 1=最高, 5=最低
+            },
+            'alchemy': {
+                'daily_limit': 1000000,
+                'calls_today': 0,
+                'reset_time': datetime.now() + timedelta(days=1),
+                'min_interval': 0.001,
+                'priority': 1
+            },
+            'public': {
+                'daily_limit': float('inf'),
+                'calls_today': 0,
+                'reset_time': datetime.now() + timedelta(days=1),
+                'min_interval': 0.05,
+                'priority': 2
+            }
+        }
+        
+        # 网络性能监控
+        self.rpc_stats = defaultdict(lambda: {
+            'success_rate': 1.0,
+            'avg_response_time': 0.5,
+            'recent_errors': deque(maxlen=20),
+            'total_calls': 0,
+            'successful_calls': 0,
+            'last_call_time': 0,
+            'consecutive_errors': 0,
+            'health_score': 1.0,
+            'api_type': 'public'  # 'public', 'alchemy', 'ankr'
+        })
+        
+        # 自适应并发控制
+        self.adaptive_config = {
+            'min_workers': 5,  # 最低线程数提升到5
+            'max_workers': 50,
+            'current_workers': 10,  # 初始线程数提升
+            'error_threshold': 0.1,  # 错误率阈值
+            'response_time_threshold': 2.0,  # 响应时间阈值
+            'adjustment_interval': 15,  # 调整间隔缩短为15秒，更快响应
+            'last_adjustment': time.time(),
+            'auto_optimization': True  # 全自动优化标志
+        }
+        
+        # 请求队列和优先级
+        self.request_queue = {
+            'high': deque(),    # 高优先级: 转账等关键操作
+            'medium': deque(),  # 中优先级: 余额查询
+            'low': deque()      # 低优先级: 扫描操作
+        }
+        
+        self.lock = threading.Lock()
+        
+    def classify_rpc_type(self, rpc_url: str) -> str:
+        """分类RPC类型"""
+        url_lower = rpc_url.lower()
+        if 'alchemy' in url_lower:
+            return 'alchemy'
+        elif 'ankr' in url_lower:
+            return 'ankr'
+        else:
+            return 'public'
+    
+    def can_make_request(self, rpc_url: str) -> bool:
+        """检查是否可以发起请求"""
+        api_type = self.classify_rpc_type(rpc_url)
+        
+        with self.lock:
+            # 检查日常限制
+            limit_info = self.api_limits[api_type]
+            if limit_info['calls_today'] >= limit_info['daily_limit']:
+                return False
+            
+            # 检查时间间隔
+            rpc_info = self.rpc_stats[rpc_url]
+            current_time = time.time()
+            time_since_last = current_time - rpc_info['last_call_time']
+            
+            if time_since_last < limit_info['min_interval']:
+                return False
+                
+            # 检查健康状态
+            if rpc_info['health_score'] < 0.3:  # 健康度过低
+                return False
+                
+            return True
+    
+    def record_request(self, rpc_url: str, success: bool, response_time: float, error: str = None):
+        """记录请求结果"""
+        api_type = self.classify_rpc_type(rpc_url)
+        
+        with self.lock:
+            # 更新API调用计数
+            self.api_limits[api_type]['calls_today'] += 1
+            
+            # 更新RPC统计
+            rpc_info = self.rpc_stats[rpc_url]
+            rpc_info['total_calls'] += 1
+            rpc_info['last_call_time'] = time.time()
+            rpc_info['api_type'] = api_type
+            
+            if success:
+                rpc_info['successful_calls'] += 1
+                rpc_info['consecutive_errors'] = 0
+            else:
+                rpc_info['consecutive_errors'] += 1
+                rpc_info['recent_errors'].append({
+                    'time': time.time(),
+                    'error': error or 'Unknown error'
+                })
+            
+            # 更新成功率
+            rpc_info['success_rate'] = rpc_info['successful_calls'] / rpc_info['total_calls']
+            
+            # 更新平均响应时间
+            if response_time > 0:
+                alpha = 0.3  # 平滑因子
+                rpc_info['avg_response_time'] = (
+                    alpha * response_time + (1 - alpha) * rpc_info['avg_response_time']
+                )
+            
+            # 计算健康分数 (0-1)
+            self._calculate_health_score(rpc_url)
+    
+    def _calculate_health_score(self, rpc_url: str):
+        """计算RPC健康分数"""
+        rpc_info = self.rpc_stats[rpc_url]
+        
+        # 成功率权重: 0.5
+        success_weight = rpc_info['success_rate'] * 0.5
+        
+        # 响应时间权重: 0.3 (响应时间越快分数越高)
+        response_score = max(0, 1 - (rpc_info['avg_response_time'] / 3.0))
+        response_weight = response_score * 0.3
+        
+        # 连续错误惩罚: 0.2
+        error_penalty = max(0, 1 - (rpc_info['consecutive_errors'] / 5.0))
+        error_weight = error_penalty * 0.2
+        
+        rpc_info['health_score'] = success_weight + response_weight + error_weight
+    
+    def get_optimal_worker_count(self) -> int:
+        """获取最优工作线程数"""
+        current_time = time.time()
+        
+        # 检查是否需要调整
+        if current_time - self.adaptive_config['last_adjustment'] < self.adaptive_config['adjustment_interval']:
+            return self.adaptive_config['current_workers']
+        
+        with self.lock:
+            # 计算整体网络健康状况
+            total_health = 0
+            total_rpcs = 0
+            avg_error_rate = 0
+            avg_response_time = 0
+            
+            for rpc_url, stats in self.rpc_stats.items():
+                if stats['total_calls'] > 0:
+                    total_health += stats['health_score']
+                    avg_error_rate += (1 - stats['success_rate'])
+                    avg_response_time += stats['avg_response_time']
+                    total_rpcs += 1
+            
+            if total_rpcs == 0:
+                return self.adaptive_config['current_workers']
+            
+            avg_health = total_health / total_rpcs
+            avg_error_rate /= total_rpcs
+            avg_response_time /= total_rpcs
+            
+            current_workers = self.adaptive_config['current_workers']
+            
+            # 调整策略
+            if avg_error_rate > self.adaptive_config['error_threshold']:
+                # 错误率高，减少并发
+                new_workers = max(self.adaptive_config['min_workers'], current_workers - 2)
+            elif avg_response_time > self.adaptive_config['response_time_threshold']:
+                # 响应时间长，减少并发
+                new_workers = max(self.adaptive_config['min_workers'], current_workers - 1)
+            elif avg_health > 0.8 and avg_error_rate < 0.05:
+                # 网络状况良好，增加并发
+                new_workers = min(self.adaptive_config['max_workers'], current_workers + 1)
+            else:
+                new_workers = current_workers
+            
+            self.adaptive_config['current_workers'] = new_workers
+            self.adaptive_config['last_adjustment'] = current_time
+            
+            return new_workers
+    
+    def get_best_rpcs(self, rpc_urls: List[str], count: int = 3) -> List[str]:
+        """获取最佳的RPC列表"""
+        # 按健康分数和API优先级排序
+        rpc_scores = []
+        
+        for rpc_url in rpc_urls:
+            if not self.can_make_request(rpc_url):
+                continue
+                
+            rpc_info = self.rpc_stats[rpc_url]
+            api_type = self.classify_rpc_type(rpc_url)
+            api_priority = self.api_limits[api_type]['priority']
+            
+            # 综合评分: 健康分数 + API优先级加权
+            score = rpc_info['health_score'] + (6 - api_priority) * 0.1
+            
+            rpc_scores.append((rpc_url, score))
+        
+        # 按分数降序排序
+        rpc_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        return [rpc_url for rpc_url, _ in rpc_scores[:count]]
+    
+    def reset_daily_limits(self):
+        """重置日常限制"""
+        current_time = datetime.now()
+        
+        with self.lock:
+            for api_type, limits in self.api_limits.items():
+                if current_time >= limits['reset_time']:
+                    limits['calls_today'] = 0
+                    limits['reset_time'] = current_time + timedelta(days=1)
+    
+    def get_stats_summary(self) -> dict:
+        """获取统计摘要"""
+        with self.lock:
+            return {
+                'api_usage': {k: v['calls_today'] for k, v in self.api_limits.items()},
+                'current_workers': self.adaptive_config['current_workers'],
+                'healthy_rpcs': sum(1 for stats in self.rpc_stats.values() if stats['health_score'] > 0.7),
+                'total_rpcs': len(self.rpc_stats),
+                'avg_health': sum(stats['health_score'] for stats in self.rpc_stats.values()) / max(len(self.rpc_stats), 1)
+            }
 
 class EVMMonitor:
     def __init__(self):
@@ -2592,6 +2838,13 @@ class EVMMonitor:
         self.monitoring = False
         self.monitor_thread = None
         
+        # 智能调速控制器 - 全自动启用
+        self.throttler = SmartThrottler()
+        self.throttler_enabled = True  # 默认启用，全自动模式
+        
+        # 启动时自动优化
+        self._auto_optimize_on_startup()
+        
         # 守护进程和稳定性相关
         self.restart_count = 0  # 重启次数
         self.last_restart_time = 0  # 最后重启时间
@@ -3317,79 +3570,331 @@ esac
             elapsed = time.time() - start_time
             return network_key, False, elapsed, f"错误: {str(e)[:30]}"
 
-    def get_balance(self, address: str, network: str) -> Tuple[float, str]:
-        """获取地址原生代币余额，返回(余额, 币种符号)"""
+    def _auto_optimize_on_startup(self):
+        """启动时自动优化网络和调速参数"""
         try:
-            if network not in self.web3_connections:
-                return 0.0, "?"
+            print(f"{Fore.CYAN}⚡ 启动智能调速系统...{Style.RESET_ALL}")
             
-            w3 = self.web3_connections[network]
-            balance_wei = w3.eth.get_balance(address)
-            balance = w3.from_wei(balance_wei, 'ether')
-            currency = self.networks[network]['native_currency']
+            # 重置日常API限制
+            self.throttler.reset_daily_limits()
             
-            return float(balance), currency
+            # 根据可用网络数量调整初始并发数
+            total_networks = len(self.networks)
+            if total_networks > 0:
+                # 初始并发数 = min(网络数量, 最大值)，但不少于最小值
+                optimal_initial = min(max(total_networks // 3, self.throttler.adaptive_config['min_workers']), 
+                                    self.throttler.adaptive_config['max_workers'])
+                self.throttler.adaptive_config['current_workers'] = optimal_initial
+                
+            print(f"{Fore.GREEN}✅ 智能调速系统已启动 (初始并发: {self.throttler.adaptive_config['current_workers']}){Style.RESET_ALL}")
+            
         except Exception as e:
-            self.logger.error(f"获取余额失败 {address} on {network}: {e}")
+            print(f"{Fore.YELLOW}⚠️ 智能调速初始化警告: {e}{Style.RESET_ALL}")
+
+    def smart_rpc_call(self, rpc_url: str, call_func, call_name: str = "RPC调用"):
+        """智能RPC调用包装器，集成调速和统计"""
+        start_time = time.time()
+        success = False
+        error_msg = None
+        
+        try:
+            result = call_func()
+            success = True
+            return result
+        except Exception as e:
+            error_msg = str(e)
+            raise e
+        finally:
+            # 记录调用统计
+            if self.throttler_enabled:
+                response_time = time.time() - start_time
+                self.throttler.record_request(rpc_url, success, response_time, error_msg)
+
+    def get_balance_with_multi_rpc(self, address: str, network: str, max_retries: int = 3) -> Tuple[float, str]:
+        """使用多RPC故障转移获取地址原生代币余额，返回(余额, 币种符号)"""
+        if network not in self.networks:
             return 0.0, "?"
+        
+        network_info = self.networks[network]
+        currency = network_info['native_currency']
+        rpc_urls = network_info['rpc_urls']
+        
+        # 按优先级尝试每个RPC
+        for rpc_index, rpc_url in enumerate(rpc_urls):
+            # 跳过被屏蔽的RPC
+            if rpc_url in self.blocked_rpcs:
+                continue
+                
+            for attempt in range(max_retries):
+                try:
+                    # 创建临时Web3连接
+                    w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 15}))
+                    
+                    # 验证连接
+                    if not w3.is_connected():
+                        if attempt == max_retries - 1:
+                            print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 连接失败，尝试下一个...{Style.RESET_ALL}")
+                        break
+                    
+                    # 验证链ID
+                    try:
+                        chain_id = w3.eth.chain_id
+                        if chain_id != network_info['chain_id']:
+                            if attempt == max_retries - 1:
+                                print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 链ID不匹配，尝试下一个...{Style.RESET_ALL}")
+                            break
+                    except:
+                        if attempt == max_retries - 1:
+                            print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 链ID验证失败，尝试下一个...{Style.RESET_ALL}")
+                        break
+                    
+                    # 获取余额
+                    balance_wei = w3.eth.get_balance(w3.to_checksum_address(address))
+                    balance = w3.from_wei(balance_wei, 'ether')
+                    
+                    if rpc_index > 0 or attempt > 0:
+                        print(f"      {Fore.GREEN}✅ RPC-{rpc_index + 1} 查询成功 (尝试{attempt + 1}){Style.RESET_ALL}")
+                    
+                    return float(balance), currency
+                    
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        error_msg = str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
+                        print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 查询失败: {error_msg}{Style.RESET_ALL}")
+                        self.logger.warning(f"RPC-{rpc_index + 1} 余额查询失败 {address} on {network}: {e}")
+                    continue
+        
+        # 所有RPC都失败了
+        print(f"      {Fore.RED}❌ 所有RPC查询失败{Style.RESET_ALL}")
+        self.logger.error(f"所有RPC余额查询失败 {address} on {network}")
+        return 0.0, "?"
+
+    def get_balance(self, address: str, network: str) -> Tuple[float, str]:
+        """获取地址原生代币余额，返回(余额, 币种符号) - 优先使用已建立的连接，失败时使用多RPC故障转移"""
+        try:
+            # 首先尝试使用已建立的连接
+            if network in self.web3_connections:
+                w3 = self.web3_connections[network]
+                balance_wei = w3.eth.get_balance(w3.to_checksum_address(address))
+                balance = w3.from_wei(balance_wei, 'ether')
+                currency = self.networks[network]['native_currency']
+                return float(balance), currency
+            else:
+                # 如果没有已建立的连接，使用多RPC故障转移
+                return self.get_balance_with_multi_rpc(address, network)
+                
+        except Exception as e:
+            self.logger.warning(f"主连接余额查询失败 {address} on {network}: {e}，尝试多RPC故障转移")
+            # 主连接失败，使用多RPC故障转移
+            return self.get_balance_with_multi_rpc(address, network)
+
+    def get_token_balance_with_multi_rpc(self, address: str, token_symbol: str, network: str, max_retries: int = 3) -> Tuple[float, str, str]:
+        """使用多RPC故障转移获取ERC20代币余额，返回(余额, 代币符号, 代币合约地址)"""
+        if network not in self.networks:
+            return 0.0, "?", "?"
+            
+        if token_symbol not in self.tokens:
+            return 0.0, "?", "?"
+        
+        token_config = self.tokens[token_symbol]
+        if network not in token_config['contracts']:
+            return 0.0, "?", "?"
+        
+        contract_address = token_config['contracts'][network]
+        network_info = self.networks[network]
+        rpc_urls = network_info['rpc_urls']
+        
+        # 按优先级尝试每个RPC
+        for rpc_index, rpc_url in enumerate(rpc_urls):
+            # 跳过被屏蔽的RPC
+            if rpc_url in self.blocked_rpcs:
+                continue
+                
+            for attempt in range(max_retries):
+                try:
+                    # 创建临时Web3连接
+                    w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 15}))
+                    
+                    # 验证连接
+                    if not w3.is_connected():
+                        if attempt == max_retries - 1:
+                            print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 连接失败，尝试下一个...{Style.RESET_ALL}")
+                        break
+                    
+                    # 验证链ID
+                    try:
+                        chain_id = w3.eth.chain_id
+                        if chain_id != network_info['chain_id']:
+                            if attempt == max_retries - 1:
+                                print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 链ID不匹配，尝试下一个...{Style.RESET_ALL}")
+                            break
+                    except:
+                        if attempt == max_retries - 1:
+                            print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 链ID验证失败，尝试下一个...{Style.RESET_ALL}")
+                        break
+                    
+                    # 创建合约实例
+                    checksum_contract = w3.to_checksum_address(contract_address)
+                    
+                    # 验证合约是否存在
+                    try:
+                        contract_code = w3.eth.get_code(checksum_contract)
+                        if contract_code == '0x' or len(contract_code) <= 2:
+                            if attempt == max_retries - 1:
+                                print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 合约不存在或未部署，尝试下一个...{Style.RESET_ALL}")
+                            break  # 合约不存在，尝试下一个RPC
+                    except Exception:
+                        if attempt == max_retries - 1:
+                            print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 无法验证合约，尝试下一个...{Style.RESET_ALL}")
+                        break
+                    
+                    contract = w3.eth.contract(
+                        address=checksum_contract,
+                        abi=self.erc20_abi
+                    )
+                    
+                    # 获取代币余额，增加更详细的错误处理
+                    try:
+                        balance_raw = contract.functions.balanceOf(w3.to_checksum_address(address)).call()
+                    except Exception as balance_err:
+                        balance_error_str = str(balance_err).lower()
+                        if any(keyword in balance_error_str for keyword in [
+                            'could not transact', 'contract deployed', 'chain synced',
+                            'execution reverted', 'invalid opcode', 'out of gas'
+                        ]):
+                            if attempt == max_retries - 1:
+                                print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 合约调用失败: {str(balance_err)[:40]}...{Style.RESET_ALL}")
+                            continue  # 重试当前RPC
+                        else:
+                            raise balance_err  # 其他错误直接抛出
+                    
+                    # 获取代币元数据（缓存）
+                    cache_key = f"{network}:{checksum_contract.lower()}"
+                    cached = self.token_metadata_cache.get(cache_key)
+                    if cached and 'decimals' in cached and isinstance(cached['decimals'], int):
+                        decimals = cached['decimals']
+                        symbol_out = cached.get('symbol', token_config['symbol'])
+                    else:
+                        # 获取代币精度
+                        try:
+                            decimals = contract.functions.decimals().call()
+                        except Exception:
+                            decimals = 18  # 默认精度
+                        # 获取代币符号（优先链上，回退配置）
+                        try:
+                            onchain_symbol = contract.functions.symbol().call()
+                            symbol_out = onchain_symbol if isinstance(onchain_symbol, str) and onchain_symbol else token_config['symbol']
+                        except Exception:
+                            symbol_out = token_config['symbol']
+                        # 写入缓存
+                        self.token_metadata_cache[cache_key] = {'decimals': int(decimals), 'symbol': symbol_out}
+                    
+                    # 转换为人类可读格式
+                    balance = balance_raw / (10 ** decimals)
+                    
+                    # 记录活跃代币
+                    if balance > 0:
+                        self._record_active_token(address, network, token_symbol)
+                    
+                    if rpc_index > 0 or attempt > 0:
+                        print(f"      {Fore.GREEN}✅ RPC-{rpc_index + 1} 代币查询成功 (尝试{attempt + 1}){Style.RESET_ALL}")
+                    
+                    return float(balance), symbol_out, contract_address
+                    
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        error_msg = str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
+                        print(f"      {Fore.YELLOW}⚠️ RPC-{rpc_index + 1} 代币查询失败: {error_msg}{Style.RESET_ALL}")
+                        self.logger.warning(f"RPC-{rpc_index + 1} 代币余额查询失败 {token_symbol} {address} on {network}: {e}")
+                    continue
+        
+        # 所有RPC都失败了
+        print(f"      {Fore.RED}❌ 所有RPC代币查询失败{Style.RESET_ALL}")
+        self.logger.error(f"所有RPC代币余额查询失败 {token_symbol} {address} on {network}")
+        return 0.0, "?", "?"
 
     def get_token_balance(self, address: str, token_symbol: str, network: str) -> Tuple[float, str, str]:
-        """获取ERC20代币余额，返回(余额, 代币符号, 代币合约地址)"""
+        """获取ERC20代币余额，返回(余额, 代币符号, 代币合约地址) - 优先使用已建立的连接，失败时使用多RPC故障转移"""
         try:
-            if network not in self.web3_connections:
-                return 0.0, "?", "?"
-            
-            if token_symbol not in self.tokens:
-                return 0.0, "?", "?"
-            
-            token_config = self.tokens[token_symbol]
-            if network not in token_config['contracts']:
-                return 0.0, "?", "?"
-            
-            contract_address = token_config['contracts'][network]
-            w3 = self.web3_connections[network]
-            
-            # 创建合约实例
-            checksum_contract = w3.to_checksum_address(contract_address)
-            contract = w3.eth.contract(
-                address=checksum_contract,
-                abi=self.erc20_abi
-            )
-            
-            # 获取代币余额
-            balance_raw = contract.functions.balanceOf(w3.to_checksum_address(address)).call()
-            
-            # 获取代币元数据（缓存）
-            cache_key = f"{network}:{checksum_contract.lower()}"
-            cached = self.token_metadata_cache.get(cache_key)
-            if cached and 'decimals' in cached and isinstance(cached['decimals'], int):
-                decimals = cached['decimals']
-                symbol_out = cached.get('symbol', token_config['symbol'])
+            # 首先尝试使用已建立的连接
+            if network in self.web3_connections:
+                if token_symbol not in self.tokens:
+                    return 0.0, "?", "?"
+                
+                token_config = self.tokens[token_symbol]
+                if network not in token_config['contracts']:
+                    return 0.0, "?", "?"
+                
+                contract_address = token_config['contracts'][network]
+                w3 = self.web3_connections[network]
+                
+                # 创建合约实例
+                checksum_contract = w3.to_checksum_address(contract_address)
+                
+                # 验证合约是否存在
+                try:
+                    contract_code = w3.eth.get_code(checksum_contract)
+                    if contract_code == '0x' or len(contract_code) <= 2:
+                        self.logger.warning(f"合约不存在或未部署: {checksum_contract} on {network}")
+                        return 0.0, "?", "?"
+                except Exception as e:
+                    self.logger.warning(f"无法验证合约 {checksum_contract} on {network}: {e}")
+                    # 继续尝试，可能是RPC问题
+                
+                contract = w3.eth.contract(
+                    address=checksum_contract,
+                    abi=self.erc20_abi
+                )
+                
+                # 获取代币余额，增加更详细的错误处理
+                try:
+                    balance_raw = contract.functions.balanceOf(w3.to_checksum_address(address)).call()
+                except Exception as balance_err:
+                    balance_error_str = str(balance_err).lower()
+                    if any(keyword in balance_error_str for keyword in [
+                        'could not transact', 'contract deployed', 'chain synced',
+                        'execution reverted', 'invalid opcode', 'out of gas'
+                    ]):
+                        self.logger.warning(f"合约调用失败，尝试多RPC: {balance_err}")
+                        raise balance_err  # 让外层捕获并使用多RPC
+                    else:
+                        raise balance_err
+                
+                # 获取代币元数据（缓存）
+                cache_key = f"{network}:{checksum_contract.lower()}"
+                cached = self.token_metadata_cache.get(cache_key)
+                if cached and 'decimals' in cached and isinstance(cached['decimals'], int):
+                    decimals = cached['decimals']
+                    symbol_out = cached.get('symbol', token_config['symbol'])
+                else:
+                    # 获取代币精度
+                    try:
+                        decimals = contract.functions.decimals().call()
+                    except Exception:
+                        decimals = 18  # 默认精度
+                    # 获取代币符号（优先链上，回退配置）
+                    try:
+                        onchain_symbol = contract.functions.symbol().call()
+                        symbol_out = onchain_symbol if isinstance(onchain_symbol, str) and onchain_symbol else token_config['symbol']
+                    except Exception:
+                        symbol_out = token_config['symbol']
+                    # 写入缓存
+                    self.token_metadata_cache[cache_key] = {'decimals': int(decimals), 'symbol': symbol_out}
+                
+                # 转换为人类可读格式
+                balance = balance_raw / (10 ** decimals)
+                # 记录活跃代币
+                if balance > 0:
+                    self._record_active_token(address, network, token_symbol)
+                return float(balance), symbol_out, contract_address
             else:
-                # 获取代币精度
-                try:
-                    decimals = contract.functions.decimals().call()
-                except Exception:
-                    decimals = 18  # 默认精度
-                # 获取代币符号（优先链上，回退配置）
-                try:
-                    onchain_symbol = contract.functions.symbol().call()
-                    symbol_out = onchain_symbol if isinstance(onchain_symbol, str) and onchain_symbol else token_config['symbol']
-                except Exception:
-                    symbol_out = token_config['symbol']
-                # 写入缓存
-                self.token_metadata_cache[cache_key] = {'decimals': int(decimals), 'symbol': symbol_out}
-            
-            # 转换为人类可读格式
-            balance = balance_raw / (10 ** decimals)
-            # 记录活跃代币
-            if balance > 0:
-                self._record_active_token(address, network, token_symbol)
-            return float(balance), symbol_out, contract_address
+                # 如果没有已建立的连接，使用多RPC故障转移
+                return self.get_token_balance_with_multi_rpc(address, token_symbol, network)
             
         except Exception as e:
-            self.logger.error(f"获取代币余额失败 {token_symbol} {address} on {network}: {e}")
-            return 0.0, "?", "?"
+            self.logger.warning(f"主连接代币余额查询失败 {token_symbol} {address} on {network}: {e}，尝试多RPC故障转移")
+            # 主连接失败，使用多RPC故障转移
+            return self.get_token_balance_with_multi_rpc(address, token_symbol, network)
 
     def get_all_balances(self, address: str, network: str) -> Dict:
         """获取地址在指定网络上的所有余额（原生代币 + ERC20代币）
@@ -3447,7 +3952,7 @@ esac
         
         return balances
 
-    def estimate_gas_cost(self, network: str, token_type: str = 'native') -> Tuple[float, str]:
+    def estimate_gas_cost(self, network: str, token_type: str = 'native', retry_multiplier: float = 1.0) -> Tuple[float, str]:
         """智能估算Gas费用，返回(gas费用ETH, 币种符号)"""
         try:
             if network not in self.web3_connections:
@@ -3458,15 +3963,17 @@ esac
             # 获取当前Gas价格
             try:
                 gas_price = w3.eth.gas_price
+                # 在重试时适当提高gas价格
+                gas_price = int(gas_price * retry_multiplier)
             except Exception as e:
                 self.logger.warning(f"获取Gas价格失败 {network}: {e}，使用默认值")
-                gas_price = w3.to_wei(self.gas_price_gwei, 'gwei')
+                gas_price = w3.to_wei(self.gas_price_gwei * retry_multiplier, 'gwei')
             
             # 根据交易类型估算Gas限制
             if token_type == 'native':
-                gas_limit = 21000  # 原生代币转账
+                gas_limit = int(21000 * retry_multiplier)  # 原生代币转账，重试时增加
             else:
-                gas_limit = 65000  # ERC20代币转账（通常需要更多Gas）
+                gas_limit = int(65000 * retry_multiplier)  # ERC20代币转账，重试时增加
             
             # 计算总Gas费用
             gas_cost = gas_limit * gas_price
@@ -3479,31 +3986,83 @@ esac
             self.logger.error(f"估算Gas费用失败 {network}: {e}")
             return 0.001, "ETH"  # 返回保守估算
 
-    def can_transfer(self, address: str, network: str, token_type: str = 'native', token_balance: float = 0) -> Tuple[bool, str]:
-        """智能判断是否可以转账，返回(是否可转账, 原因)"""
+    def estimate_gas_for_transaction(self, w3, transaction: dict, retry_multiplier: float = 1.0) -> int:
+        """智能估算交易所需的Gas，支持重试调整"""
         try:
-            # 估算Gas费用
-            gas_cost, _ = self.estimate_gas_cost(network, token_type)
+            # 尝试估算实际需要的gas
+            estimated_gas = w3.eth.estimate_gas(transaction)
+            # 添加20%的缓冲，并应用重试乘数
+            safe_gas = int(estimated_gas * 1.2 * retry_multiplier)
             
+            # 设置合理的上下限
+            min_gas = 21000 if transaction.get('data') == '0x' or not transaction.get('data') else 50000
+            max_gas = 500000  # 防止gas过高
+            
+            return max(min_gas, min(safe_gas, max_gas))
+            
+        except Exception as e:
+            self.logger.warning(f"Gas估算失败: {e}，使用默认值")
+            # 根据交易类型返回默认值
+            if transaction.get('data') == '0x' or not transaction.get('data'):
+                return int(21000 * retry_multiplier)  # 简单转账
+            else:
+                return int(65000 * retry_multiplier)  # 合约调用
+
+    def calculate_optimal_transfer_amount(self, address: str, network: str, token_type: str = 'native', 
+                                         token_balance: float = 0, target_amount: float = None) -> Tuple[bool, float, str]:
+        """智能计算最优转账金额，确保最低余额也能转账
+        返回: (是否可转账, 实际可转账金额, 说明信息)
+        """
+        try:
             # 获取原生代币余额（用于支付Gas）
-            native_balance, _ = self.get_balance(address, network)
+            native_balance, native_currency = self.get_balance(address, network)
             
             if token_type == 'native':
-                # 原生代币转账：需要余额 > Gas费用 + 最小转账金额
-                if native_balance < gas_cost + self.min_transfer_amount:
-                    return False, f"余额不足支付Gas费用 (需要 {gas_cost:.6f} ETH)"
-                return True, "可以转账"
+                # 原生代币转账：需要预留Gas费用
+                # 使用保守的Gas估算，确保交易成功
+                gas_cost, _ = self.estimate_gas_cost(network, token_type, retry_multiplier=1.2)
+                
+                # 计算可转账的最大金额
+                max_transferable = native_balance - gas_cost - 0.0001  # 保留一点缓冲
+                
+                if max_transferable <= 0:
+                    return False, 0.0, f"余额不足支付Gas费用 (余额: {native_balance:.6f}, 需要Gas: {gas_cost:.6f} {native_currency})"
+                
+                # 如果指定了目标金额，选择较小值
+                if target_amount is not None:
+                    actual_amount = min(target_amount, max_transferable)
+                else:
+                    actual_amount = max_transferable
+                
+                return True, actual_amount, f"可转账 {actual_amount:.6f} {native_currency} (预留Gas: {gas_cost:.6f})"
+                
             else:
-                # ERC20代币转账：需要有代币余额且原生代币足够支付Gas
+                # ERC20代币转账：检查代币余额和Gas费用
                 if token_balance <= 0:
-                    return False, "代币余额为0"
+                    return False, 0.0, "代币余额为0"
+                
+                # 使用保守的Gas估算
+                gas_cost, _ = self.estimate_gas_cost(network, token_type, retry_multiplier=1.2)
+                
                 if native_balance < gas_cost:
-                    return False, f"原生代币不足支付Gas费用 (需要 {gas_cost:.6f} ETH)"
-                return True, "可以转账"
+                    return False, 0.0, f"原生代币不足支付Gas费用 (余额: {native_balance:.6f}, 需要Gas: {gas_cost:.6f} {native_currency})"
+                
+                # 如果指定了目标金额，选择较小值
+                if target_amount is not None:
+                    actual_amount = min(target_amount, token_balance)
+                else:
+                    actual_amount = token_balance
+                
+                return True, actual_amount, f"可转账 {actual_amount:.6f} 代币 (Gas费用: {gas_cost:.6f} {native_currency})"
                 
         except Exception as e:
-            self.logger.error(f"判断转账可行性失败: {e}")
-            return False, "判断失败"
+            self.logger.error(f"计算最优转账金额失败: {e}")
+            return False, 0.0, f"计算失败: {str(e)[:50]}"
+
+    def can_transfer(self, address: str, network: str, token_type: str = 'native', token_balance: float = 0) -> Tuple[bool, str]:
+        """智能判断是否可以转账，返回(是否可转账, 原因) - 兼容原有接口"""
+        can_transfer, amount, reason = self.calculate_optimal_transfer_amount(address, network, token_type, token_balance)
+        return can_transfer, reason
 
     def send_telegram_notification(self, message: str) -> bool:
         """发送Telegram通知"""
@@ -3560,6 +4119,69 @@ esac
         except Exception as e:
             self.logger.error(f"发送Telegram通知失败: {e}")
             return False
+
+    def is_gas_error(self, error: Exception) -> bool:
+        """判断是否是Gas相关的错误"""
+        error_str = str(error).lower()
+        gas_error_keywords = [
+            'intrinsic gas too low',
+            'gas limit reached',
+            'out of gas',
+            'gas required exceeds allowance',
+            'insufficient gas',
+            'gas price too low',
+            'transaction underpriced'
+        ]
+        return any(keyword in error_str for keyword in gas_error_keywords)
+
+    def send_transaction_with_retry(self, w3, transaction: dict, private_key: str, max_retries: int = 3) -> str:
+        """智能重试发送交易，自动调整Gas参数"""
+        retry_multipliers = [1.0, 1.5, 2.0, 2.5]  # Gas调整倍数
+        
+        for attempt in range(max_retries + 1):
+            try:
+                retry_multiplier = retry_multipliers[min(attempt, len(retry_multipliers) - 1)]
+                
+                if attempt > 0:
+                    print(f"      {Fore.YELLOW}🔄 第{attempt + 1}次尝试 (Gas倍数: {retry_multiplier}x)...{Style.RESET_ALL}")
+                    
+                    # 重新估算Gas
+                    estimated_gas = self.estimate_gas_for_transaction(w3, transaction, retry_multiplier)
+                    transaction['gas'] = estimated_gas
+                    
+                    # 调整Gas价格
+                    try:
+                        current_gas_price = w3.eth.gas_price
+                        transaction['gasPrice'] = int(current_gas_price * retry_multiplier)
+                    except:
+                        transaction['gasPrice'] = w3.to_wei(self.gas_price_gwei * retry_multiplier, 'gwei')
+                    
+                    # 更新nonce以防被占用
+                    from_address = w3.to_checksum_address(w3.eth.account.from_key(private_key).address)
+                    transaction['nonce'] = w3.eth.get_transaction_count(from_address)
+                
+                # 签名并发送交易
+                signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
+                tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+                
+                if attempt > 0:
+                    print(f"      {Fore.GREEN}✅ 重试成功！交易已发送{Style.RESET_ALL}")
+                
+                return tx_hash.hex()
+                
+            except Exception as e:
+                if attempt == max_retries:
+                    # 最后一次尝试失败，抛出异常
+                    raise e
+                
+                if self.is_gas_error(e):
+                    print(f"      {Fore.YELLOW}⚠️ Gas错误: {str(e)[:50]}... 正在调整Gas参数重试{Style.RESET_ALL}")
+                    continue
+                else:
+                    # 非Gas错误，直接抛出
+                    raise e
+        
+        raise Exception("重试次数已用完")
 
     def update_transfer_stats(self, success: bool, network: str, token_symbol: str, amount: float = 0):
         """更新转账统计"""
@@ -3622,6 +4244,26 @@ esac
                 if token_stats['amount'] > 0:
                     summary += f" (💰{token_stats['amount']:.6f})"
                 summary += "\n"
+            
+            # 添加智能调速统计
+            if self.throttler_enabled:
+                throttler_stats = self.throttler.get_stats_summary()
+                summary += f"""
+⚡ *智能调速状态*
+━━━━━━━━━━━━━━━━━━━━
+🔧 当前并发数: {throttler_stats['current_workers']}
+💚 健康RPC: {throttler_stats['healthy_rpcs']}/{throttler_stats['total_rpcs']}
+📊 平均健康度: {throttler_stats['avg_health']:.2f}
+📞 API调用统计:
+"""
+                for api_type, calls in throttler_stats['api_usage'].items():
+                    if api_type == 'ankr':
+                        limit = "5,000"
+                    elif api_type == 'alchemy':
+                        limit = "1,000,000"
+                    else:
+                        limit = "∞"
+                    summary += f"• {api_type.title()}: {calls:,}/{limit}\n"
             
             return summary
             
@@ -4327,15 +4969,25 @@ esac
             amount_wei = int(amount * (10 ** decimals))
             print(f" {Fore.GREEN}✅ 精度: {decimals}, 转换金额: {amount_wei}{Style.RESET_ALL}")
             
-            # 步骤5: 检查Gas费用
-            print(f"      {Fore.CYAN}⛽ [5/8] 检查Gas费用...{Style.RESET_ALL}", end="", flush=True)
-            gas_cost, _ = self.estimate_gas_cost(network, 'erc20')
-            native_balance, _ = self.get_balance(from_address, network)
+            # 步骤5: 智能检查转账可行性
+            print(f"      {Fore.CYAN}⛽ [5/8] 智能检查转账可行性...{Style.RESET_ALL}", end="", flush=True)
             
-            if native_balance < gas_cost:
-                print(f" {Fore.RED}❌ 原生代币不足支付Gas费用: 需要 {gas_cost:.6f} ETH{Style.RESET_ALL}")
+            # 使用智能计算检查转账可行性
+            can_transfer, optimal_amount, reason = self.calculate_optimal_transfer_amount(
+                from_address, network, 'erc20', amount, target_amount=amount
+            )
+            
+            if not can_transfer:
+                print(f" {Fore.RED}❌ {reason}{Style.RESET_ALL}")
                 return False
-            print(f" {Fore.GREEN}✅ Gas费用充足: {gas_cost:.6f} ETH{Style.RESET_ALL}")
+            
+            # 如果需要调整金额
+            if optimal_amount != amount:
+                print(f" {Fore.YELLOW}⚠️ 智能调整代币金额: {amount:.6f} → {optimal_amount:.6f} {token_symbol}{Style.RESET_ALL}")
+                amount = optimal_amount
+                amount_wei = int(amount * (10 ** decimals))
+            else:
+                print(f" {Fore.GREEN}✅ {reason}{Style.RESET_ALL}")
             
             # 步骤6: 获取Gas价格
             print(f"      {Fore.CYAN}💸 [6/8] 获取Gas价格...{Style.RESET_ALL}", end="", flush=True)
@@ -4349,38 +5001,48 @@ esac
                 gas_price_gwei = self.gas_price_gwei
             print(f" {Fore.GREEN}✅ {float(gas_price_gwei):.2f} Gwei{Style.RESET_ALL}")
             
-            # 步骤7: 构建和签名交易
-            print(f"      {Fore.CYAN}📝 [7/8] 构建和签名交易...{Style.RESET_ALL}", end="", flush=True)
+            # 步骤7: 构建交易
+            print(f"      {Fore.CYAN}📝 [7/8] 构建交易...{Style.RESET_ALL}", end="", flush=True)
             nonce = w3.eth.get_transaction_count(from_address)
             transfer_function = contract.functions.transfer(to_address, amount_wei)
+            
+            # 智能估算Gas
+            preliminary_transaction = {
+                'to': contract_address,
+                'value': 0,
+                'data': transfer_function._encode_transaction_data(),
+                'from': from_address
+            }
+            estimated_gas = self.estimate_gas_for_transaction(w3, preliminary_transaction)
             
             transaction = {
                 'to': contract_address,
                 'value': 0,
-                'gas': 65000,
+                'gas': estimated_gas,
                 'gasPrice': gas_price,
                 'nonce': nonce,
                 'data': transfer_function._encode_transaction_data(),
                 'chainId': self.networks[network]['chain_id']
             }
+            print(f" {Fore.GREEN}✅ 交易已构建，Gas: {estimated_gas}, Nonce: {nonce}{Style.RESET_ALL}")
             
-            signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
-            print(f" {Fore.GREEN}✅ 交易已签名，Nonce: {nonce}{Style.RESET_ALL}")
-            
-            # 步骤8: 发送交易
-            print(f"      {Fore.CYAN}📤 [8/8] 发送交易...{Style.RESET_ALL}", end="", flush=True)
+            # 步骤8: 智能发送交易（带重试）
+            print(f"      {Fore.CYAN}📤 [8/8] 智能发送交易...{Style.RESET_ALL}", end="", flush=True)
             start_time = time.time()
-            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash_str = self.send_transaction_with_retry(w3, transaction, private_key)
             send_time = time.time() - start_time
             print(f" {Fore.GREEN}✅ 交易已发送 ({send_time:.2f}s){Style.RESET_ALL}")
+            
+            # 计算实际Gas费用用于显示
+            gas_cost_display, _ = self.estimate_gas_cost(network, 'erc20')
             
             print(f"      {Back.GREEN}{Fore.WHITE} 🎉 ERC20转账完成！{Style.RESET_ALL}")
             print(f"      🪙 代币: {Fore.YELLOW}{token_symbol}{Style.RESET_ALL}")
             print(f"      💰 金额: {Fore.YELLOW}{amount:.6f} {token_symbol}{Style.RESET_ALL}")
             print(f"      📤 发送方: {Fore.CYAN}{from_address[:10]}...{from_address[-6:]}{Style.RESET_ALL}")
             print(f"      📥 接收方: {Fore.CYAN}{to_address[:10]}...{to_address[-6:]}{Style.RESET_ALL}")
-            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash.hex()}{Style.RESET_ALL}")
-            print(f"      ⛽ Gas费用: {Fore.YELLOW}{gas_cost:.6f} ETH{Style.RESET_ALL}")
+            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash_str}{Style.RESET_ALL}")
+            print(f"      ⛽ Gas费用: {Fore.YELLOW}{gas_cost_display:.6f} ETH{Style.RESET_ALL}")
             
             # 更新统计
             self.update_transfer_stats(True, network, token_symbol, amount)
@@ -4395,13 +5057,13 @@ esac
 🌐 网络: {network_name}
 📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
 📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
-📋 交易哈希: `{tx_hash.hex()}`
+📋 交易哈希: `{tx_hash_str}`
 
 {self.get_stats_summary()}
 """
             self.send_telegram_notification(notification_msg)
             
-            self.logger.info(f"ERC20转账成功: {amount} {token_symbol}, {from_address} -> {to_address}, tx: {tx_hash.hex()}")
+            self.logger.info(f"ERC20转账成功: {amount} {token_symbol}, {from_address} -> {to_address}, tx: {tx_hash_str}")
             return True
             
         except KeyboardInterrupt:
@@ -4473,43 +5135,55 @@ esac
                 gas_price_gwei = self.gas_price_gwei
             print(f" {Fore.GREEN}✅ {float(gas_price_gwei):.2f} Gwei{Style.RESET_ALL}")
             
-            # 步骤4: 计算费用和余额检查
-            print(f"      {Fore.CYAN}💰 [4/7] 检查余额和计算费用...{Style.RESET_ALL}", end="", flush=True)
-            gas_cost = self.gas_limit * gas_price
-            gas_cost_eth = w3.from_wei(gas_cost, 'ether')
-            current_balance, currency = self.get_balance(from_address, network)
+            # 步骤4: 智能余额和金额计算
+            print(f"      {Fore.CYAN}💰 [4/7] 智能计算转账金额...{Style.RESET_ALL}", end="", flush=True)
             
-            if amount + float(gas_cost_eth) > current_balance:
-                amount = current_balance - float(gas_cost_eth) - 0.0001
-                if amount <= 0:
-                    print(f" {Fore.RED}❌ 余额不足以支付Gas费用{Style.RESET_ALL}")
-                    return False
-                print(f" {Fore.YELLOW}⚠️ 调整金额为 {amount:.6f} {currency}（扣除Gas费用）{Style.RESET_ALL}")
+            # 使用智能计算确定最优转账金额
+            can_transfer, optimal_amount, reason = self.calculate_optimal_transfer_amount(
+                from_address, network, 'native', target_amount=amount
+            )
+            
+            if not can_transfer:
+                print(f" {Fore.RED}❌ {reason}{Style.RESET_ALL}")
+                return False
+            
+            # 如果需要调整金额
+            if optimal_amount != amount:
+                print(f" {Fore.YELLOW}⚠️ 智能调整转账金额: {amount:.6f} → {optimal_amount:.6f} {reason}{Style.RESET_ALL}")
+                amount = optimal_amount
             else:
-                print(f" {Fore.GREEN}✅ 余额充足，Gas费用: {float(gas_cost_eth):.6f} {currency}{Style.RESET_ALL}")
+                print(f" {Fore.GREEN}✅ {reason}{Style.RESET_ALL}")
+            
+            # 重新计算实际的Gas费用（基于智能估算）
+            gas_cost_eth, _ = self.estimate_gas_cost(network, 'native', retry_multiplier=1.2)
+            currency = self.networks[network]['native_currency']
             
             # 步骤5: 构建交易
             print(f"      {Fore.CYAN}📝 [5/7] 构建交易...{Style.RESET_ALL}", end="", flush=True)
             nonce = w3.eth.get_transaction_count(from_address)
+            
+            # 智能估算Gas
+            preliminary_transaction = {
+                'to': to_address,
+                'value': w3.to_wei(amount, 'ether'),
+                'from': from_address
+            }
+            estimated_gas = self.estimate_gas_for_transaction(w3, preliminary_transaction)
+            
             transaction = {
                 'to': to_address,
                 'value': w3.to_wei(amount, 'ether'),
-                'gas': self.gas_limit,
+                'gas': estimated_gas,
                 'gasPrice': gas_price,
                 'nonce': nonce,
                 'chainId': self.networks[network]['chain_id']
             }
-            print(f" {Fore.GREEN}✅ Nonce: {nonce}{Style.RESET_ALL}")
+            print(f" {Fore.GREEN}✅ Gas: {estimated_gas}, Nonce: {nonce}{Style.RESET_ALL}")
             
-            # 步骤6: 签名交易
-            print(f"      {Fore.CYAN}🔐 [6/7] 签名交易...{Style.RESET_ALL}", end="", flush=True)
-            signed_txn = w3.eth.account.sign_transaction(transaction, private_key)
-            print(f" {Fore.GREEN}✅ 交易已签名{Style.RESET_ALL}")
-            
-            # 步骤7: 发送交易
-            print(f"      {Fore.CYAN}📤 [7/7] 发送交易...{Style.RESET_ALL}", end="", flush=True)
+            # 步骤6: 智能发送交易（带重试）
+            print(f"      {Fore.CYAN}📤 [6/7] 智能发送交易...{Style.RESET_ALL}", end="", flush=True)
             start_time = time.time()
-            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash_str = self.send_transaction_with_retry(w3, transaction, private_key)
             send_time = time.time() - start_time
             print(f" {Fore.GREEN}✅ 交易已发送 ({send_time:.2f}s){Style.RESET_ALL}")
             
@@ -4517,7 +5191,7 @@ esac
             print(f"      💰 金额: {Fore.YELLOW}{amount:.6f} {currency}{Style.RESET_ALL}")
             print(f"      📤 发送方: {Fore.CYAN}{from_address[:10]}...{from_address[-6:]}{Style.RESET_ALL}")
             print(f"      📥 接收方: {Fore.CYAN}{to_address[:10]}...{to_address[-6:]}{Style.RESET_ALL}")
-            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash.hex()}{Style.RESET_ALL}")
+            print(f"      📋 交易哈希: {Fore.GREEN}{tx_hash_str}{Style.RESET_ALL}")
             print(f"      ⛽ Gas费用: {Fore.YELLOW}{float(gas_cost_eth):.6f} {currency}{Style.RESET_ALL}")
             
             # 更新统计
@@ -4533,13 +5207,13 @@ esac
 🌐 网络: {network_name}
 📤 发送方: `{from_address[:10]}...{from_address[-6:]}`
 📥 接收方: `{to_address[:10]}...{to_address[-6:]}`
-📋 交易哈希: `{tx_hash.hex()}`
+📋 交易哈希: `{tx_hash_str}`
 
 {self.get_stats_summary()}
 """
             self.send_telegram_notification(notification_msg)
             
-            self.logger.info(f"转账成功: {amount} {currency}, {from_address} -> {to_address}, tx: {tx_hash.hex()}")
+            self.logger.info(f"转账成功: {amount} {currency}, {from_address} -> {to_address}, tx: {tx_hash_str}")
             return True
             
         except KeyboardInterrupt:
@@ -4626,7 +5300,11 @@ esac
                 print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发扫描批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络, 超时:{timeout}s) {Style.RESET_ALL}")
                 
                 # 并发检查这一批网络
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                # 使用智能调速获取最优工作线程数
+                optimal_workers = self.throttler.get_optimal_worker_count() if self.throttler_enabled else 5
+                optimal_workers = min(optimal_workers, len(batch_networks))  # 不超过实际任务数
+                
+                with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
                     future_to_network = {
                         executor.submit(self.check_transaction_history_concurrent, address, nk, timeout): nk 
                         for nk in batch_networks
@@ -4771,10 +5449,11 @@ esac
                             
                             try:
                                 # 🚀 全链全代币监控 - 获取所有余额
+                                print(f"    {Fore.CYAN}🔍 正在查询余额...{Style.RESET_ALL}")
                                 all_balances = self.get_all_balances(address, network)
                                 
                                 if not all_balances:
-                                    print(f"    {Fore.YELLOW}⚠️ 无余额或获取失败{Style.RESET_ALL}")
+                                    print(f"    {Fore.YELLOW}⚠️ 无余额或获取失败 - 已尝试所有可用RPC{Style.RESET_ALL}")
                                     continue
                                 
                                 # 网络名称颜色化
@@ -5390,6 +6069,14 @@ esac
         print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 💰 最小转账金额: {Fore.CYAN}{self.min_transfer_amount}{Style.RESET_ALL} ETH")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ⛽ Gas价格: {Fore.CYAN}{self.gas_price_gwei}{Style.RESET_ALL} Gwei")
         
+        # 显示智能调速状态 (只读)
+        print(f"\n{Fore.CYAN}⚡ 智能调速状态 (全自动):{Style.RESET_ALL}")
+        if self.throttler_enabled:
+            throttler_stats = self.throttler.get_stats_summary()
+            print(f"  🔧 当前并发数: {Fore.YELLOW}{throttler_stats['current_workers']}{Style.RESET_ALL}")
+            print(f"  💚 健康RPC: {Fore.YELLOW}{throttler_stats['healthy_rpcs']}/{throttler_stats['total_rpcs']}{Style.RESET_ALL}")
+            print(f"  📊 平均健康度: {Fore.YELLOW}{throttler_stats['avg_health']:.2f}{Style.RESET_ALL}")
+        
         choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择要修改的参数 (1-3): {Style.RESET_ALL}").strip()
         
         try:
@@ -5883,7 +6570,11 @@ esac
                 print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发检查批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络) {Style.RESET_ALL}")
                 
                 # 并发检查这一批网络
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                # 使用智能调速获取最优工作线程数
+                optimal_workers = self.throttler.get_optimal_worker_count() if self.throttler_enabled else 5
+                optimal_workers = min(optimal_workers, len(batch_networks))
+                
+                with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
                     future_to_network = {
                         executor.submit(self.check_transaction_history_concurrent, address, nk, 1.0): nk 
                         for nk in batch_networks
