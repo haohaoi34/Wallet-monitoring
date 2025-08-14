@@ -7625,14 +7625,11 @@ esac
         
         print(f"\n{Fore.YELLOW}🔧 检测选项：{Style.RESET_ALL}")
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐，包含自动屏蔽失效RPC）")
-        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 🔧 管理无可用RPC的链条（单独管理）")
-        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🌐 从ChainList数据批量导入RPC")
-        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
-        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 🔧 自动校准Chain ID（解决ID不匹配问题）")
-        print(f"  {Fore.MAGENTA}6.{Style.RESET_ALL} 🤖 AI智能全自动校准（从ChainList智能匹配所有链条）")
+        print(f"  {Fore.MAGENTA}2.{Style.RESET_ALL} 🤖 AI智能ChainList导入（自动匹配+校准+导入RPC）")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-6): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -7660,24 +7657,12 @@ esac
                 print(f"📊 总体成功率: {Fore.YELLOW}{working_rpcs/total_rpcs*100:.1f}%{Style.RESET_ALL}")
                 
             elif choice == '2':
-                # 管理无可用RPC的链条（专门针对完全没有可用RPC的网络）
-                self.manage_zero_rpc_chains()
+                # AI智能ChainList导入（融合了校准和导入功能）
+                self.ai_smart_chainlist_import()
                 
             elif choice == '3':
-                # 从ChainList数据批量导入RPC
-                self.import_rpcs_from_chainlist()
-                
-            elif choice == '4':
                 # 管理被拉黑的RPC
                 self.manage_blocked_rpcs()
-                
-            elif choice == '5':
-                # 自动校准Chain ID
-                self.auto_calibrate_network_chain_ids()
-                
-            elif choice == '6':
-                # AI智能全自动校准
-                self.ai_smart_calibrate_from_chainlist()
                 
             elif choice == '0':
                 return
@@ -7893,6 +7878,172 @@ esac
             traceback.print_exc()
         
         self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+
+    def ai_smart_chainlist_import(self):
+        """AI智能ChainList导入系统 - 集成匹配、校准和RPC导入"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🤖 AI智能ChainList导入系统 🤖 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}集成功能：AI智能匹配 + 自动校准Chain ID + 批量导入RPC{Style.RESET_ALL}")
+        
+        # 读取ChainList数据
+        chainlist_data = self._read_chainlist_file()
+        if not chainlist_data:
+            print(f"{Fore.RED}❌ 无法读取ChainList数据，请确保chainlist.txt文件存在{Style.RESET_ALL}")
+            return
+        
+        print(f"📊 ChainList数据: {Fore.CYAN}{len(chainlist_data)}{Style.RESET_ALL} 个链条")
+        print(f"🏠 本地网络: {Fore.CYAN}{len(self.networks)}{Style.RESET_ALL} 个链条")
+        
+        try:
+            # 第一步：AI智能匹配和校准
+            print(f"\n{Back.BLUE}{Fore.WHITE} 第一步：AI智能匹配和校准 {Style.RESET_ALL}")
+            calibration_results = self._ai_auto_calibrate_all_chains(chainlist_data, max_workers=8)
+            
+            # 第二步：处理校准后的数据，准备RPC导入
+            print(f"\n{Back.BLUE}{Fore.WHITE} 第二步：准备RPC数据导入 {Style.RESET_ALL}")
+            
+            # 收集需要导入RPC的链条
+            matched_networks = {}
+            unmatched_chains = []
+            
+            updated_chains = calibration_results.get('updated', [])
+            correct_chains = calibration_results.get('already_correct', [])
+            no_match_chains = calibration_results.get('no_match', [])
+            
+            # 处理已匹配的链条（包括更新的和已正确的）
+            all_matched_chains = updated_chains + correct_chains
+            
+            for chain_info in all_matched_chains:
+                if 'chain_data' in chain_info:
+                    chain_data = chain_info['chain_data']
+                else:
+                    # 需要从chainlist_data中找到对应的数据
+                    network_key = chain_info['network_key']
+                    network_info = self.networks[network_key]
+                    chain_id = network_info['chain_id']
+                    
+                    # 在chainlist_data中查找匹配的链条
+                    chain_data = None
+                    for cl_data in chainlist_data:
+                        if cl_data.get('chainId') == chain_id:
+                            chain_data = cl_data
+                            break
+                    
+                    if not chain_data:
+                        continue
+                
+                # 提取RPC URLs
+                rpc_list = chain_data.get('rpc', [])
+                if rpc_list:
+                    network_key = chain_info['network_key']
+                    rpc_urls = []
+                    
+                    for rpc_entry in rpc_list:
+                        if isinstance(rpc_entry, str):
+                            rpc_urls.append(rpc_entry)
+                        elif isinstance(rpc_entry, dict):
+                            url = rpc_entry.get('url')
+                            if url:
+                                rpc_urls.append(url)
+                    
+                    if rpc_urls:
+                        matched_networks[network_key] = rpc_urls
+            
+            # 处理无匹配的链条
+            for chain_info in no_match_chains:
+                unmatched_chains.append({
+                    'name': chain_info['local_name'],
+                    'chain_id': chain_info['local_chain_id'],
+                    'network_key': chain_info['network_key']
+                })
+            
+            print(f"🎯 找到匹配的网络: {Fore.GREEN}{len(matched_networks)}{Style.RESET_ALL} 个")
+            print(f"❓ 无匹配的网络: {Fore.RED}{len(unmatched_chains)}{Style.RESET_ALL} 个")
+            
+            # 第三步：批量导入RPC
+            if matched_networks:
+                print(f"\n{Back.BLUE}{Fore.WHITE} 第三步：批量导入RPC {Style.RESET_ALL}")
+                self._batch_import_rpcs(matched_networks)
+            
+            # 第四步：处理无匹配的链条
+            if unmatched_chains:
+                print(f"\n{Back.YELLOW}{Fore.BLACK} ⚠️ 以下链条无法在ChainList中找到匹配 ⚠️ {Style.RESET_ALL}")
+                print(f"{Fore.CYAN}💡 建议：可以手动补充这些链条的信息{Style.RESET_ALL}")
+                
+                for i, chain in enumerate(unmatched_chains[:10], 1):  # 只显示前10个
+                    print(f"  {i}. {chain['name']} (Chain ID: {chain['chain_id']})")
+                
+                if len(unmatched_chains) > 10:
+                    print(f"     ... 还有 {len(unmatched_chains) - 10} 个链条")
+                
+                # 询问是否手动补充
+                print(f"\n{Fore.YELLOW}🤔 是否需要手动补充这些链条的信息？{Style.RESET_ALL}")
+                manual_add = self.safe_input(f"{Fore.CYAN}➜ 输入 'y' 进入手动补充模式，或按回车跳过: {Style.RESET_ALL}").strip().lower()
+                
+                if manual_add == 'y':
+                    self._manual_supplement_chains(unmatched_chains)
+            
+            # 显示最终统计
+            print(f"\n{Back.GREEN}{Fore.BLACK} 🎉 AI智能导入完成 🎉 {Style.RESET_ALL}")
+            
+            total_updated = len(calibration_results.get('updated', []))
+            total_imported = len(matched_networks)
+            total_unmatched = len(unmatched_chains)
+            
+            print(f"🔧 校准链条: {Fore.GREEN}{total_updated}{Style.RESET_ALL} 个")
+            print(f"📥 导入网络: {Fore.CYAN}{total_imported}{Style.RESET_ALL} 个")
+            print(f"❓ 无匹配链条: {Fore.RED}{total_unmatched}{Style.RESET_ALL} 个")
+            
+            if total_updated > 0:
+                print(f"\n{Fore.GREEN}💡 建议：重新启动程序以应用Chain ID更改{Style.RESET_ALL}")
+                
+        except Exception as e:
+            print(f"\n{Fore.RED}❌ AI智能导入过程中出错: {e}{Style.RESET_ALL}")
+            import traceback
+            traceback.print_exc()
+        
+        self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键继续...{Style.RESET_ALL}")
+
+    def _manual_supplement_chains(self, unmatched_chains: List[dict]):
+        """手动补充无匹配链条的信息"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 🔧 手动补充链条信息 🔧 {Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}你可以为以下链条手动添加RPC节点或更新Chain ID{Style.RESET_ALL}")
+        
+        for i, chain in enumerate(unmatched_chains, 1):
+            print(f"\n--- 链条 {i}: {chain['name']} ---")
+            print(f"当前Chain ID: {chain['chain_id']}")
+            
+            # 询问是否要添加RPC
+            add_rpc = self.safe_input(f"是否为此链条添加RPC节点？(y/N): ").strip().lower()
+            
+            if add_rpc == 'y':
+                while True:
+                    rpc_url = self.safe_input(f"请输入RPC URL (或按回车完成): ").strip()
+                    if not rpc_url:
+                        break
+                    
+                    # 测试RPC
+                    print(f"正在测试RPC: {rpc_url}")
+                    if self.add_custom_rpc(chain['network_key'], rpc_url):
+                        print(f"{Fore.GREEN}✅ RPC添加成功{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}❌ RPC测试失败{Style.RESET_ALL}")
+            
+            # 询问是否要更新Chain ID
+            update_id = self.safe_input(f"是否更新Chain ID？当前: {chain['chain_id']} (y/N): ").strip().lower()
+            
+            if update_id == 'y':
+                try:
+                    new_id = int(self.safe_input(f"请输入新的Chain ID: ").strip())
+                    self.networks[chain['network_key']]['chain_id'] = new_id
+                    print(f"{Fore.GREEN}✅ Chain ID已更新: {chain['chain_id']} → {new_id}{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED}❌ 无效的Chain ID{Style.RESET_ALL}")
+            
+            # 询问是否继续
+            if i < len(unmatched_chains):
+                continue_add = self.safe_input(f"继续处理下一个链条？(Y/n): ").strip().lower()
+                if continue_add == 'n':
+                    break
 
     def initialize_server_connections(self):
         """初始化服务器连接 - 检测所有网络并建立最佳连接"""
