@@ -8680,7 +8680,7 @@ esac
             return
         
         # 2. 读取和解析文件
-        chainlist_data = self._read_chainlist_file(file_path)
+        chainlist_data = self._read_chainlist_file()
         if not chainlist_data:
             return
         
@@ -8838,8 +8838,58 @@ esac
             print(f"\n{Fore.RED}❌ 读取目录失败: {e}{Style.RESET_ALL}")
             return None
     
-    def _read_chainlist_file(self, file_path: str) -> list:
-        """读取ChainList文件"""
+    def _smart_find_chainlist_file(self, filename: str = None) -> str:
+        """智能查找ChainList文件"""
+        # 默认文件名列表，按优先级排序
+        default_filenames = [
+            filename if filename else None,
+            '1.txt',
+            'chainlist.txt',
+            'chains.json',
+            'chainlist.json'
+        ]
+        
+        # 过滤掉None值
+        filenames = [f for f in default_filenames if f]
+        
+        # 搜索路径列表
+        search_paths = [
+            '.',  # 当前目录
+            os.path.expanduser('~/Downloads'),  # Downloads目录
+            os.path.expanduser('~/Desktop'),    # 桌面
+            os.path.expanduser('~/Documents'),  # 文档目录
+            '/tmp',  # 临时目录
+        ]
+        
+        print(f"\n{Fore.CYAN}🔍 智能搜索ChainList文件...{Style.RESET_ALL}")
+        
+        for filename in filenames:
+            print(f"  搜索文件: {filename}")
+            
+            for search_path in search_paths:
+                file_path = os.path.join(search_path, filename)
+                if os.path.isfile(file_path):
+                    file_size = os.path.getsize(file_path)
+                    print(f"  {Fore.GREEN}✅ 找到文件: {file_path} ({file_size//1024} KB){Style.RESET_ALL}")
+                    return file_path
+        
+        print(f"  {Fore.RED}❌ 未找到任何ChainList文件{Style.RESET_ALL}")
+        return None
+
+    def _read_chainlist_file(self, file_path: str = None) -> list:
+        """读取ChainList文件（智能查找版本）"""
+        # 如果没有提供路径，智能查找
+        if not file_path:
+            file_path = self._smart_find_chainlist_file()
+            if not file_path:
+                print(f"\n{Fore.RED}❌ 无法找到ChainList文件{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}💡 请确保以下任一文件存在：{Style.RESET_ALL}")
+                print(f"  • 1.txt")
+                print(f"  • chainlist.txt") 
+                print(f"  • chains.json")
+                print(f"  • chainlist.json")
+                print(f"{Fore.YELLOW}📂 搜索目录：当前目录、Downloads、Desktop、Documents{Style.RESET_ALL}")
+                return None
         try:
             print(f"\n{Fore.CYAN}📖 正在读取文件: {file_path}{Style.RESET_ALL}")
             
