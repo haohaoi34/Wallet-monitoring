@@ -8228,9 +8228,10 @@ esac
         print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🚀 初始化服务器连接（推荐，包含自动屏蔽失效RPC）")
         print(f"  {Fore.MAGENTA}2.{Style.RESET_ALL} 🤖 AI智能ChainList导入（自动匹配+校准+导入RPC）")
         print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🚫 管理被拉黑的RPC")
+        print(f"  {Fore.CYAN}4.{Style.RESET_ALL} 🚀 批量导入所有链条RPC（一键导入所有网络的最佳RPC）")
         print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回主菜单")
         
-        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-3): {Style.RESET_ALL}").strip()
+        choice = self.safe_input(f"\n{Fore.YELLOW}🔢 请选择操作 (0-4): {Style.RESET_ALL}").strip()
         
         try:
             if choice == '1':
@@ -8264,6 +8265,10 @@ esac
             elif choice == '3':
                 # 管理被拉黑的RPC
                 self.manage_blocked_rpcs()
+                
+            elif choice == '4':
+                # 批量导入所有链条RPC
+                self.batch_import_all_chains_rpc()
                 
             elif choice == '0':
                 return
@@ -12295,6 +12300,509 @@ esac
             return False
         
         return True
+
+    def batch_import_all_chains_rpc(self):
+        """批量导入所有链条的RPC节点"""
+        print(f"\n{Back.CYAN}{Fore.WHITE} 🚀 批量导入所有链条RPC 🚀 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}这里将为所有支持的区块链网络批量导入最佳RPC节点{Style.RESET_ALL}")
+        
+        # 显示当前支持的网络数量
+        total_networks = len(self.networks)
+        print(f"\n{Fore.YELLOW}📊 当前支持的网络数量: {Fore.CYAN}{total_networks}{Style.RESET_ALL} 个")
+        
+        # 显示导入选项
+        print(f"\n{Fore.YELLOW}🔧 导入选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🌟 智能导入（推荐，只导入测试通过的RPC）")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} ⚡ 快速导入（直接导入所有RPC，后续筛选）")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} 🎯 自定义导入（选择特定网络类型）")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 返回")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}请选择导入方式 (0-3): {Style.RESET_ALL}").strip()
+        
+        if choice == '0':
+            return
+        elif choice == '1':
+            self._smart_batch_import_rpcs()
+        elif choice == '2':
+            self._fast_batch_import_rpcs()
+        elif choice == '3':
+            self._custom_batch_import_rpcs()
+        else:
+            print(f"\n{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+            
+    def _smart_batch_import_rpcs(self):
+        """智能批量导入RPC（先测试再导入）"""
+        print(f"\n{Back.GREEN}{Fore.WHITE} 🌟 智能批量导入模式 🌟 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}将先测试所有RPC连接，只导入测试通过的节点{Style.RESET_ALL}")
+        
+        # 确认操作
+        confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 此操作将测试并导入所有网络的RPC，可能需要几分钟时间，确认继续？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm != 'y':
+            print(f"{Fore.YELLOW}❌ 操作已取消{Style.RESET_ALL}")
+            return
+            
+        print(f"\n{Fore.CYAN}🚀 开始智能批量导入...{Style.RESET_ALL}")
+        
+        # 统计信息
+        total_networks = len(self.networks)
+        total_rpcs_before = sum(len(network_info.get('rpc_urls', [])) for network_info in self.networks.values())
+        
+        imported_summary = {
+            'networks_processed': 0,
+            'total_rpcs_tested': 0,
+            'successful_imports': 0,
+            'failed_imports': 0,
+            'skipped_duplicates': 0,
+            'network_details': {}
+        }
+        
+        print(f"📊 处理网络: {total_networks} 个")
+        print(f"📊 当前RPC总数: {total_rpcs_before} 个")
+        
+        # 为每个网络导入最佳RPC
+        for i, (network_key, network_info) in enumerate(self.networks.items(), 1):
+            network_name = network_info['name']
+            chain_id = network_info['chain_id']
+            current_rpcs = set(network_info.get('rpc_urls', []))
+            
+            print(f"\n{Fore.CYAN}🔄 处理网络 {i}/{total_networks}: {network_name}{Style.RESET_ALL}")
+            
+            # 获取该网络的优质RPC列表
+            candidate_rpcs = self._get_premium_rpcs_for_network(network_key, chain_id)
+            
+            if not candidate_rpcs:
+                print(f"  {Fore.YELLOW}⚠️ 未找到该网络的额外RPC节点{Style.RESET_ALL}")
+                imported_summary['network_details'][network_key] = {
+                    'name': network_name,
+                    'tested': 0,
+                    'imported': 0,
+                    'skipped': 0,
+                    'status': 'no_candidates'
+                }
+                continue
+            
+            # 过滤掉已存在的RPC
+            new_rpcs = [rpc for rpc in candidate_rpcs if rpc not in current_rpcs]
+            
+            if not new_rpcs:
+                print(f"  {Fore.YELLOW}⚠️ 所有RPC已存在，无新增节点{Style.RESET_ALL}")
+                imported_summary['skipped_duplicates'] += len(candidate_rpcs)
+                imported_summary['network_details'][network_key] = {
+                    'name': network_name,
+                    'tested': 0,
+                    'imported': 0,
+                    'skipped': len(candidate_rpcs),
+                    'status': 'all_existing'
+                }
+                continue
+            
+            print(f"  📋 找到 {len(new_rpcs)} 个新RPC节点，开始测试...")
+            
+            # 并发测试新的RPC
+            working_rpcs = []
+            failed_rpcs = []
+            
+            def test_single_rpc(rpc_url):
+                """测试单个RPC"""
+                try:
+                    if self.test_rpc_connection(rpc_url, chain_id, timeout=5):
+                        return rpc_url, True
+                    else:
+                        return rpc_url, False
+                except Exception:
+                    return rpc_url, False
+            
+            # 使用线程池测试
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                future_to_rpc = {executor.submit(test_single_rpc, rpc): rpc for rpc in new_rpcs}
+                
+                for future in as_completed(future_to_rpc):
+                    rpc_url, is_working = future.result()
+                    if is_working:
+                        working_rpcs.append(rpc_url)
+                        print(f"    ✅ {rpc_url[:60]}...")
+                    else:
+                        failed_rpcs.append(rpc_url)
+                        print(f"    ❌ {rpc_url[:60]}...")
+            
+            # 导入测试通过的RPC
+            if working_rpcs:
+                self.networks[network_key]['rpc_urls'].extend(working_rpcs)
+                print(f"  {Fore.GREEN}✅ 成功导入 {len(working_rpcs)} 个RPC节点{Style.RESET_ALL}")
+            
+            # 更新统计
+            imported_summary['networks_processed'] += 1
+            imported_summary['total_rpcs_tested'] += len(new_rpcs)
+            imported_summary['successful_imports'] += len(working_rpcs)
+            imported_summary['failed_imports'] += len(failed_rpcs)
+            
+            imported_summary['network_details'][network_key] = {
+                'name': network_name,
+                'tested': len(new_rpcs),
+                'imported': len(working_rpcs),
+                'failed': len(failed_rpcs),
+                'status': 'completed'
+            }
+        
+        # 显示导入结果
+        self._display_import_summary(imported_summary, total_rpcs_before)
+        
+        # 保存状态
+        self.save_state()
+        print(f"\n{Fore.GREEN}🎉 智能批量导入完成！配置已保存{Style.RESET_ALL}")
+        
+    def _fast_batch_import_rpcs(self):
+        """快速批量导入RPC（先导入再筛选）"""
+        print(f"\n{Back.YELLOW}{Fore.BLACK} ⚡ 快速批量导入模式 ⚡ {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}将直接导入所有优质RPC，后续可使用RPC检测功能筛选{Style.RESET_ALL}")
+        
+        # 确认操作
+        confirm = self.safe_input(f"\n{Fore.YELLOW}⚠️ 此操作将快速导入所有网络的RPC，确认继续？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm != 'y':
+            print(f"{Fore.YELLOW}❌ 操作已取消{Style.RESET_ALL}")
+            return
+            
+        print(f"\n{Fore.CYAN}🚀 开始快速批量导入...{Style.RESET_ALL}")
+        
+        # 统计信息
+        total_networks = len(self.networks)
+        total_rpcs_before = sum(len(network_info.get('rpc_urls', [])) for network_info in self.networks.values())
+        total_imported = 0
+        total_skipped = 0
+        
+        print(f"📊 处理网络: {total_networks} 个")
+        print(f"📊 当前RPC总数: {total_rpcs_before} 个")
+        
+        # 为每个网络导入RPC
+        for i, (network_key, network_info) in enumerate(self.networks.items(), 1):
+            network_name = network_info['name']
+            chain_id = network_info['chain_id']
+            current_rpcs = set(network_info.get('rpc_urls', []))
+            
+            print(f"\r{Fore.CYAN}🔄 处理进度: {i}/{total_networks} - {network_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
+            
+            # 获取该网络的优质RPC列表
+            candidate_rpcs = self._get_premium_rpcs_for_network(network_key, chain_id)
+            
+            if not candidate_rpcs:
+                continue
+            
+            # 过滤掉已存在的RPC
+            new_rpcs = [rpc for rpc in candidate_rpcs if rpc not in current_rpcs]
+            
+            if new_rpcs:
+                # 直接添加所有新RPC
+                self.networks[network_key]['rpc_urls'].extend(new_rpcs)
+                total_imported += len(new_rpcs)
+            else:
+                total_skipped += len(candidate_rpcs)
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 快速导入完成 📊 {Style.RESET_ALL}")
+        print(f"✅ 成功导入: {Fore.GREEN}{total_imported}{Style.RESET_ALL} 个RPC")
+        print(f"⏭️ 跳过重复: {Fore.YELLOW}{total_skipped}{Style.RESET_ALL} 个RPC")
+        
+        total_rpcs_after = sum(len(network_info.get('rpc_urls', [])) for network_info in self.networks.values())
+        print(f"📊 导入前RPC总数: {Fore.CYAN}{total_rpcs_before}{Style.RESET_ALL} 个")
+        print(f"📊 导入后RPC总数: {Fore.CYAN}{total_rpcs_after}{Style.RESET_ALL} 个")
+        print(f"📈 增长数量: {Fore.GREEN}+{total_rpcs_after - total_rpcs_before}{Style.RESET_ALL} 个")
+        
+        # 保存状态
+        self.save_state()
+        print(f"\n{Fore.GREEN}🎉 快速批量导入完成！配置已保存{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 提示: 可使用 '初始化服务器连接' 功能检测和筛选最佳RPC{Style.RESET_ALL}")
+        
+    def _custom_batch_import_rpcs(self):
+        """自定义批量导入RPC"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🎯 自定义批量导入模式 🎯 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}可选择特定类型的网络进行导入{Style.RESET_ALL}")
+        
+        # 按类型分类网络
+        network_categories = {
+            'layer1': {'name': 'Layer 1 主网', 'networks': []},
+            'layer2': {'name': 'Layer 2 扩容网络', 'networks': []},
+            'testnet': {'name': '测试网络', 'networks': []},
+            'others': {'name': '其他网络', 'networks': []}
+        }
+        
+        # 简单分类逻辑（可根据需要扩展）
+        layer1_networks = ['ethereum', 'bsc', 'polygon', 'avalanche', 'fantom', 'arbitrum', 'optimism']
+        layer2_networks = ['arbitrum', 'optimism', 'polygon', 'base', 'linea', 'scroll']
+        testnet_networks = ['goerli', 'sepolia', 'testnet']
+        
+        for network_key, network_info in self.networks.items():
+            network_name = network_info['name']
+            if any(l1 in network_key.lower() for l1 in layer1_networks):
+                network_categories['layer1']['networks'].append((network_key, network_name))
+            elif any(l2 in network_key.lower() for l2 in layer2_networks):
+                network_categories['layer2']['networks'].append((network_key, network_name))
+            elif any(test in network_key.lower() for test in testnet_networks):
+                network_categories['testnet']['networks'].append((network_key, network_name))
+            else:
+                network_categories['others']['networks'].append((network_key, network_name))
+        
+        # 显示分类
+        print(f"\n{Fore.YELLOW}📋 网络分类：{Style.RESET_ALL}")
+        for i, (cat_key, cat_info) in enumerate(network_categories.items(), 1):
+            count = len(cat_info['networks'])
+            if count > 0:
+                print(f"  {Fore.GREEN}{i}.{Style.RESET_ALL} {cat_info['name']} ({count} 个网络)")
+        
+        print(f"  {Fore.GREEN}5.{Style.RESET_ALL} 全部网络 ({len(self.networks)} 个)")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 返回")
+        
+        choice = self.safe_input(f"\n{Fore.YELLOW}请选择要导入的网络类型 (0-5): {Style.RESET_ALL}").strip()
+        
+        if choice == '0':
+            return
+        elif choice == '5':
+            # 导入所有网络
+            selected_networks = list(self.networks.items())
+        elif choice in ['1', '2', '3', '4']:
+            # 导入特定类别
+            cat_keys = list(network_categories.keys())
+            cat_index = int(choice) - 1
+            if cat_index < len(cat_keys):
+                cat_key = cat_keys[cat_index]
+                selected_networks = [(key, self.networks[key]) for key, name in network_categories[cat_key]['networks']]
+            else:
+                print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+                return
+        else:
+            print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+            return
+            
+        if not selected_networks:
+            print(f"{Fore.YELLOW}⚠️ 该类别没有可用的网络{Style.RESET_ALL}")
+            return
+            
+        # 确认导入
+        print(f"\n{Fore.CYAN}将为 {len(selected_networks)} 个网络导入RPC{Style.RESET_ALL}")
+        confirm = self.safe_input(f"{Fore.YELLOW}确认继续？(y/N): {Style.RESET_ALL}").strip().lower()
+        
+        if confirm != 'y':
+            print(f"{Fore.YELLOW}❌ 操作已取消{Style.RESET_ALL}")
+            return
+            
+        # 执行导入
+        print(f"\n{Fore.CYAN}🚀 开始自定义批量导入...{Style.RESET_ALL}")
+        total_imported = 0
+        
+        for i, (network_key, network_info) in enumerate(selected_networks, 1):
+            network_name = network_info['name']
+            chain_id = network_info['chain_id']
+            current_rpcs = set(network_info.get('rpc_urls', []))
+            
+            print(f"\r{Fore.CYAN}🔄 处理进度: {i}/{len(selected_networks)} - {network_name[:30]}...{Style.RESET_ALL}", end='', flush=True)
+            
+            # 获取该网络的优质RPC列表
+            candidate_rpcs = self._get_premium_rpcs_for_network(network_key, chain_id)
+            
+            if candidate_rpcs:
+                # 过滤掉已存在的RPC
+                new_rpcs = [rpc for rpc in candidate_rpcs if rpc not in current_rpcs]
+                
+                if new_rpcs:
+                    # 添加新RPC
+                    self.networks[network_key]['rpc_urls'].extend(new_rpcs)
+                    total_imported += len(new_rpcs)
+        
+        print(f"\n\n{Back.GREEN}{Fore.BLACK} 📊 自定义导入完成 📊 {Style.RESET_ALL}")
+        print(f"✅ 处理网络: {Fore.CYAN}{len(selected_networks)}{Style.RESET_ALL} 个")
+        print(f"✅ 成功导入: {Fore.GREEN}{total_imported}{Style.RESET_ALL} 个RPC")
+        
+        # 保存状态
+        self.save_state()
+        print(f"\n{Fore.GREEN}🎉 自定义批量导入完成！配置已保存{Style.RESET_ALL}")
+        
+    def _get_premium_rpcs_for_network(self, network_key: str, chain_id: int) -> List[str]:
+        """获取指定网络的优质RPC列表"""
+        
+        # 知名的优质RPC提供商的模板
+        premium_rpc_templates = {
+            # 主流L1网络
+            'ethereum': [
+                'https://eth.llamarpc.com',
+                'https://ethereum.publicnode.com',
+                'https://rpc.flashbots.net',
+                'https://eth.drpc.org',
+                'https://ethereum.blockpi.network/v1/rpc/public',
+                'https://eth.api.onfinality.io/public',
+                'https://ethereum-rpc.publicnode.com',
+                'https://mainnet.gateway.tenderly.co',
+                'https://rpc.ankr.com/eth',
+                'https://cloudflare-eth.com'
+            ],
+            'bsc': [
+                'https://bsc.publicnode.com',
+                'https://bsc.drpc.org',
+                'https://binance.llamarpc.com',
+                'https://bsc.blockpi.network/v1/rpc/public',
+                'https://bsc.meowrpc.com',
+                'https://rpc.ankr.com/bsc',
+                'https://1rpc.io/bnb',
+                'https://bsc.api.onfinality.io/public'
+            ],
+            'polygon': [
+                'https://polygon.llamarpc.com',
+                'https://polygon.publicnode.com',
+                'https://polygon.drpc.org',
+                'https://polygon.blockpi.network/v1/rpc/public',
+                'https://polygon.meowrpc.com',
+                'https://rpc.ankr.com/polygon',
+                'https://1rpc.io/matic',
+                'https://polygon.api.onfinality.io/public'
+            ],
+            'avalanche': [
+                'https://avalanche.publicnode.com',
+                'https://avalanche.drpc.org',
+                'https://avax.meowrpc.com',
+                'https://rpc.ankr.com/avalanche',
+                'https://1rpc.io/avax/c',
+                'https://avalanche.blockpi.network/v1/rpc/public'
+            ],
+            'fantom': [
+                'https://fantom.publicnode.com',
+                'https://fantom.drpc.org',
+                'https://rpc.ankr.com/fantom',
+                'https://1rpc.io/ftm',
+                'https://fantom.blockpi.network/v1/rpc/public'
+            ],
+            'arbitrum': [
+                'https://arbitrum.publicnode.com',
+                'https://arbitrum.drpc.org',
+                'https://arbitrum.llamarpc.com',
+                'https://rpc.ankr.com/arbitrum',
+                'https://1rpc.io/arb',
+                'https://arbitrum.blockpi.network/v1/rpc/public'
+            ],
+            'optimism': [
+                'https://optimism.publicnode.com',
+                'https://optimism.drpc.org',
+                'https://optimism.llamarpc.com',
+                'https://rpc.ankr.com/optimism',
+                'https://1rpc.io/op',
+                'https://optimism.blockpi.network/v1/rpc/public'
+            ],
+            'base': [
+                'https://base.publicnode.com',
+                'https://base.drpc.org',
+                'https://base.llamarpc.com',
+                'https://base.blockpi.network/v1/rpc/public',
+                'https://1rpc.io/base'
+            ]
+        }
+        
+        # 通用的优质RPC提供商（支持多链）
+        universal_providers = [
+            'https://rpc.ankr.com',
+            'https://{}.drpc.org',
+            'https://{}.publicnode.com',
+            'https://{}.llamarpc.com',
+            'https://{}.blockpi.network/v1/rpc/public',
+            'https://1rpc.io',
+            'https://{}.api.onfinality.io/public'
+        ]
+        
+        rpcs = []
+        
+        # 1. 先尝试获取该网络的专用RPC
+        if network_key in premium_rpc_templates:
+            rpcs.extend(premium_rpc_templates[network_key])
+        
+        # 2. 根据网络添加通用提供商的RPC
+        network_mapping = {
+            'ethereum': ['eth', 'ethereum'],
+            'bsc': ['bsc', 'bnb'],
+            'polygon': ['polygon', 'matic'],
+            'avalanche': ['avalanche', 'avax'],
+            'fantom': ['fantom', 'ftm'],
+            'arbitrum': ['arbitrum', 'arb'],
+            'optimism': ['optimism', 'op'],
+            'gnosis': ['gnosis', 'xdai'],
+            'celo': ['celo'],
+            'moonbeam': ['moonbeam'],
+            'moonriver': ['moonriver'],
+            'harmony': ['harmony', 'one'],
+            'cronos': ['cronos', 'cro'],
+            'evmos': ['evmos'],
+            'kava': ['kava'],
+            'klaytn': ['klaytn'],
+            'fuse': ['fuse']
+        }
+        
+        if network_key in network_mapping:
+            for alias in network_mapping[network_key]:
+                for provider_template in universal_providers:
+                    if '{}' in provider_template:
+                        rpcs.append(provider_template.format(alias))
+                    else:
+                        rpcs.append(f"{provider_template}/{alias}")
+        
+        # 3. 根据Chain ID添加Alchemy和其他付费服务（如果有API Key）
+        if hasattr(self, 'ALCHEMY_API_KEY') and self.ALCHEMY_API_KEY:
+            alchemy_mapping = {
+                1: 'eth-mainnet',
+                56: 'bnb-mainnet', 
+                137: 'polygon-mainnet',
+                43114: 'avax-mainnet',
+                250: 'fantom-mainnet',
+                42161: 'arb-mainnet',
+                10: 'opt-mainnet',
+                100: 'gnosis-mainnet',
+                1284: 'moonbeam-mainnet',
+                1285: 'moonriver-mainnet',
+                25: 'cronos-mainnet'
+            }
+            
+            if chain_id in alchemy_mapping:
+                alchemy_rpc = f"https://{alchemy_mapping[chain_id]}.g.alchemy.com/v2/{self.ALCHEMY_API_KEY}"
+                rpcs.append(alchemy_rpc)
+        
+        # 去重并返回
+        return list(dict.fromkeys(rpcs))  # 保持顺序的去重
+        
+    def _display_import_summary(self, summary: dict, rpcs_before: int):
+        """显示导入结果汇总"""
+        print(f"\n{Back.GREEN}{Fore.BLACK} 📋 导入完成汇总 📋 {Style.RESET_ALL}")
+        
+        # 总体统计
+        print(f"📊 处理网络: {Fore.CYAN}{summary['networks_processed']}{Style.RESET_ALL} 个")
+        print(f"🧪 测试RPC: {Fore.CYAN}{summary['total_rpcs_tested']}{Style.RESET_ALL} 个")
+        print(f"✅ 成功导入: {Fore.GREEN}{summary['successful_imports']}{Style.RESET_ALL} 个")
+        print(f"❌ 导入失败: {Fore.RED}{summary['failed_imports']}{Style.RESET_ALL} 个")
+        print(f"⏭️ 跳过重复: {Fore.YELLOW}{summary['skipped_duplicates']}{Style.RESET_ALL} 个")
+        
+        # 成功率统计
+        if summary['total_rpcs_tested'] > 0:
+            success_rate = (summary['successful_imports'] / summary['total_rpcs_tested'] * 100)
+            print(f"📈 成功率: {Fore.CYAN}{success_rate:.1f}%{Style.RESET_ALL}")
+        
+        # RPC数量对比
+        total_rpcs_after = sum(len(network_info.get('rpc_urls', [])) for network_info in self.networks.values())
+        print(f"\n📊 RPC数量对比:")
+        print(f"  导入前: {Fore.CYAN}{rpcs_before}{Style.RESET_ALL} 个")
+        print(f"  导入后: {Fore.CYAN}{total_rpcs_after}{Style.RESET_ALL} 个")
+        print(f"  新增量: {Fore.GREEN}+{total_rpcs_after - rpcs_before}{Style.RESET_ALL} 个")
+        
+        # 显示成功导入较多RPC的网络
+        successful_networks = [(key, details) for key, details in summary['network_details'].items() 
+                             if details.get('imported', 0) > 0]
+        
+        if successful_networks:
+            # 按导入数量排序
+            successful_networks.sort(key=lambda x: x[1]['imported'], reverse=True)
+            
+            print(f"\n{Fore.YELLOW}🏆 导入成功的网络（前10名）：{Style.RESET_ALL}")
+            for i, (network_key, details) in enumerate(successful_networks[:10], 1):
+                imported_count = details['imported']
+                tested_count = details['tested']
+                success_rate = (imported_count / tested_count * 100) if tested_count > 0 else 0
+                
+                print(f"  {i:2d}. {Fore.CYAN}{details['name'][:25]:<25}{Style.RESET_ALL} "
+                      f"成功 {Fore.GREEN}{imported_count:>2}{Style.RESET_ALL} 个 "
+                      f"({success_rate:>5.1f}%)")
 
 def run_daemon_mode(monitor, password):
     """运行守护进程模式"""
