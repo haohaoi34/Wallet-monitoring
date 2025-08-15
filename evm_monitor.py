@@ -3347,6 +3347,7 @@ class EVMMonitor:
             ],
             'add_wallet': [
                 "📋 批量导入：可以一次性粘贴多个私钥，每行一个",
+                "⚡ 高性能：支持100线程并发处理，识别速度极快",
                 "✅ 自动验证：系统会自动验证私钥格式并去重",
                 "🔐 安全保护：私钥会在本地加密存储"
             ],
@@ -3913,9 +3914,10 @@ esac
 
 
 
-    def extract_private_keys_from_text(self, text: str) -> list:
-        """智能从文本中提取私钥（支持乱码和混合数据）"""
+    def extract_private_keys_from_text(self, text: str, max_workers: int = 100) -> list:
+        """高性能智能从文本中提取私钥（支持乱码和混合数据）"""
         import re
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         
         # 清理文本，去除常见的分隔符和无关字符
         text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
@@ -3930,7 +3932,8 @@ esac
             r'[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}',
         ]
         
-        extracted_keys = []
+        # 第一步：快速提取所有可能的私钥候选
+        potential_keys = set()
         
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
@@ -3944,14 +3947,7 @@ esac
                     if not all(c == '0' for c in cleaned_key) and not all(c.lower() == 'f' for c in cleaned_key):
                         if not cleaned_key.startswith('0x'):
                             cleaned_key = '0x' + cleaned_key
-                        
-                        # 验证私钥是否有效
-                        try:
-                            Account.from_key(cleaned_key)
-                            if cleaned_key not in extracted_keys:
-                                extracted_keys.append(cleaned_key)
-                        except:
-                            continue
+                        potential_keys.add(cleaned_key)
         
         # 处理特殊格式：地址----私钥
         address_key_pattern = r'0x[a-fA-F0-9]{40}[^a-fA-F0-9]+([a-fA-F0-9]{64})'
@@ -3959,14 +3955,122 @@ esac
         
         for match in address_key_matches:
             cleaned_key = '0x' + match
-            try:
-                Account.from_key(cleaned_key)
-                if cleaned_key not in extracted_keys:
-                    extracted_keys.append(cleaned_key)
-            except:
-                continue
+            potential_keys.add(cleaned_key)
         
-        return extracted_keys
+        if not potential_keys:
+            return []
+        
+        # 第二步：高性能并发验证私钥
+        print(f"{Fore.CYAN}🚀 发现 {len(potential_keys)} 个潜在私钥，启动 {max_workers} 线程并发验证...{Style.RESET_ALL}")
+        
+        def validate_private_key(key):
+            """验证单个私钥的有效性"""
+            try:
+                Account.from_key(key)
+                return key, True
+            except:
+                return key, False
+        
+        valid_keys = []
+        potential_keys_list = list(potential_keys)
+        
+        # 使用高并发验证
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有验证任务
+            future_to_key = {executor.submit(validate_private_key, key): key for key in potential_keys_list}
+            
+            completed_count = 0
+            for future in as_completed(future_to_key):
+                key, is_valid = future.result()
+                completed_count += 1
+                
+                if is_valid:
+                    valid_keys.append(key)
+                
+                # 显示进度
+                if completed_count % 10 == 0 or completed_count == len(potential_keys_list):
+                    progress = (completed_count / len(potential_keys_list)) * 100
+                    print(f"\r{Fore.CYAN}⚡ 验证进度: {completed_count}/{len(potential_keys_list)} ({progress:.1f}%) | 有效: {len(valid_keys)}{Style.RESET_ALL}", end='')
+        
+        print()  # 换行
+        return valid_keys
+
+    def _batch_process_private_keys(self, private_keys: list, max_workers: int = 50) -> tuple:
+        """高性能批量处理私钥（支持50-100线程）"""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time
+        
+        total_keys = len(private_keys)
+        print(f"{Fore.CYAN}⚡ 使用 {max_workers} 线程并发处理 {total_keys} 个私钥...{Style.RESET_ALL}")
+        
+        def process_single_key(private_key):
+            """处理单个私钥"""
+            try:
+                # 标准化私钥格式
+                if not private_key.startswith('0x'):
+                    private_key = '0x' + private_key
+                
+                # 验证私钥并生成地址
+                account = Account.from_key(private_key)
+                address = account.address
+                
+                # 检查是否已存在（去重）
+                if address in self.wallets:
+                    return 'duplicate', address, private_key
+                
+                return 'valid', address, private_key
+                
+            except Exception as e:
+                return 'invalid', None, private_key
+        
+        # 批量并发处理
+        success_count = 0
+        duplicate_count = 0
+        invalid_count = 0
+        new_wallets = {}
+        
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            future_to_key = {executor.submit(process_single_key, key): key for key in private_keys}
+            
+            completed_count = 0
+            for future in as_completed(future_to_key):
+                status, address, private_key = future.result()
+                completed_count += 1
+                
+                if status == 'valid':
+                    new_wallets[address] = private_key
+                    success_count += 1
+                elif status == 'duplicate':
+                    duplicate_count += 1
+                else:
+                    invalid_count += 1
+                
+                # 实时显示进度
+                if completed_count % 20 == 0 or completed_count == total_keys:
+                    progress = (completed_count / total_keys) * 100
+                    elapsed = time.time() - start_time
+                    speed = completed_count / elapsed if elapsed > 0 else 0
+                    
+                    print(f"\r{Fore.CYAN}⚡ 处理进度: {completed_count}/{total_keys} ({progress:.1f}%) | "
+                          f"✅ 新增: {success_count} | 🔄 重复: {duplicate_count} | ❌ 无效: {invalid_count} | "
+                          f"📈 速度: {speed:.1f}/s{Style.RESET_ALL}", end='')
+        
+        print()  # 换行
+        
+        # 批量更新钱包数据（原子操作）
+        if new_wallets:
+            print(f"{Fore.CYAN}💾 批量保存 {len(new_wallets)} 个新钱包...{Style.RESET_ALL}")
+            with self._wallet_lock:
+                self.wallets.update(new_wallets)
+                self.save_wallets()
+        
+        elapsed_total = time.time() - start_time
+        print(f"{Fore.GREEN}⚡ 高性能批量处理完成！耗时: {elapsed_total:.2f}s{Style.RESET_ALL}")
+        
+        return success_count, duplicate_count, invalid_count
 
     def add_private_key(self, private_key: str) -> str:
         """添加私钥并返回状态（自动去重）"""
@@ -6667,7 +6771,7 @@ esac
             
             # 主要功能区（增强版本）
             print(f"\n{Back.GREEN}{Fore.BLACK} 🎯 核心功能 {Style.RESET_ALL}")
-            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥     {Fore.BLUE}(智能批量导入){Style.RESET_ALL}")
+            print(f"{Fore.GREEN}1.{Style.RESET_ALL} 🔑 添加钱包私钥     {Fore.BLUE}(高性能100线程){Style.RESET_ALL}")
             print(f"{Fore.GREEN}2.{Style.RESET_ALL} 📋 查看钱包列表     {Fore.CYAN}({wallet_count} 个钱包){Style.RESET_ALL}")
             
             # 高级功能区（增强版本）
@@ -6881,8 +6985,8 @@ esac
             print(f"{Fore.YELLOW}💡 支持混合格式：地址----私钥、纯私钥等{Style.RESET_ALL}")
             private_key_input = self.safe_input().strip()
             if private_key_input:
-                # 尝试智能解析
-                extracted_keys = self.extract_private_keys_from_text(private_key_input)
+                # 尝试智能解析（使用50线程，单个输入不需要太多）
+                extracted_keys = self.extract_private_keys_from_text(private_key_input, max_workers=50)
                 if extracted_keys:
                     print(f"{Fore.GREEN}🎉 智能解析成功！提取到 {len(extracted_keys)} 个私钥{Style.RESET_ALL}")
                     lines = extracted_keys
@@ -6892,9 +6996,10 @@ esac
         
         elif input_method == '2':
             # 批量输入（支持智能解析）
-            print(f"\n{Fore.GREEN}📋 批量私钥输入（支持智能解析乱码数据）：{Style.RESET_ALL}")
+            print(f"\n{Fore.GREEN}📋 高性能批量私钥输入（支持智能解析乱码数据）：{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}💡 智能模式：直接粘贴包含私钥的混合数据，系统会自动提取{Style.RESET_ALL}")
             print(f"{Fore.CYAN}   支持格式：0x地址----0x私钥、纯私钥、混合乱码等{Style.RESET_ALL}")
+            print(f"{Fore.MAGENTA}   🚀 高性能：使用100线程并发处理，速度极快{Style.RESET_ALL}")
             print(f"{Fore.MAGENTA}   输入完成后双击回车确认{Style.RESET_ALL}")
             
             empty_line_count = 0
@@ -6918,9 +7023,9 @@ esac
             if raw_input_lines:
                 print(f"\n{Fore.BLUE}🔍 正在智能解析 {len(raw_input_lines)} 行数据...{Style.RESET_ALL}")
                 
-                # 将所有行合并进行智能解析
+                # 将所有行合并进行智能解析（使用100线程）
                 combined_text = '\n'.join(raw_input_lines)
-                extracted_keys = self.extract_private_keys_from_text(combined_text)
+                extracted_keys = self.extract_private_keys_from_text(combined_text, max_workers=100)
                 
                 if extracted_keys:
                     print(f"{Fore.GREEN}🎉 智能解析成功！从混合数据中提取到 {len(extracted_keys)} 个有效私钥{Style.RESET_ALL}")
@@ -6951,8 +7056,8 @@ esac
                     
                     print(f"{Fore.BLUE}🔍 正在智能解析文件内容...{Style.RESET_ALL}")
                     
-                    # 尝试智能解析
-                    extracted_keys = self.extract_private_keys_from_text(file_content)
+                    # 尝试智能解析（使用100线程）
+                    extracted_keys = self.extract_private_keys_from_text(file_content, max_workers=100)
                     
                     if extracted_keys:
                         print(f"{Fore.GREEN}🎉 智能解析成功！从文件中提取到 {len(extracted_keys)} 个有效私钥{Style.RESET_ALL}")
@@ -6976,27 +7081,10 @@ esac
                     self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
                     return
         
-        # 处理私钥
+        # 高性能批量处理私钥
         if lines:
-            print(f"\n{Fore.CYAN}🔄 正在处理 {len(lines)} 个私钥...{Style.RESET_ALL}")
-            success_count = 0
-            invalid_count = 0
-            duplicate_count = 0
-            
-            for i, private_key in enumerate(lines):
-                # 显示进度
-                self.show_progress_indicator(i + 1, len(lines), "验证私钥")
-                
-                # 验证并添加私钥
-                result = self.add_private_key(private_key)
-                if result == "success":
-                    success_count += 1
-                elif result == "duplicate":
-                    duplicate_count += 1
-                else:
-                    invalid_count += 1
-                
-                time.sleep(0.1)  # 小延迟显示进度
+            print(f"\n{Fore.CYAN}🚀 启动高性能批量处理 {len(lines)} 个私钥...{Style.RESET_ALL}")
+            success_count, duplicate_count, invalid_count = self._batch_process_private_keys(lines)
             
             # 操作完成统计
             operation_time = self.end_operation_timer("add_private_key")
@@ -8817,12 +8905,17 @@ esac
         print(f"\n{Back.CYAN}{Fore.WHITE} 🔧 手动修改Chain ID 🔧 {Style.RESET_ALL}")
         print(f"{Fore.CYAN}以下网络连接失败，可能需要修改Chain ID：{Style.RESET_ALL}")
         
-        # 显示失败的网络列表
-        for i, network in enumerate(failed_networks[:10], 1):  # 最多显示10个
-            print(f"  {Fore.YELLOW}{i}.{Style.RESET_ALL} {network['name']:<30} (当前ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL})")
+        # 显示所有失败的网络列表
+        total_networks = len(failed_networks)
+        print(f"{Fore.CYAN}共发现 {total_networks} 个连接失败的网络：{Style.RESET_ALL}")
         
-        if len(failed_networks) > 10:
-            print(f"     ... 还有 {len(failed_networks) - 10} 个网络")
+        for i, network in enumerate(failed_networks, 1):
+            status_icon = "🟡" if i <= 10 else "🔴"
+            print(f"  {status_icon} {Fore.YELLOW}{i:2d}.{Style.RESET_ALL} {network['name']:<25} (当前ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL})")
+            
+            # 每20个网络分组显示，方便阅读
+            if i % 20 == 0 and i < total_networks:
+                print(f"{Fore.CYAN}     --- 已显示前 {i} 个，还有 {total_networks - i} 个网络 ---{Style.RESET_ALL}")
         
         print(f"\n{Fore.CYAN}💡 常见Chain ID参考：{Style.RESET_ALL}")
         common_chain_ids = {
@@ -8914,6 +9007,11 @@ esac
                         print(f"{Fore.GREEN}✅ Chain ID已更新: {old_id} → {new_id}{Style.RESET_ALL}")
                         batch_modified += 1
                         modified_count += 1
+                        
+                        # 询问是否要修改RPC
+                        modify_rpc = self.safe_input(f"{Fore.YELLOW}🌐 是否要为此网络修改RPC节点？(y/N): {Style.RESET_ALL}").strip().lower()
+                        if modify_rpc == 'y':
+                            self._modify_network_rpc(network['key'], network['name'])
                     except ValueError:
                         print(f"{Fore.RED}❌ 请输入有效的数字{Style.RESET_ALL}")
                 
@@ -8957,6 +9055,222 @@ esac
                 print(f"  {Fore.RED}❌ 保存失败: {e}{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.YELLOW}💡 没有进行任何修改{Style.RESET_ALL}")
+    
+    def _extract_rpc_urls_from_text(self, text: str) -> list:
+        """智能从混乱文本中提取RPC URLs"""
+        import re
+        
+        # 清理文本
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # 定义RPC URL的正则表达式模式
+        patterns = [
+            # 标准HTTP(S) URL
+            r'https://[^\s<>"\']+',
+            r'http://[^\s<>"\']+',
+            # 带端口的URL
+            r'https://[^\s<>"\']+:[0-9]+[^\s<>"\']*',
+            r'http://[^\s<>"\']+:[0-9]+[^\s<>"\']*',
+            # WebSocket URLs
+            r'wss://[^\s<>"\']+',
+            r'ws://[^\s<>"\']+',
+        ]
+        
+        extracted_urls = []
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # 清理URL，移除末尾的标点符号
+                cleaned_url = re.sub(r'[,;.!?)\]}]+$', '', match)
+                
+                # 验证URL是否看起来像RPC节点
+                if self._is_valid_rpc_url(cleaned_url):
+                    if cleaned_url not in extracted_urls:
+                        extracted_urls.append(cleaned_url)
+        
+        return extracted_urls
+    
+    def _is_valid_rpc_url(self, url: str) -> bool:
+        """验证URL是否看起来像有效的RPC节点"""
+        import re
+        
+        # 基本URL格式检查
+        if not re.match(r'^https?://.+', url):
+            return False
+        
+        # 排除明显不是RPC的URL
+        exclude_patterns = [
+            r'\.js$', r'\.css$', r'\.png$', r'\.jpg$', r'\.gif$', r'\.ico$',
+            r'\.html$', r'\.htm$', r'\.php$', r'\.asp$', 
+            r'/static/', r'/assets/', r'/images/', r'/css/', r'/js/',
+            r'github\.com', r'gitlab\.com', r'stackoverflow\.com',
+            r'google\.com', r'facebook\.com', r'twitter\.com'
+        ]
+        
+        for pattern in exclude_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                return False
+        
+        # 检查是否包含RPC相关的关键词
+        rpc_keywords = [
+            'rpc', 'mainnet', 'node', 'api', 'endpoint', 'gateway',
+            'eth', 'bsc', 'polygon', 'avalanche', 'fantom', 'arbitrum'
+        ]
+        
+        url_lower = url.lower()
+        for keyword in rpc_keywords:
+            if keyword in url_lower:
+                return True
+        
+        # 如果URL很短且格式正确，可能也是有效的
+        if len(url) > 15 and '.' in url:
+            return True
+        
+        return False
+    
+    def _modify_network_rpc(self, network_key: str, network_name: str):
+        """修改网络的RPC节点（支持智能解析）"""
+        print(f"\n{Back.MAGENTA}{Fore.WHITE} 🌐 修改 {network_name} 的RPC节点 🌐 {Style.RESET_ALL}")
+        
+        # 显示当前RPC节点
+        current_rpcs = self.networks[network_key].get('rpc_urls', [])
+        print(f"\n{Fore.CYAN}当前RPC节点 ({len(current_rpcs)} 个)：{Style.RESET_ALL}")
+        for i, rpc in enumerate(current_rpcs[:3], 1):
+            print(f"  {i}. {rpc}")
+        if len(current_rpcs) > 3:
+            print(f"  ... 还有 {len(current_rpcs) - 3} 个RPC")
+        
+        print(f"\n{Fore.YELLOW}🚀 RPC修改选项：{Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}1.{Style.RESET_ALL} 🤖 全自动获取最佳RPC（推荐）")
+        print(f"  {Fore.GREEN}2.{Style.RESET_ALL} 📋 智能解析混乱文本中的RPC")
+        print(f"  {Fore.GREEN}3.{Style.RESET_ALL} ✏️ 手动输入RPC节点")
+        print(f"  {Fore.GREEN}4.{Style.RESET_ALL} 🗑️ 清空所有RPC节点")
+        print(f"  {Fore.RED}0.{Style.RESET_ALL} 🔙 跳过RPC修改")
+        
+        choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择操作: {Style.RESET_ALL}").strip()
+        
+        if choice == '0':
+            print(f"{Fore.YELLOW}⏭️ 跳过RPC修改{Style.RESET_ALL}")
+            return
+        elif choice == '1':
+            self._auto_fetch_best_rpcs(network_key, network_name)
+        elif choice == '2':
+            self._smart_parse_rpc_input(network_key, network_name)
+        elif choice == '3':
+            self._manual_input_rpcs(network_key, network_name)
+        elif choice == '4':
+            self._clear_network_rpcs(network_key, network_name)
+        else:
+            print(f"{Fore.RED}❌ 无效选择{Style.RESET_ALL}")
+    
+    def _auto_fetch_best_rpcs(self, network_key: str, network_name: str):
+        """全自动获取最佳RPC节点"""
+        print(f"\n{Back.BLUE}{Fore.WHITE} 🤖 全自动获取 {network_name} 的最佳RPC 🤖 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}正在从多个来源获取最佳RPC节点...{Style.RESET_ALL}")
+        
+        # 这里可以集成ChainList API或其他RPC数据源
+        print(f"{Fore.YELLOW}🔄 功能开发中，建议使用选项2智能解析{Style.RESET_ALL}")
+    
+    def _smart_parse_rpc_input(self, network_key: str, network_name: str):
+        """智能解析混乱文本中的RPC"""
+        print(f"\n{Back.GREEN}{Fore.WHITE} 📋 智能解析RPC节点 📋 {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}请粘贴包含RPC节点的文本（支持混乱格式）：{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}💡 系统会自动识别和提取有效的RPC URLs{Style.RESET_ALL}")
+        print(f"{Fore.MAGENTA}🔚 输入完成后双击回车确认{Style.RESET_ALL}")
+        
+        # 收集输入文本
+        raw_lines = []
+        empty_count = 0
+        
+        while True:
+            try:
+                line = self.safe_input().strip()
+                if line:
+                    raw_lines.append(line)
+                    empty_count = 0
+                    print(f"{Fore.CYAN}✅ 已接收第 {len(raw_lines)} 行数据{Style.RESET_ALL}")
+                else:
+                    empty_count += 1
+                    if empty_count >= 2:
+                        break
+            except:
+                break
+        
+        if not raw_lines:
+            print(f"{Fore.YELLOW}⚠️ 未输入任何数据{Style.RESET_ALL}")
+            return
+        
+        # 智能解析RPC URLs
+        combined_text = '\n'.join(raw_lines)
+        extracted_rpcs = self._extract_rpc_urls_from_text(combined_text)
+        
+        if extracted_rpcs:
+            print(f"\n{Fore.GREEN}🎉 智能解析成功！提取到 {len(extracted_rpcs)} 个RPC节点{Style.RESET_ALL}")
+            
+            # 显示提取的RPC
+            print(f"\n{Fore.CYAN}📋 提取的RPC节点：{Style.RESET_ALL}")
+            for i, rpc in enumerate(extracted_rpcs, 1):
+                print(f"  {i}. {rpc}")
+            
+            # 询问是否应用
+            apply = self.safe_input(f"\n{Fore.YELLOW}是否将这些RPC节点应用到 {network_name}？(Y/n): {Style.RESET_ALL}").strip().lower()
+            if apply in ['', 'y', 'yes']:
+                # 应用新的RPC节点
+                self.networks[network_key]['rpc_urls'] = extracted_rpcs
+                print(f"{Fore.GREEN}✅ 已更新 {network_name} 的RPC节点 ({len(extracted_rpcs)} 个){Style.RESET_ALL}")
+                
+                # 清除缓存
+                if hasattr(self, 'cache') and self.cache:
+                    self.cache.clear_category('rpc_status')
+                
+                print(f"{Fore.CYAN}💡 建议重新测试网络连接以验证新RPC{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}❌ 未能从输入文本中提取到有效的RPC节点{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 请确保文本中包含 http:// 或 https:// 开头的URL{Style.RESET_ALL}")
+    
+    def _manual_input_rpcs(self, network_key: str, network_name: str):
+        """手动输入RPC节点"""
+        print(f"\n{Back.YELLOW}{Fore.BLACK} ✏️ 手动输入RPC节点 ✏️ {Style.RESET_ALL}")
+        print(f"{Fore.CYAN}请输入 {network_name} 的RPC节点（每行一个）：{Style.RESET_ALL}")
+        print(f"{Fore.MAGENTA}🔚 输入完成后双击回车确认{Style.RESET_ALL}")
+        
+        new_rpcs = []
+        empty_count = 0
+        
+        while True:
+            try:
+                rpc = self.safe_input(f"RPC {len(new_rpcs) + 1}: ").strip()
+                if rpc:
+                    if rpc.startswith(('http://', 'https://', 'ws://', 'wss://')):
+                        new_rpcs.append(rpc)
+                        empty_count = 0
+                        print(f"{Fore.GREEN}✅ 已添加: {rpc}{Style.RESET_ALL}")
+                    else:
+                        print(f"{Fore.RED}❌ 无效URL格式，请以 http:// 或 https:// 开头{Style.RESET_ALL}")
+                else:
+                    empty_count += 1
+                    if empty_count >= 2:
+                        break
+            except:
+                break
+        
+        if new_rpcs:
+            print(f"\n{Fore.GREEN}✅ 已添加 {len(new_rpcs)} 个RPC节点到 {network_name}{Style.RESET_ALL}")
+            self.networks[network_key]['rpc_urls'] = new_rpcs
+        else:
+            print(f"{Fore.YELLOW}⚠️ 未添加任何RPC节点{Style.RESET_ALL}")
+    
+    def _clear_network_rpcs(self, network_key: str, network_name: str):
+        """清空网络的所有RPC节点"""
+        confirm = self.safe_input(f"\n{Fore.RED}⚠️ 确认清空 {network_name} 的所有RPC节点？(y/N): {Style.RESET_ALL}").strip().lower()
+        if confirm == 'y':
+            self.networks[network_key]['rpc_urls'] = []
+            print(f"{Fore.GREEN}✅ 已清空 {network_name} 的所有RPC节点{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
     
     def _verify_network_changes(self, expected_changes: int):
         """验证网络配置修改是否正确保存"""
