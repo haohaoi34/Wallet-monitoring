@@ -3913,8 +3913,63 @@ esac
 
 
 
-    def add_private_key(self, private_key: str) -> Optional[str]:
-        """添加私钥并返回对应的地址（自动去重）"""
+    def extract_private_keys_from_text(self, text: str) -> list:
+        """智能从文本中提取私钥（支持乱码和混合数据）"""
+        import re
+        
+        # 清理文本，去除常见的分隔符和无关字符
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # 定义私钥的正则表达式模式
+        patterns = [
+            # 标准私钥格式：0x + 64位十六进制
+            r'0x[a-fA-F0-9]{64}',
+            # 纯64位十六进制（无0x前缀）
+            r'(?<![a-fA-F0-9])[a-fA-F0-9]{64}(?![a-fA-F0-9])',
+            # 处理可能的分隔符情况
+            r'[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}[^a-fA-F0-9]*[a-fA-F0-9]{8}',
+        ]
+        
+        extracted_keys = []
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # 清理匹配的字符串，移除非十六进制字符
+                cleaned_key = re.sub(r'[^a-fA-F0-9]', '', match)
+                
+                # 确保是64位十六进制
+                if len(cleaned_key) == 64 and all(c in '0123456789abcdefABCDEF' for c in cleaned_key):
+                    # 确保不是全0或全F（无效私钥）
+                    if not all(c == '0' for c in cleaned_key) and not all(c.lower() == 'f' for c in cleaned_key):
+                        if not cleaned_key.startswith('0x'):
+                            cleaned_key = '0x' + cleaned_key
+                        
+                        # 验证私钥是否有效
+                        try:
+                            Account.from_key(cleaned_key)
+                            if cleaned_key not in extracted_keys:
+                                extracted_keys.append(cleaned_key)
+                        except:
+                            continue
+        
+        # 处理特殊格式：地址----私钥
+        address_key_pattern = r'0x[a-fA-F0-9]{40}[^a-fA-F0-9]+([a-fA-F0-9]{64})'
+        address_key_matches = re.findall(address_key_pattern, text, re.IGNORECASE)
+        
+        for match in address_key_matches:
+            cleaned_key = '0x' + match
+            try:
+                Account.from_key(cleaned_key)
+                if cleaned_key not in extracted_keys:
+                    extracted_keys.append(cleaned_key)
+            except:
+                continue
+        
+        return extracted_keys
+
+    def add_private_key(self, private_key: str) -> str:
+        """添加私钥并返回状态（自动去重）"""
         try:
             if not private_key.startswith('0x'):
                 private_key = '0x' + private_key
@@ -3925,7 +3980,7 @@ esac
             # 检查是否已存在（去重）
             if address in self.wallets:
                 print(f"{Fore.YELLOW}⚠️ 钱包地址已存在: {address}{Style.RESET_ALL}")
-                return address
+                return "duplicate"
             
             self.wallets[address] = private_key
             print(f"{Fore.GREEN}✅ 成功添加钱包地址: {address}{Style.RESET_ALL}")
@@ -3934,10 +3989,10 @@ esac
             # 自动保存钱包
             self.save_wallets()
             
-            return address
+            return "success"
         except Exception as e:
             print(f"{Fore.RED}❌ 添加私钥失败: {e}{Style.RESET_ALL}")
-            return None
+            return "invalid"
 
     def save_wallets(self) -> bool:
         """保存钱包到JSON文件 - 线程安全版本"""
@@ -6032,8 +6087,8 @@ esac
                 print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发扫描批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络, 超时:{timeout}s) {Style.RESET_ALL}")
                 
                 # 并发检查这一批网络
-                # 使用智能调速获取最优工作线程数
-                optimal_workers = self.throttler.get_optimal_worker_count() if self.throttler_enabled else 5
+                # 使用20线程高性能扫描
+                optimal_workers = 20
                 optimal_workers = min(optimal_workers, len(batch_networks))  # 不超过实际任务数
                 
                 with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
@@ -6131,11 +6186,135 @@ esac
             print(f"\n{Back.CYAN}{Fore.WHITE} 📈 整体进度: {scanned_count}/{total_addresses} ({progress_percent:.1f}%) {Style.RESET_ALL}")
         
         elapsed = time.time() - start_ts
-        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
+        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 第一轮扫描完成 ✨ {Style.RESET_ALL}")
         print(f"{Fore.GREEN}✅ 监控地址: {len(self.monitored_addresses)} 个{Style.RESET_ALL}")
         print(f"{Fore.RED}❌ 屏蔽网络: {sum(len(nets) for nets in self.blocked_networks.values())} 个{Style.RESET_ALL}")
         print(f"{Fore.CYAN}⏱️ 用时: {elapsed:.2f}s{Style.RESET_ALL}")
+        
+        # 收集需要重试的失败网络
+        self._retry_failed_scans(addresses_to_scan)
+        
         self.save_state()
+
+    def _retry_failed_scans(self, addresses_to_scan):
+        """重试扫描失败的网络（最多3次）"""
+        if not hasattr(self, 'blocked_networks') or not self.blocked_networks:
+            return
+        
+        # 收集所有失败的网络（基于错误状态）
+        failed_networks_by_address = {}
+        retry_error_types = ["所有RPC超时", "无可用RPC", "快速扫描超时"]
+        
+        for address in addresses_to_scan:
+            if address in self.blocked_networks:
+                failed_networks = []
+                for network_key in self.blocked_networks[address]:
+                    # 这里我们需要重新检查这些网络，因为blocked_networks只存储网络名
+                    # 我们假设所有被屏蔽的网络都可能需要重试
+                    failed_networks.append(network_key)
+                
+                if failed_networks:
+                    failed_networks_by_address[address] = failed_networks
+        
+        if not failed_networks_by_address:
+            print(f"\n{Fore.GREEN}✅ 没有需要重试的失败网络{Style.RESET_ALL}")
+            return
+        
+        total_failed = sum(len(networks) for networks in failed_networks_by_address.values())
+        print(f"\n{Back.YELLOW}{Fore.BLACK} 🔄 发现 {total_failed} 个扫描失败的网络，开始重试... 🔄 {Style.RESET_ALL}")
+        
+        # 进行最多3次重试
+        for retry_round in range(1, 4):  # 重试轮次 1, 2, 3
+            if not failed_networks_by_address:
+                break
+                
+            print(f"\n{Back.BLUE}{Fore.WHITE} 🔄 第 {retry_round} 次重试扫描 ({sum(len(nets) for nets in failed_networks_by_address.values())} 个网络) 🔄 {Style.RESET_ALL}")
+            
+            current_round_failed = {}
+            success_count = 0
+            
+            for address, failed_networks in failed_networks_by_address.items():
+                print(f"\n{Fore.CYAN}🔍 重试地址: {address[:10]}...{address[-8:]} ({len(failed_networks)} 个网络){Style.RESET_ALL}")
+                
+                # 重新测试失败的网络
+                current_address_failed = []
+                
+                # 使用更长的超时时间进行重试
+                retry_timeout = 3.0 if retry_round == 1 else (5.0 if retry_round == 2 else 8.0)
+                
+                # 批量重试
+                batch_size = 3  # 重试时减少并发数
+                for batch_start in range(0, len(failed_networks), batch_size):
+                    batch_end = min(batch_start + batch_size, len(failed_networks))
+                    batch_networks = failed_networks[batch_start:batch_end]
+                    
+                    with ThreadPoolExecutor(max_workers=min(5, len(batch_networks))) as executor:
+                        future_to_network = {
+                            executor.submit(self.check_transaction_history_concurrent, address, nk, retry_timeout): nk 
+                            for nk in batch_networks
+                        }
+                        
+                        batch_results = {}
+                        for future in as_completed(future_to_network, timeout=retry_timeout + 5):
+                            network_key = future_to_network[future]
+                            try:
+                                network_key_result, has_history, elapsed, status = future.result()
+                                batch_results[network_key] = (has_history, elapsed, status)
+                            except Exception as e:
+                                batch_results[network_key] = (False, retry_timeout, f"重试异常: {str(e)[:20]}")
+                    
+                    # 处理这一批的结果
+                    for nk in batch_networks:
+                        if nk in batch_results:
+                            has_history, elapsed, status = batch_results[nk]
+                            
+                            if has_history:
+                                # 成功！从失败列表中移除，加入监控列表
+                                if address not in self.monitored_addresses:
+                                    self.monitored_addresses[address] = {'networks': [], 'last_check': time.time()}
+                                
+                                if nk not in self.monitored_addresses[address]['networks']:
+                                    self.monitored_addresses[address]['networks'].append(nk)
+                                
+                                # 从屏蔽列表中移除
+                                if address in self.blocked_networks and nk in self.blocked_networks[address]:
+                                    self.blocked_networks[address].remove(nk)
+                                    if not self.blocked_networks[address]:
+                                        del self.blocked_networks[address]
+                                
+                                success_count += 1
+                                print(f"    ✅ {self.networks[nk]['name']}: 重试成功! ({status})")
+                            else:
+                                # 仍然失败
+                                current_address_failed.append(nk)
+                                print(f"    ❌ {self.networks[nk]['name']}: 仍然失败 ({status})")
+                
+                if current_address_failed:
+                    current_round_failed[address] = current_address_failed
+            
+            # 更新失败列表
+            failed_networks_by_address = current_round_failed
+            
+            print(f"\n{Fore.GREEN}🎉 第 {retry_round} 次重试完成: 成功恢复 {success_count} 个网络{Style.RESET_ALL}")
+            
+            if not failed_networks_by_address:
+                print(f"{Fore.GREEN}✅ 所有网络重试成功！{Style.RESET_ALL}")
+                break
+        
+        # 最终仍然失败的网络
+        if failed_networks_by_address:
+            final_failed_count = sum(len(networks) for networks in failed_networks_by_address.values())
+            print(f"\n{Back.RED}{Fore.WHITE} ⚠️ 最终仍有 {final_failed_count} 个网络扫描失败，已永久屏蔽 ⚠️ {Style.RESET_ALL}")
+            
+            # 显示最终失败的网络详情
+            for address, failed_networks in failed_networks_by_address.items():
+                print(f"  📍 {address[:10]}...{address[-8:]}: {len(failed_networks)} 个网络")
+                for nk in failed_networks[:3]:  # 只显示前3个
+                    print(f"    • {self.networks[nk]['name']}")
+                if len(failed_networks) > 3:
+                    print(f"    • ... 还有 {len(failed_networks) - 3} 个网络")
+        
+        print(f"\n{Back.GREEN}{Fore.WHITE} 🎉 扫描重试完成 🎉 {Style.RESET_ALL}")
 
     def monitor_loop(self):
         """监控循环"""
@@ -6697,41 +6876,101 @@ esac
         lines = []
         
         if input_method == '1':
-            # 单个私钥输入
-            print(f"\n{Fore.GREEN}🔍 请输入私钥：{Style.RESET_ALL}")
-            private_key = self.safe_input().strip()
-            if private_key:
-                lines = [private_key]
+            # 单个私钥输入（支持智能解析）
+            print(f"\n{Fore.GREEN}🔍 请输入私钥（支持智能解析）：{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 支持混合格式：地址----私钥、纯私钥等{Style.RESET_ALL}")
+            private_key_input = self.safe_input().strip()
+            if private_key_input:
+                # 尝试智能解析
+                extracted_keys = self.extract_private_keys_from_text(private_key_input)
+                if extracted_keys:
+                    print(f"{Fore.GREEN}🎉 智能解析成功！提取到 {len(extracted_keys)} 个私钥{Style.RESET_ALL}")
+                    lines = extracted_keys
+                else:
+                    # 直接使用原始输入
+                    lines = [private_key_input]
         
         elif input_method == '2':
-            # 批量输入
-            print(f"\n{Fore.GREEN}📋 批量私钥输入（每行一个，双击回车完成）：{Style.RESET_ALL}")
+            # 批量输入（支持智能解析）
+            print(f"\n{Fore.GREEN}📋 批量私钥输入（支持智能解析乱码数据）：{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 智能模式：直接粘贴包含私钥的混合数据，系统会自动提取{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}   支持格式：0x地址----0x私钥、纯私钥、混合乱码等{Style.RESET_ALL}")
+            print(f"{Fore.MAGENTA}   输入完成后双击回车确认{Style.RESET_ALL}")
+            
             empty_line_count = 0
+            raw_input_lines = []
             
             while True:
                 try:
                     line = self.safe_input().strip()
                     if line:
-                        lines.append(line)
+                        raw_input_lines.append(line)
                         empty_line_count = 0
-                        print(f"{Fore.CYAN}✅ 已添加第 {len(lines)} 个私钥{Style.RESET_ALL}")
+                        print(f"{Fore.CYAN}✅ 已接收第 {len(raw_input_lines)} 行数据{Style.RESET_ALL}")
                     else:
                         empty_line_count += 1
                         if empty_line_count >= 2:
                             break
                 except EOFError:
                     break
+            
+            # 智能解析所有输入的数据
+            if raw_input_lines:
+                print(f"\n{Fore.BLUE}🔍 正在智能解析 {len(raw_input_lines)} 行数据...{Style.RESET_ALL}")
+                
+                # 将所有行合并进行智能解析
+                combined_text = '\n'.join(raw_input_lines)
+                extracted_keys = self.extract_private_keys_from_text(combined_text)
+                
+                if extracted_keys:
+                    print(f"{Fore.GREEN}🎉 智能解析成功！从混合数据中提取到 {len(extracted_keys)} 个有效私钥{Style.RESET_ALL}")
+                    lines = extracted_keys
+                    
+                    # 显示提取的私钥预览（脱敏显示）
+                    print(f"\n{Fore.CYAN}📋 提取的私钥预览：{Style.RESET_ALL}")
+                    for i, key in enumerate(extracted_keys[:5], 1):  # 最多显示5个
+                        masked_key = key[:6] + "..." + key[-4:]
+                        print(f"  {i}. {masked_key}")
+                    if len(extracted_keys) > 5:
+                        print(f"  ... 还有 {len(extracted_keys) - 5} 个私钥")
+                else:
+                    print(f"{Fore.YELLOW}⚠️ 未能从输入数据中提取到有效私钥{Style.RESET_ALL}")
+                    # 回退到原始逐行处理
+                    lines = raw_input_lines
         
         elif input_method == '3':
-            # 从文件导入
-            print(f"\n{Fore.GREEN}📁 从文件导入私钥：{Style.RESET_ALL}")
+            # 从文件导入（支持智能解析）
+            print(f"\n{Fore.GREEN}📁 从文件导入私钥（支持智能解析）：{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}💡 支持混合格式文件，系统会自动提取有效私钥{Style.RESET_ALL}")
             file_path = self.safe_input(f"{Fore.CYAN}请输入文件路径: {Style.RESET_ALL}").strip()
             
             if file_path:
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        lines = [line.strip() for line in f.readlines() if line.strip()]
-                    print(f"{Fore.GREEN}✅ 从文件读取到 {len(lines)} 个私钥{Style.RESET_ALL}")
+                        file_content = f.read()
+                    
+                    print(f"{Fore.BLUE}🔍 正在智能解析文件内容...{Style.RESET_ALL}")
+                    
+                    # 尝试智能解析
+                    extracted_keys = self.extract_private_keys_from_text(file_content)
+                    
+                    if extracted_keys:
+                        print(f"{Fore.GREEN}🎉 智能解析成功！从文件中提取到 {len(extracted_keys)} 个有效私钥{Style.RESET_ALL}")
+                        lines = extracted_keys
+                        
+                        # 显示提取的私钥预览（脱敏显示）
+                        print(f"\n{Fore.CYAN}📋 提取的私钥预览：{Style.RESET_ALL}")
+                        for i, key in enumerate(extracted_keys[:3], 1):  # 文件模式显示3个
+                            masked_key = key[:6] + "..." + key[-4:]
+                            print(f"  {i}. {masked_key}")
+                        if len(extracted_keys) > 3:
+                            print(f"  ... 还有 {len(extracted_keys) - 3} 个私钥")
+                    else:
+                        # 回退到原始逐行处理
+                        lines = [line.strip() for line in file_content.split('\n') if line.strip()]
+                        print(f"{Fore.YELLOW}⚠️ 智能解析未找到私钥，回退到逐行处理模式{Style.RESET_ALL}")
+                        print(f"{Fore.GREEN}✅ 从文件读取到 {len(lines)} 行数据{Style.RESET_ALL}")
+                        
                 except Exception as e:
                     print(f"{Fore.RED}❌ 读取文件失败: {e}{Style.RESET_ALL}")
                     self.safe_input(f"\n{Fore.MAGENTA}🔙 按回车键返回...{Style.RESET_ALL}")
@@ -8557,36 +8796,18 @@ esac
             if modify_chains == 'y':
                 self._manual_chain_id_modification(failed_networks)
         
-        # 步骤3: 询问是否直接开始扫描
+        # 步骤3: 自动开始扫描（优化版本）
         if successful_connections > 0:
-            print(f"\n{Fore.GREEN}🎉 服务器连接初始化成功！现在可以开始扫描了。{Style.RESET_ALL}")
-            
-            # 检查是否有无可用RPC的网络
-            try:
-                rpc_results = self.get_cached_rpc_results()
-                zero_rpc_count = sum(1 for result in rpc_results.values() if result['available_count'] == 0)
-                if zero_rpc_count > 0:
-                    print(f"\n{Fore.YELLOW}⚠️ 发现 {zero_rpc_count} 个网络无可用RPC，建议使用菜单选项 4 → 2 单独管理{Style.RESET_ALL}")
-            except:
-                zero_rpc_count = 0
+            print(f"\n{Fore.GREEN}📡 网络连接就绪！{Style.RESET_ALL}")
             
             if self.wallets:
-                start_scan = self.safe_input(f"\n{Fore.YELLOW}🚀 是否立即开始扫描钱包地址？(Y/n): {Style.RESET_ALL}").strip().lower()
-                if start_scan in ['', 'y', 'yes']:
-                    print(f"\n{Back.CYAN}{Fore.WHITE} 🔍 开始扫描钱包地址 🔍 {Style.RESET_ALL}")
-                    scan_result = self.scan_addresses_with_detailed_display()
-                    if scan_result:
-                        # 如果扫描后直接启动了监控，就不需要返回菜单了
-                        print(f"\n{Fore.GREEN}🎉 监控正在运行中...{Style.RESET_ALL}")
-                        return
-                else:
-                    print(f"\n{Fore.YELLOW}⚠️ 扫描已取消，可随时通过主菜单开始监控{Style.RESET_ALL}")
-                    if zero_rpc_count > 0:
-                        print(f"{Fore.CYAN}💡 提示：按 2 可以给无可用RPC的链条单独增加RPC{Style.RESET_ALL}")
+                print(f"{Back.CYAN}{Fore.WHITE} 🔍 开始智能扫描链上交易记录 (20线程) 🔍 {Style.RESET_ALL}")
+                scan_result = self.scan_addresses_with_detailed_display()
+                if scan_result:
+                    print(f"\n{Fore.GREEN}✅ 链上交易记录扫描完成{Style.RESET_ALL}")
+                    return
             else:
-                print(f"\n{Fore.YELLOW}💡 提示：请先添加钱包地址，然后就可以开始监控了{Style.RESET_ALL}")
-                if zero_rpc_count > 0:
-                    print(f"{Fore.CYAN}💡 发现无可用RPC的网络，按 2 可以单独管理{Style.RESET_ALL}")
+                print(f"\n{Fore.YELLOW}💡 请先添加钱包地址，然后可以开始扫描{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.RED}❌ 所有网络连接都失败了，请检查网络设置或RPC配置{Style.RESET_ALL}")
             print(f"{Fore.CYAN}💡 建议使用菜单选项 4 → 2 管理无可用RPC的链条{Style.RESET_ALL}")
@@ -8621,26 +8842,66 @@ esac
             print(f"  • {name}: {chain_id}")
         print(f"  • 更多信息: https://chainlist.org")
         
-        # 手动修改流程
+        print(f"\n{Fore.YELLOW}🚀 快速操作说明：{Style.RESET_ALL}")
+        print(f"  • 输入序号选择网络 (如: 1,3,5 或 1-5)")
+        print(f"  • 输入 'all' 跳过所有网络")
+        print(f"  • 输入 'q' 退出修改")
+        
+        # 优化的手动修改流程
         modified_count = 0
-        for i, network in enumerate(failed_networks, 1):
-            if i > 10:  # 限制修改数量
+        while True:
+            choice = self.safe_input(f"\n{Fore.CYAN}➜ 请选择要修改的网络: {Style.RESET_ALL}").strip().lower()
+            
+            if choice == 'q':
                 break
+            elif choice == 'all':
+                print(f"{Fore.YELLOW}📋 跳过所有Chain ID修改，继续下一步...{Style.RESET_ALL}")
+                break
+            elif choice == '':
+                continue
+            
+            try:
+                # 解析序号选择
+                selected_indices = []
                 
-            print(f"\n--- 网络 {i}: {network['name']} ---")
-            print(f"当前Chain ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL}")
-            
-            modify = self.safe_input(f"是否修改此网络的Chain ID？(y/N/q退出): ").strip().lower()
-            
-            if modify == 'q':
-                break
-            elif modify == 'y':
-                while True:
+                if ',' in choice:
+                    # 逗号分隔: 1,3,5
+                    parts = choice.split(',')
+                    for part in parts:
+                        if '-' in part.strip():
+                            # 范围: 1-3
+                            start, end = map(int, part.strip().split('-'))
+                            selected_indices.extend(range(start, end + 1))
+                        else:
+                            selected_indices.append(int(part.strip()))
+                elif '-' in choice:
+                    # 范围: 1-5
+                    start, end = map(int, choice.split('-'))
+                    selected_indices.extend(range(start, end + 1))
+                else:
+                    # 单个序号: 3
+                    selected_indices.append(int(choice))
+                
+                # 过滤有效序号
+                valid_indices = [i for i in selected_indices if 1 <= i <= len(failed_networks)]
+                
+                if not valid_indices:
+                    print(f"{Fore.RED}❌ 无效的序号选择{Style.RESET_ALL}")
+                    continue
+                
+                # 批量修改选中的网络
+                batch_modified = 0
+                for index in valid_indices:
+                    network = failed_networks[index - 1]
+                    print(f"\n--- 正在修改网络 {index}: {network['name']} ---")
+                    print(f"当前Chain ID: {Fore.RED}{network['chain_id']}{Style.RESET_ALL}")
+                    
+                    new_chain_id = self.safe_input(f"请输入新的Chain ID (回车跳过): ").strip()
+                    if not new_chain_id:
+                        print(f"{Fore.YELLOW}⏭️ 跳过此网络{Style.RESET_ALL}")
+                        continue
+                    
                     try:
-                        new_chain_id = self.safe_input(f"请输入新的Chain ID: ").strip()
-                        if not new_chain_id:
-                            break
-                        
                         new_id = int(new_chain_id)
                         if new_id <= 0:
                             print(f"{Fore.RED}❌ Chain ID必须为正整数{Style.RESET_ALL}")
@@ -8651,35 +8912,27 @@ esac
                         self.networks[network['key']]['chain_id'] = new_id
                         
                         print(f"{Fore.GREEN}✅ Chain ID已更新: {old_id} → {new_id}{Style.RESET_ALL}")
+                        batch_modified += 1
                         modified_count += 1
-                        
-                        # 尝试重新测试连接
-                        print(f"🔄 正在测试新配置...")
-                        test_result = self.test_network_concurrent(network['key'])
-                        if test_result and test_result['working_rpcs']:
-                            print(f"{Fore.GREEN}✅ 连接测试成功！{Style.RESET_ALL}")
-                        else:
-                            print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要添加更多RPC节点{Style.RESET_ALL}")
-                            
-                            # 询问是否要添加RPC节点
-                            add_rpc = self.safe_input(f"是否要为此网络添加RPC节点？(y/N): ").strip().lower()
-                            if add_rpc == 'y':
-                                added_count = self._smart_add_rpc_nodes(network['key'], network['name'])
-                                if added_count > 0:
-                                    print(f"{Fore.GREEN}✅ 已添加 {added_count} 个RPC节点，重新测试中...{Style.RESET_ALL}")
-                                    # 重新测试
-                                    test_result = self.test_network_concurrent(network['key'])
-                                    if test_result and test_result['working_rpcs']:
-                                        print(f"{Fore.GREEN}✅ 添加RPC后连接测试成功！{Style.RESET_ALL}")
-                                    else:
-                                        print(f"{Fore.YELLOW}⚠️ 连接仍然失败，可能需要进一步检查{Style.RESET_ALL}")
-                        break
-                        
                     except ValueError:
                         print(f"{Fore.RED}❌ 请输入有效的数字{Style.RESET_ALL}")
-                    except Exception as e:
-                        print(f"{Fore.RED}❌ 更新失败: {e}{Style.RESET_ALL}")
+                
+                if batch_modified > 0:
+                    print(f"\n{Fore.GREEN}🎉 已成功修改 {batch_modified} 个网络的Chain ID{Style.RESET_ALL}")
+                    
+                    # 询问是否继续修改其他网络
+                    continue_modify = self.safe_input(f"{Fore.YELLOW}是否继续修改其他网络？(y/N): {Style.RESET_ALL}").strip().lower()
+                    if continue_modify != 'y':
                         break
+                else:
+                    print(f"{Fore.YELLOW}📋 未修改任何网络{Style.RESET_ALL}")
+                    break
+                    
+            except ValueError:
+                print(f"{Fore.RED}❌ 输入格式错误，请使用正确的序号格式{Style.RESET_ALL}")
+            except KeyboardInterrupt:
+                print(f"\n{Fore.YELLOW}⚠️ 操作已取消{Style.RESET_ALL}")
+                return
         
         # 保存修改
         if modified_count > 0:
@@ -8695,19 +8948,61 @@ esac
                     self.cache.clear_category('rpc_status')
                     print(f"  ✅ 缓存已清理")
                 
-                print(f"\n{Fore.GREEN}💡 建议：重新运行'初始化服务器连接'以验证修改效果{Style.RESET_ALL}")
+                print(f"\n{Fore.GREEN}💡 Chain ID修改已保存{Style.RESET_ALL}")
                 
-                # 询问是否重新初始化
-                reinit = self.safe_input(f"\n{Fore.YELLOW}🔄 是否立即重新初始化服务器连接？(Y/n): {Style.RESET_ALL}").strip().lower()
-                if reinit in ['', 'y', 'yes']:
-                    print(f"\n{Fore.CYAN}🔄 重新初始化中...{Style.RESET_ALL}")
-                    self.initialize_server_connections()
-                    return
+                # 验证修改是否正确保存
+                self._verify_network_changes(modified_count)
                     
             except Exception as e:
                 print(f"  {Fore.RED}❌ 保存失败: {e}{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.YELLOW}💡 没有进行任何修改{Style.RESET_ALL}")
+    
+    def _verify_network_changes(self, expected_changes: int):
+        """验证网络配置修改是否正确保存"""
+        try:
+            print(f"\n{Back.CYAN}{Fore.WHITE} 🔍 验证配置修改 🔍 {Style.RESET_ALL}")
+            
+            # 重新加载状态文件验证
+            if os.path.exists(self.state_file):
+                with open(self.state_file, 'r') as f:
+                    saved_state = json.load(f)
+                
+                saved_networks = saved_state.get('networks', {})
+                if saved_networks:
+                    print(f"  ✅ 网络配置已写入状态文件 ({len(saved_networks)} 个网络)")
+                    
+                    # 检查最近修改时间
+                    last_save = saved_state.get('last_save')
+                    if last_save:
+                        save_time = datetime.fromisoformat(last_save)
+                        time_diff = (datetime.now() - save_time).total_seconds()
+                        print(f"  ✅ 最后保存时间: {save_time.strftime('%H:%M:%S')} ({time_diff:.1f}秒前)")
+                    
+                    # 验证当前内存中的networks与保存的一致
+                    memory_match = True
+                    for network_key, network_config in self.networks.items():
+                        if network_key in saved_networks:
+                            saved_chain_id = saved_networks[network_key].get('chain_id')
+                            current_chain_id = network_config.get('chain_id')
+                            if saved_chain_id != current_chain_id:
+                                memory_match = False
+                                print(f"  ⚠️  {network_key}: 内存({current_chain_id}) ≠ 保存({saved_chain_id})")
+                    
+                    if memory_match:
+                        print(f"  ✅ 内存配置与保存文件一致")
+                    else:
+                        print(f"  ⚠️  发现配置不一致，建议重启程序")
+                        
+                else:
+                    print(f"  ⚠️  状态文件中未找到网络配置")
+            else:
+                print(f"  ❌ 状态文件不存在: {self.state_file}")
+            
+            print(f"\n{Fore.GREEN}🎉 配置验证完成！修改将在下次初始化时生效{Style.RESET_ALL}")
+            
+        except Exception as e:
+            print(f"  {Fore.RED}❌ 验证失败: {e}{Style.RESET_ALL}")
     
     def _smart_add_rpc_nodes(self, network_key: str, network_name: str) -> int:
         """智能添加RPC节点 - 支持多种格式解析"""
@@ -9055,8 +9350,8 @@ esac
                 print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发检查批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络) {Style.RESET_ALL}")
                 
                 # 并发检查这一批网络
-                # 使用智能调速获取最优工作线程数
-                optimal_workers = self.throttler.get_optimal_worker_count() if self.throttler_enabled else 5
+                # 使用20线程高性能扫描
+                optimal_workers = 20
                 optimal_workers = min(optimal_workers, len(batch_networks))
                 
                 with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
@@ -9129,10 +9424,13 @@ esac
         
         # 扫描完成总结
         elapsed = time.time() - start_time
-        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 扫描完成 ✨ {Style.RESET_ALL}")
+        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 第一轮扫描完成 ✨ {Style.RESET_ALL}")
         print(f"✅ 监控地址: {Fore.GREEN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
         print(f"❌ 屏蔽网络: {Fore.RED}{sum(len(nets) for nets in self.blocked_networks.values())}{Style.RESET_ALL} 个")
         print(f"⏱️ 用时: {Fore.CYAN}{elapsed:.2f}s{Style.RESET_ALL}")
+        
+        # 重试失败的网络
+        self._retry_failed_scans(list(self.wallets.keys()))
         
         # 更新全量扫描完成时间
         self.last_full_scan_time = time.time()
