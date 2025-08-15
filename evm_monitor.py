@@ -5691,8 +5691,8 @@ esac
         results = {}
         start_time = time.time()
         
-        # 并发测试所有网络
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # 并发测试所有网络 - 使用40线程提升性能
+        with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
             future_to_network = {
                 executor.submit(self.test_network_concurrent, network_key): network_key 
                 for network_key in self.networks.keys()
@@ -8894,7 +8894,7 @@ esac
             print(f"\n{Fore.GREEN}📡 网络连接就绪！{Style.RESET_ALL}")
             
             if self.wallets:
-                print(f"{Back.CYAN}{Fore.WHITE} 🔍 开始智能扫描链上交易记录 (20线程) 🔍 {Style.RESET_ALL}")
+                print(f"{Back.CYAN}{Fore.WHITE} 🔍 开始智能扫描链上交易记录 (40线程) 🔍 {Style.RESET_ALL}")
                 scan_result = self.scan_addresses_with_detailed_display()
                 if scan_result:
                     print(f"\n{Fore.GREEN}✅ 链上交易记录扫描完成{Style.RESET_ALL}")
@@ -9647,30 +9647,28 @@ esac
             address_networks = []
             blocked_networks = []
             
-            # 获取已连接的网络列表
+            # 获取所有网络配置列表（包括未连接的）
+            all_networks = list(self.networks.keys())
             connected_networks = list(self.web3_connections.keys())
-            total_networks = len(connected_networks)
+            total_networks = len(all_networks)
+            connected_count = len(connected_networks)
             
-            if not connected_networks:
-                print(f"  {Fore.RED}❌ 没有可用的网络连接{Style.RESET_ALL}")
-                continue
+            print(f"  {Fore.CYAN}📊 将检查 {total_networks} 个网络配置（已连接: {connected_count}，未连接: {total_networks - connected_count}）。这个部分检查的网络是全部网络。然后检查的线程改成40线程{Style.RESET_ALL}")
             
-            print(f"  {Fore.CYAN}📊 将检查 {total_networks} 个已连接的网络{Style.RESET_ALL}")
-            
-            # 分批并发检查
-            batch_size = 5
+            # 分批并发检查 - 增大批次以更好利用40线程
+            batch_size = 20
             network_count = 0
             found_networks = 0
             
-            for batch_start in range(0, len(connected_networks), batch_size):
-                batch_end = min(batch_start + batch_size, len(connected_networks))
-                batch_networks = connected_networks[batch_start:batch_end]
+            for batch_start in range(0, len(all_networks), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_networks))
+                batch_networks = all_networks[batch_start:batch_end]
                 
-                print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发检查批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络) {Style.RESET_ALL}")
+                print(f"  {Back.BLUE}{Fore.WHITE} 🚀 并发检查批次 {batch_start//batch_size + 1} ({len(batch_networks)} 个网络) - 使用40线程超高性能扫描 {Style.RESET_ALL}")
                 
                 # 并发检查这一批网络
-                # 使用20线程高性能扫描
-                optimal_workers = 20
+                # 使用40线程超高性能扫描
+                optimal_workers = 40
                 optimal_workers = min(optimal_workers, len(batch_networks))
                 
                 with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
@@ -9701,6 +9699,8 @@ esac
                     for nk in batch_networks:
                         network_count += 1
                         network_name = self.networks[nk]['name']
+                        is_connected = nk in connected_networks
+                        connection_status = "🔗已连接" if is_connected else "🔌未连接"
                         
                         if nk in batch_results:
                             has_history, elapsed, status = batch_results[nk]
@@ -9723,7 +9723,7 @@ esac
                             result_icon = "⏱️"
                             result_text = "超时"
                         
-                        print(f"    {Fore.CYAN}🌐 [{network_count:2d}/{total_networks}] {network_name:<35}{Style.RESET_ALL} {result_color}{result_icon} {result_text}{Style.RESET_ALL}")
+                        print(f"    {Fore.CYAN}🌐 [{network_count:2d}/{total_networks}] {network_name:<30} {connection_status:<8}{Style.RESET_ALL} {result_color}{result_icon} {result_text}{Style.RESET_ALL}")
             
             # 保存扫描结果
             if address_networks:
@@ -9743,10 +9743,15 @@ esac
         
         # 扫描完成总结
         elapsed = time.time() - start_time
-        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 第一轮扫描完成 ✨ {Style.RESET_ALL}")
+        total_scanned_networks = len(all_networks)
+        total_connected = len(connected_networks)
+        total_unconnected = total_scanned_networks - total_connected
+        
+        print(f"\n{Back.GREEN}{Fore.BLACK} ✨ 全网络扫描完成 ✨ {Style.RESET_ALL}")
+        print(f"🌐 扫描网络: {Fore.CYAN}{total_scanned_networks}{Style.RESET_ALL} 个 (已连接: {Fore.GREEN}{total_connected}{Style.RESET_ALL}, 未连接: {Fore.YELLOW}{total_unconnected}{Style.RESET_ALL})")
         print(f"✅ 监控地址: {Fore.GREEN}{len(self.monitored_addresses)}{Style.RESET_ALL} 个")
         print(f"❌ 屏蔽网络: {Fore.RED}{sum(len(nets) for nets in self.blocked_networks.values())}{Style.RESET_ALL} 个")
-        print(f"⏱️ 用时: {Fore.CYAN}{elapsed:.2f}s{Style.RESET_ALL}")
+        print(f"⏱️ 用时: {Fore.CYAN}{elapsed:.2f}s{Style.RESET_ALL} (40线程并发扫描)")
         
         # 重试失败的网络
         self._retry_failed_scans(list(self.wallets.keys()))
